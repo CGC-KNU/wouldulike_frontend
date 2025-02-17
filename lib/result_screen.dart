@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'food_recommendation_screen.dart';
-
-class ResultScreen extends StatelessWidget {
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:shared_preferences/shared_preferences.dart';
+class ResultScreen extends StatefulWidget {
   const ResultScreen({
     super.key,
     required this.totalScore,
@@ -12,195 +14,386 @@ class ResultScreen extends StatelessWidget {
   final int totalScore;
   final List<String> selectedQuestions;
   final Function resetQuiz;
+  @override
+  State<ResultScreen> createState() => _ResultScreenState();
+}
 
-  String getTypeDescription(String type) {
-    final descriptions = {
-      '1형': '일정도의 태양처럼 건고하게, 같은 맛과 독특한 풍미를 미를 선호하는 당신!',
-      '2형': '마음이 따뜻한 달빛처럼, 부드럽고 달콤한 맛을 선호하는 당신!',
-      '3형': '바람처럼 자유로운, 매콤하고 자극적인 맛을 선호하는 당신!',
-      '4형': '구름처럼 포근한, 담백하고 깔끔한 맛을 선호하는 당신!'
-    };
-    return descriptions[type] ?? '';
+class _ResultScreenState extends State<ResultScreen> {
+  String _typeDescription = ' ';
+  late String resultMessage;
+  String _typeName = ' ';
+  bool _isloading = true;
+  @override
+  void initState() {
+    super.initState();
+    _initializeData();
+  }
+  Future<void> _initializeData() async {
+    resultMessage = _getResultMessage();
+    //print('Starting API calls with resultMessage: $resultMessage');
+
+    try {
+      //print('Calling sendResultMessage...');
+      await sendResultMessage(resultMessage);
+      //print('sendResultMessage completed');
+      //print('Calling fetchDescription...');
+      String description = await fetchDescription(resultMessage);
+
+      await fetchAllData(resultMessage);
+      //print('fetchDescription completed');
+      setState(() {
+        _typeDescription = description;
+      });
+      //print('Fetching user data...');
+      //await fetchUserData(); // 추가된 부분
+    } catch (e) {
+      print('Error in _initializeData: $e');
+      setState(() {
+        _typeDescription = '설명을 불러오는데 실패했습니다.';
+      });
+    } finally{
+      setState(() {
+        _isloading = false;
+      });
+    }
+  }
+  /*
+  Future<void> fetchUserData() async {
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final uuid = prefs.getString('user_uuid');
+
+      if (uuid == null) {
+        print('UUID not found');
+        return;
+      }
+      final url = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/?uuid=$uuid');
+      // API 호출
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        // JSON 파싱
+        final data = jsonDecode(response.body);
+
+        // 필요한 값 추출
+        final uuid = data['uuid'];
+        final typeCode = data['type_code'];
+        final favoriteRestaurants = data['favorite_restaurants'];
+
+        // 콘솔에 출력
+        print('UUID: $uuid');
+        print('Type Code: $typeCode');
+        print('Favorite Restaurants: $favoriteRestaurants');
+      } else {
+        print('Failed to fetch data. Status code: ${response.statusCode}');
+      }
+    } catch (error) {
+      print('Error fetching data: $error');
+    }
+  }
+  */
+  String _getResultMessage() {
+    if (widget.totalScore == 1111) return 'IYFW';
+    if (widget.totalScore == 2111) return 'SYFW';
+    if (widget.totalScore == 1211) return 'INFW';
+    if (widget.totalScore == 2211) return 'SNFW';
+    if (widget.totalScore == 1121) return 'IYJW';
+    if (widget.totalScore == 2121) return 'SYJW';
+    if (widget.totalScore == 1221) return 'INJW';
+    if (widget.totalScore == 2221) return 'SNJW';
+    if (widget.totalScore == 1112) return 'IYFE';
+    if (widget.totalScore == 2112) return 'SYFE';
+    if (widget.totalScore == 1212) return 'INFE';
+    if (widget.totalScore == 2212) return 'SNFE';
+    if (widget.totalScore == 1122) return 'IYJE';
+    if (widget.totalScore == 2122) return 'SYJE';
+    if (widget.totalScore == 1222) return 'INJE';
+    return 'SNJE';
   }
 
+
+  Future<void> sendResultMessage(String resultMessage) async {
+    // Base URL 설정
+    final baseUrl = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/update/type_code';
+
+    try {
+      // SharedPreferences에서 UUID 가져오기
+      final prefs = await SharedPreferences.getInstance();
+      final uuid = prefs.getString('user_uuid'); // 저장된 키 이름 확인 필요
+      //print('UUID : $uuid');
+
+      if (uuid == null) {
+        //print('UUID가 null입니다. SharedPreferences에서 값을 확인하세요.');
+        return;
+      }
+
+      // URL에 쿼리스트링 추가
+      final url = Uri.parse('$baseUrl?uuid=$uuid&type_code=$resultMessage');
+
+      // GET 요청 (fetch와 유사한 방식)
+      final response = await http.get(url);
+      if(response.statusCode == 200){
+        await prefs.setString('user_type', resultMessage);
+        //print('Type saved to sharedPreferences: $resultMessage');
+      }
+      //print('Response status: ${response.statusCode}');
+      //print('Response body: ${response.body}');
+    } catch (error) {
+      print('Error: $error');
+    }
+  }
+
+
+  Future<String> fetchDescription(String resultMessage) async {
+    //print('Trying to fetch description for type: $resultMessage');
+    final url = Uri.parse(
+        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/type-descriptions/type-descriptions/${resultMessage}/');
+    //print('Request URL: $url');
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      // 단순화된 GET 요청
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        //print('Response body: ${response.body}');
+        final description = responseData['description'];
+        await prefs.setString('type_description', description);
+        //print('Description saved to SharedPreferences');
+        return description;
+      } else {
+        throw Exception('Failed to fetch description: ${response.statusCode}');
+      }
+    } catch (error) {
+      print('Error fetching description: $error');
+      rethrow;
+    }
+  }
+
+  Future<void> fetchAllData(String resultMessage) async{
+    final url = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/type-descriptions/type-descriptions/all/${resultMessage}/');
+    final prefs = await SharedPreferences.getInstance();
+    try{
+      final response = await http.get(url);
+      if (response.statusCode == 200) {
+        final responseData = jsonDecode(response.body);
+        print('Response body: ${response.body}');
+        final summary = responseData['type_summary'];
+        final menu_mbti = responseData['menu_and_mbti'];
+        final meal_ex = responseData['meal_example'];
+        final matching_type = responseData['matching_type'];
+        final non_matching = responseData['non_matching_type'];
+        final type_name = responseData['type_name'];
+        await prefs.setString('type_summary', summary);
+        await prefs.setString('menu_and_mbti', menu_mbti);
+        await prefs.setString('meal_example', meal_ex);
+        await prefs.setString('matching_type', matching_type);
+        await prefs.setString('non_matching', non_matching);
+        await prefs.setString('type_name', type_name);
+        print('Description saved to SharedPreferences');
+        setState(() {
+          _typeName = responseData['type_name'];
+        });
+      } else {
+        throw Exception('Failed to fetch description: ${response.statusCode}');
+      }
+    } catch (error) {
+      print('Error fetching description: $error');
+      rethrow;
+    }
+  }
   @override
   Widget build(BuildContext context) {
-    String resultMessage;
-
-    if (totalScore == 1111) {
-      resultMessage = 'IYFW';
-    } else if (totalScore == 2111) {
-      resultMessage = 'SYFW';
-    } else if (totalScore == 1211) {
-      resultMessage = 'INFW';
-    } else if (totalScore == 2211) {
-      resultMessage = 'SNFW';
-    } else if(totalScore == 1121){
-      resultMessage = 'IYJW';
-    } else if (totalScore == 2121) {
-      resultMessage = 'SYJW';
-    } else if (totalScore == 1221) {
-      resultMessage = 'INJW';
-    } else if (totalScore == 2221) {
-      resultMessage = 'SNJW';
-    } else if(totalScore == 1112){
-      resultMessage = 'IYFE';
-    } else if (totalScore == 2112) {
-      resultMessage = 'SYFE';
-    } else if (totalScore == 1212) {
-      resultMessage = 'INFE';
-    } else if (totalScore == 2212) {
-      resultMessage = 'SNFE';
-    } else if(totalScore == 1122){
-      resultMessage = 'IYJE';
-    } else if (totalScore == 2122) {
-      resultMessage = 'SYJE';
-    } else if (totalScore == 1222) {
-      resultMessage = 'INJE';
-    } else {
-      resultMessage = 'SNJE';
-    }
+    String imagePath = 'assets/images/$resultMessage.png';
+    final size = MediaQuery.of(context).size;
+    final padding = size.width * 0.05; // 5% padding
 
     return Scaffold(
-      body: LayoutBuilder(
-        builder: (context, constraints) {
-          final screenHeight = constraints.maxHeight;
-          final screenWidth = constraints.maxWidth;
-
-          return Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment(-1.00, -0.00),
-                end: Alignment(1, 0),
-                colors: [
-                  Color(0xFFF8F5FF),
-                  Color(0xFFF6F5FF),
-                  Color(0xFFF5F5FF),
-                  Color(0xFFF4F5FF),
-                  Color(0xFFF1F5FF),
-                  Color(0xFFF1F5FF),
-                  Color(0xFFEFF6FF)
-                ],
+      backgroundColor: Colors.white,
+      body: _isloading
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(
+              color: Colors.grey,
+              strokeWidth: 4.0,
+            ),
+            SizedBox(height: size.height * 0.02),
+            Text(
+              '당신의 취향 분석 중...',
+              style: TextStyle(
+                fontSize: size.width * 0.05,
+                fontWeight: FontWeight.w500,
+                color: Colors.grey,
               ),
             ),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.start,
-              children: [
-                SizedBox(height: screenHeight * 0.1), // 상단 여백
-                Text(
-                  '당신의 음식 취향 분석 결과',
-                  style: TextStyle(
-                    fontSize: screenHeight * 0.03,
-                    color: const Color(0xFF312E81),
-                  ),
+          ],
+        ),
+      )
+          : SafeArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: padding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(height: size.height * 0.06),
+              Text(
+                '입맛 유형 테스트 결과',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: size.width * 0.055,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF1F2937),
                 ),
-                SizedBox(height: screenHeight * 0.02), // 제목 아래 여백
-                Container(
-                  width: screenWidth * 0.5,
-                  height: screenWidth * 0.5,
+              ),
+              SizedBox(height: size.height * 0.005),
+              Text(
+                '당신의 입맛을 똑 닮은 우주라이크 캐릭터를 만나보세요!',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: size.width * 0.032,
+                  fontWeight: FontWeight.w300,
+                  color: const Color(0xFF6B7280),
+                ),
+              ),
+              SizedBox(height: size.height * 0.02),
+              Expanded(
+                child: Container(
+                  width: double.infinity,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFE4E6),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                SizedBox(height: screenHeight * 0.02), // 이미지 아래 여백
-                Text(
-                  resultMessage,
-                  style: TextStyle(
-                    fontSize: screenHeight * 0.05,
-                    fontWeight: FontWeight.bold,
-                    color: const Color(0xFF312E81),
-                  ),
-                ),
-                SizedBox(height: screenHeight * 0.00001), // 결과 아래 여백
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
-                  child: Text(
-                    getTypeDescription(resultMessage),
-                    style: TextStyle(
-                      fontSize: screenHeight * 0.02,
-                      color: const Color(0xFF4B5563),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                SizedBox(height: screenHeight * 0.0001), // 설명 아래 여백
-                Container(
-                  width: screenWidth * 0.95, // 너비를 화면의 95%로 확대
-                  padding: EdgeInsets.all(screenHeight * 0.03), // 내부 여백 확대
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12), // 둥글기 조금 더 확대
+                    color: const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.1),
-                        blurRadius: 6, // 그림자 크기 조정
-                        offset: const Offset(0, 3),
+                        blurRadius: 8,
+                        offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  child: Stack(
                     children: [
-                      Text(
-                        '당신의 특징',
-                        style: TextStyle(
-                          fontSize: screenHeight * 0.03, // 글자 크기 확대
-                          fontWeight: FontWeight.bold,
-                          color: const Color(0xFF1F2937),
+                      // 이미지
+                      Positioned.fill(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: Image.asset(
+                            imagePath,
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
-                      SizedBox(height: screenHeight * 0.015), // 텍스트 아래 여백
-                      Text(
-                        '여기에 당신의 특징과 관련된 정보를 추가하세요.\n여기에 당신의 특징과 관련된 정보를 추가하세요.\n여기에 당신의 특징과 관련된 정보를 추가하세요.',
-                        style: TextStyle(
-                          fontSize: screenHeight * 0.02, // 내용 글자 크기
-                          color: const Color(0xFF4B5563),
+                      // 그라데이션 오버레이
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: size.height * 0.25,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: const BorderRadius.vertical(
+                              bottom: Radius.circular(24),
+                            ),
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.transparent,
+                                Colors.black.withOpacity(0.7),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 텍스트 내용
+                      Positioned(
+                        left: padding,
+                        right: padding,
+                        bottom: padding * 1.5,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '유형 $resultMessage',
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: size.width * 0.055,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(height: size.height * 0.01),
+                            Text(
+                              _typeDescription,
+                              style: TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: size.width * 0.035,
+                                fontWeight: FontWeight.w400,
+                                color: Colors.white.withOpacity(0.9),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-                SizedBox(height: screenHeight * 0.03), // 특징 아래 여백
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: SizedBox(
-                    width: double.infinity, // 버튼 크기 맞추기
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => FoodRecommendationScreen(
-                              resultMessage: resultMessage,
-                            ),
-                          ),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF312E81),
-                        padding: const EdgeInsets.symmetric(vertical: 16), // 첫 번째 버튼과 동일한 패딩
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
+              ),
+              SizedBox(height: size.height * 0.03),
+              SizedBox(
+                width: double.infinity,
+                height: size.height * 0.085,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => FoodRecommendationScreen(
+                          resultMessage: resultMessage,
                         ),
                       ),
-                      child: const Text(
-                        "음식 추천받기", // 텍스트 스타일 그대로 유지
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF312E81),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "음식 추천받기",
                         style: TextStyle(
                           color: Colors.white,
-                          fontSize: 18, // 첫 번째 버튼과 동일한 텍스트 크기
+                          fontFamily: 'Pretendard',
+                          fontSize: size.width * 0.045,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
+                      SizedBox(height: 4),
+                      Text(
+                        "당신의 입맛에 맞는 음식을 추천받아요!",
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          color: Colors.white.withOpacity(0.8),
+                          fontSize: size.width * 0.032,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-
-                SizedBox(height: screenHeight * 0.02), // 버튼 아래 여백
-              ],
-            ),
-          );
-        },
+              ),
+              SizedBox(height: size.height * 0.03),
+            ],
+          ),
+        ),
       ),
     );
   }
+
 }

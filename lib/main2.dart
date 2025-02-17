@@ -51,7 +51,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
           ),
         ],
         currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blue,           // 선택된 아이템의 색상
+        selectedItemColor: Color(0xFF312E81),           // 선택된 아이템의 색상
         unselectedItemColor: Colors.grey,         // 선택되지 않은 아이템의 기본 색상
         backgroundColor: Colors.white,
         onTap: _onItemTapped,

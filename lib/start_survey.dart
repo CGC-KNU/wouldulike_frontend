@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'question_screen.dart'; // QuizScreen 임포트
 
+
 class StartSurveyScreen extends StatefulWidget {
   const StartSurveyScreen({super.key});
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'question_list.dart';
 import 'result_screen.dart';
+import 'start_survey.dart';
 
 class QuizScreen extends StatefulWidget {
   final int questionIndex;
@@ -91,6 +92,12 @@ class _QuizScreenState extends State<QuizScreen> {
         _currentQuestionIndex--;
         _selectedIndex = -1;  // 선택 초기화
       });
+    }
+    else{
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const StartSurveyScreen()),
+      );
     }
   }
 
@@ -214,7 +221,7 @@ class _QuizScreenState extends State<QuizScreen> {
                         color: const Color(0xFFF2F8FFFF),
                         borderRadius: BorderRadius.circular(15),
                         border: Border.all(
-                          color: isSelected ? Colors.blue : Colors.grey.shade300,
+                          color: isSelected ? Color(0xFF312E81) : Colors.grey.shade300,
                           width: 2,
                         ),
                         boxShadow: [

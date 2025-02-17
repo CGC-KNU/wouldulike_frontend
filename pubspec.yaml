@@ -31,11 +31,12 @@ dependencies:
   flutter:
     sdk: flutter
   shared_preferences: ^2.0.13
-  http: ^0.13.5
+  http: ^1.2.2
+  uuid: ^4.5.1
   flutter_native_splash: ^2.0.5
   smooth_page_indicator: ^1.0.0
   url_launcher: ^6.1.14
-
+  video_player: ^2.9.2
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -105,9 +106,9 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-flutter_native_splash:
-  color: "#FFFFFF"
-  image: assets/images/food_image1.png # 스플래시 화면에 표시할 이미지 경로
+#flutter_native_splash:
+  #color: "#FFFFFF"
+  #image: assets/images/food_image0.png # 스플래시 화면에 표시할 이미지 경로
   #android: true
   #ios: true
   #android_gravity: center # Android의 경우 이미지 위치 설정
