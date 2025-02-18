@@ -85,9 +85,10 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
         // 상태 업데이트
         setState(() {
           recommendedRestaurants = restaurants.map((restaurant) => {
-            'name': restaurant['name'] ?? '이름 없음',
-            'road_address': restaurant['road_address'] ?? '주소 없음',
-            'category_2': restaurant['category_2'] ?? '카테고리 없음',
+          'name': restaurant['name'] ?? '이름 없음',
+          'road_address': restaurant['road_address'] ?? '주소 없음',
+          'category_2': restaurant['category_2'] ?? '카테고리 없음',
+          'category_1': restaurant['category_1'] ?? '카테고리 없음',
           }).toList();
           isLoading = false;
         });
@@ -390,7 +391,7 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
                   backgroundColor: const Color(0xFF312E81),
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(16),
                   ),
                 ),
                 child: const Text(
