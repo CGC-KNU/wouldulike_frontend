@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
+import 'package:new1/start_survey.dart';
 class MyScreen extends StatefulWidget {
   @override
   _MyScreenState createState() => _MyScreenState();
@@ -37,7 +37,6 @@ class _MyScreenState extends State<MyScreen> {
         meal_ex = prefs.getString('meal_example') ?? '정보 없음';
         matching_type = prefs.getString('matching_type') ?? '정보 없음';
         non_matching = prefs.getString('non_matching') ?? '정보 없음';
-
         isLoading = false;
       });
     } catch (e) {
@@ -50,7 +49,12 @@ class _MyScreenState extends State<MyScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final textScaleFactor = MediaQuery.of(context).textScaleFactor;
+
     String imagePath = 'assets/images/$typeCode.png';
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -59,7 +63,7 @@ class _MyScreenState extends State<MyScreen> {
         centerTitle: true,
         title: Image.asset(
           'assets/images/logo1.png',
-          height: 24,
+          height: screenHeight * 0.03, // 화면 높이에 비례
         ),
       ),
       body: isLoading
@@ -69,54 +73,42 @@ class _MyScreenState extends State<MyScreen> {
         ),
       )
           : SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        padding: EdgeInsets.symmetric(
+          horizontal: screenWidth * 0.05,
+          vertical: screenHeight * 0.01,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Color(0xFF312E81),
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0xFF312E81).withOpacity(0.15),
-                    blurRadius: 12,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-              ),
+            SizedBox(height: screenHeight * 0.02),
+            _buildInfoContainer(
+              screenWidth: screenWidth,
+              screenHeight: screenHeight,
               child: Column(
                 children: [
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: Image.asset(
                       imagePath,
-                      height: 200,
-                      width: 200,
+                      height: screenHeight * 0.25, // 높이 조정
+                      width: screenWidth * 0.5, // 가로 크기 조정
                       fit: BoxFit.cover,
                     ),
                   ),
-                  SizedBox(height: 16),
+                  SizedBox(height: screenHeight * 0.02),
                   Text(
                     "당신의 유형: $typeCode",
                     style: TextStyle(
-                      fontSize: 18,
+                      fontSize: screenWidth * 0.045,
                       fontWeight: FontWeight.w600,
                       color: Colors.black,
                     ),
                   ),
-                  SizedBox(height: 8),
+                  SizedBox(height: screenHeight * 0.01),
                   Text(
                     "게스트 ID: $uuid",
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: screenWidth * 0.04,
                       fontWeight: FontWeight.w500,
                       color: Colors.black87,
                     ),
@@ -124,183 +116,169 @@ class _MyScreenState extends State<MyScreen> {
                 ],
               ),
             ),
-            SizedBox(height: 24),
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Color(0xFF312E81),
-                  width: 2,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0xFF312E81).withOpacity(0.15),
-                    blurRadius: 12,
-                    offset: Offset(0, 4),
-                  ),
-                ],
-              ),
+            SizedBox(height: screenHeight * 0.03),
+            _buildInfoContainer(
+              screenWidth: screenWidth,
+              screenHeight: screenHeight,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 유형 설명 섹션
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.description_outlined,
-                        size: 24,
-                        color: Color(0xFF312E81),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        "유형 설명",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
+                  _buildSectionTitle(
+                    icon: Icons.description_outlined,
+                    title: "유형 설명",
+                    screenWidth: screenWidth,
                   ),
-                  SizedBox(height: 16),
-                  Text(
-                    summary,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      height: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: 24),
+                  SizedBox(height: screenHeight * 0.015),
+                  _buildText(summary, screenWidth),
 
-                  // 어울리는 메뉴 및 MBTI 섹션
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.restaurant_menu_outlined,
-                        size: 24,
-                        color: Color(0xFF312E81),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        "어울리는 메뉴 및 MBTI",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
+                  SizedBox(height: screenHeight * 0.03),
+                  _buildSectionTitle(
+                    icon: Icons.restaurant_menu_outlined,
+                    title: "어울리는 메뉴 및 MBTI",
+                    screenWidth: screenWidth,
                   ),
-                  SizedBox(height: 16),
-                  Text(
-                    menu_mbti,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      height: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: 24),
+                  SizedBox(height: screenHeight * 0.015),
+                  _buildText(menu_mbti, screenWidth),
 
-                  // 추천 식사 예시 섹션
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.fastfood_outlined,
-                        size: 24,
-                        color: Color(0xFF312E81),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        "추천 식사 예시",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
+                  SizedBox(height: screenHeight * 0.03),
+                  _buildSectionTitle(
+                    icon: Icons.fastfood_outlined,
+                    title: "추천 식사 예시",
+                    screenWidth: screenWidth,
                   ),
-                  SizedBox(height: 16),
-                  Text(
-                    meal_ex,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      height: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: 24),
+                  SizedBox(height: screenHeight * 0.015),
+                  _buildText(meal_ex, screenWidth),
 
-                  // 잘 맞는 유형 섹션
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.people_alt_outlined,
-                        size: 24,
-                        color: Color(0xFF312E81),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        "잘 맞는 유형",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
+                  SizedBox(height: screenHeight * 0.03),
+                  _buildSectionTitle(
+                    icon: Icons.people_alt_outlined,
+                    title: "잘 맞는 유형",
+                    screenWidth: screenWidth,
                   ),
-                  SizedBox(height: 16),
-                  Text(
-                    matching_type,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      height: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: 24),
+                  SizedBox(height: screenHeight * 0.015),
+                  _buildText(matching_type, screenWidth),
 
-                  // 잘 맞지 않는 유형 섹션
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.warning_amber_outlined,
-                        size: 24,
-                        color: Color(0xFF312E81),
-                      ),
-                      SizedBox(width: 12),
-                      Text(
-                        "잘 맞지 않는 유형",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ],
+                  SizedBox(height: screenHeight * 0.03),
+                  _buildSectionTitle(
+                    icon: Icons.warning_amber_outlined,
+                    title: "잘 맞지 않는 유형",
+                    screenWidth: screenWidth,
                   ),
-                  SizedBox(height: 16),
-                  Text(
-                    non_matching,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.black87,
-                      height: 1.5,
-                    ),
-                  ),
+                  SizedBox(height: screenHeight * 0.015),
+                  _buildText(non_matching, screenWidth),
                 ],
               ),
             ),
-
-            SizedBox(height: 16),
+            SizedBox(height: screenHeight * 0.02),
+            SizedBox(
+              width: double.infinity,
+              height: screenHeight * 0.085,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => StartSurveyScreen(),
+                    ),
+                  );
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF312E81), // 원하는 색상
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "설문 다시하기",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Pretendard',
+                        fontSize: screenWidth * 0.045,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: screenHeight * 0.005),
+                    Text(
+                      "새로운 추천을 받고 싶다면 다시 설문을 진행해보세요!",
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        color: Colors.white.withOpacity(0.8),
+                        fontSize: screenWidth * 0.032,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: screenHeight * 0.03), // 버튼 아래 여백 추가
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildInfoContainer({
+    required double screenWidth,
+    required double screenHeight,
+    required Widget child,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(screenWidth * 0.04),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: Color(0xFF312E81),
+          width: 2,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0xFF312E81).withOpacity(0.15),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildSectionTitle({
+    required IconData icon,
+    required String title,
+    required double screenWidth,
+  }) {
+    return Row(
+      children: [
+        Icon(
+          icon,
+          size: screenWidth * 0.06,
+          color: Color(0xFF312E81),
+        ),
+        SizedBox(width: screenWidth * 0.03),
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: screenWidth * 0.05,
+            fontWeight: FontWeight.w600,
+            color: Colors.black,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildText(String text, double screenWidth) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: screenWidth * 0.04,
+        color: Colors.black87,
+        height: 1.5,
       ),
     );
   }
