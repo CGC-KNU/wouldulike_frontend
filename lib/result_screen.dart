@@ -222,7 +222,7 @@ class _ResultScreenState extends State<ResultScreen> {
             ),
             SizedBox(height: size.height * 0.02),
             Text(
-              '당신의 취향 분석 중...',
+              '취향 분석 중..!',
               style: TextStyle(
                 fontSize: size.width * 0.05,
                 fontWeight: FontWeight.w500,

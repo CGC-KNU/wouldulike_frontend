@@ -506,7 +506,7 @@ class _HomeContentState extends State<HomeContent> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '오늘의 트렌드 뉴스',
+                    '이번주 트렌드 뉴스',
                     style: TextStyle(
                       fontSize: screenWidth * 0.04,
                       fontWeight: FontWeight.bold,
@@ -561,7 +561,7 @@ class _HomeContentState extends State<HomeContent> {
               ),
               SizedBox(height: padding * 0.8),
               Text(
-                '이번 주 가장 핫한 메뉴들을 만나보세요!',
+                '이번 주 인기 있는 메뉴를 확인해보세요!',
                 style: TextStyle(
                   fontSize: screenWidth * 0.04,
                   fontWeight: FontWeight.bold,
@@ -571,7 +571,7 @@ class _HomeContentState extends State<HomeContent> {
               _buildRecommendedFoodsSection(cardWidth),
               SizedBox(height: padding * 0.8),
               Text(
-                '당신의 입맛에 맞는 최적의 장소를 추천합니다!',
+                '입맛에 꼭 맞는 음식점을 추천해드릴게요.',
                 style: TextStyle(
                   fontSize: screenWidth * 0.04,
                   fontWeight: FontWeight.bold,
@@ -597,7 +597,7 @@ class _HomeContentState extends State<HomeContent> {
                 // height 제거: 컨텐츠 크기만큼 자동으로 늘어나도록
                 child: recommendedRestaurants.isEmpty
                     ? Center(
-                  child: Text('추천 음식점이 없습니다.'),
+                  child: Text('추천할 만한 음식점을 찾지 못했어요.'),
                 )
                     : ListView.builder(
                   physics: NeverScrollableScrollPhysics(), // 스크롤을 부모에게 위임
