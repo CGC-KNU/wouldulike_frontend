@@ -36,8 +36,8 @@ class _MainScreenState extends State<MainScreen> {
   }
   Future<void> _initializeApp() async {
     final prefs = await SharedPreferences.getInstance();
-    //final storedUUID = prefs.getString(_uuidKey);
-    final storedUUID = null;
+    final storedUUID = prefs.getString(_uuidKey);
+    //final storedUUID = null;
     if (storedUUID != null) {
       // 저장된 UUID가 있으면 type 확인
       print('Stored UUID found: $storedUUID');
