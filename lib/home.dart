@@ -506,7 +506,7 @@ class _HomeContentState extends State<HomeContent> {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    '오늘의 트렌드 뉴스',
+                    '이번주 트렌드 뉴스',
                     style: TextStyle(
                       fontSize: screenWidth * 0.04,
                       fontWeight: FontWeight.bold,
@@ -521,28 +521,28 @@ class _HomeContentState extends State<HomeContent> {
                   controller: _pageController,
                   children: [
                     _buildPage(
-                      'assets/images/trend11.jpg',
-                      '가나 50주년 기념',
-                      '롯데웰푸드(@lottewellfood)가 가나 초콜릿의 출시 50주년을 맞아 특별한 리미티드 에디션을 선보입니다! 🍫',
-                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223667087923&referrerCode=0&searchKeyword=%EA%B0%80%EB%82%98',
+                      'assets/images/trend111.jpg',
+                      '헬로키티와 크라운이 만났다!',
+                      '크라운제과 공식 인스타 (@crownsns)에서 댓글 이벤트도 진행되고 있다고 하니, 놓치지 마세요! 🔥',
+                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223749111277&navType=by',
                     ),
                     _buildPage(
-                      'assets/images/trend12.jpg',
-                      '르크루제의 뉘 컬러',
-                      '르크루제(@lecreuset_korea)가 밤하늘의 신비로움에서 영감을 받은 ‘뉘(nuit)’ 컬러 신제품을 출시했습니다. 🌌',
-                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223670389147&referrerCode=0&searchKeyword=%EB%89%98',
+                      'assets/images/trend112.jpg',
+                      '스타들의 요아정 pick..☆',
+                      '요아정, 스타들도 반한 그 매력 ✨ 스타들의 요아정 pick..☆ 궁금하다 !',
+                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223693514046&navType=by',
                     ),
                     _buildPage(
-                      'assets/images/trend13.jpg',
-                      '요아정 소송',
-                      '유명 요거트 브랜드 요아정(@yoajung_official)이 가맹점 운영권을 둘러싸고 소송전에 휘말렸습니다. ⚖ ',
-                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223656897427&referrerCode=0&searchKeyword=%EC%9A%94%EC%95%84%EC%A0%95',
+                      'assets/images/trend113.jpg',
+                      '교동에서 맛집을 외치다..👀✨',
+                      '츄카소바 설철수, 옆구리, 오일리버거, 강산면옥, 후발대를 만나보세요!',
+                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223684945450&navType=by',
                     ),
                     _buildPage(
-                      'assets/images/trend14.jpg',
-                      '사라져가는 김밥집',
-                      '김밥집이 빠르게 사라지고 있습니다. 🍙  서민 음식으로 사랑받던 김밥집이 4년 새 1,000곳 넘게 줄어들었다는 소식이 전해졌습니다.',
-                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223655553347&referrerCode=0&searchKeyword=%EA%B9%80%EB%B0%A5',
+                      'assets/images/trend114.jpg',
+                      '붕어빵의 위치를 알 수 있는 어플이 있다구요?!',
+                      '따끈따끈한 붕어빵과 함께 이번 겨울은 붕어빵 지도가 전해주는 소소한 행복을 누려보세요 ❄',
+                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223687655192&navType=by',
                     ),
                   ],
                 ),
@@ -561,7 +561,7 @@ class _HomeContentState extends State<HomeContent> {
               ),
               SizedBox(height: padding * 0.8),
               Text(
-                '이번 주 가장 핫한 메뉴들을 만나보세요!',
+                '이번 주 인기 있는 메뉴를 확인해보세요!',
                 style: TextStyle(
                   fontSize: screenWidth * 0.04,
                   fontWeight: FontWeight.bold,
@@ -571,7 +571,7 @@ class _HomeContentState extends State<HomeContent> {
               _buildRecommendedFoodsSection(cardWidth),
               SizedBox(height: padding * 0.8),
               Text(
-                '당신의 입맛에 맞는 최적의 장소를 추천합니다!',
+                '입맛에 꼭 맞는 음식점을 추천해드릴게요.',
                 style: TextStyle(
                   fontSize: screenWidth * 0.04,
                   fontWeight: FontWeight.bold,
@@ -597,7 +597,7 @@ class _HomeContentState extends State<HomeContent> {
                 // height 제거: 컨텐츠 크기만큼 자동으로 늘어나도록
                 child: recommendedRestaurants.isEmpty
                     ? Center(
-                  child: Text('추천 음식점이 없습니다.'),
+                  child: Text('추천할 만한 음식점을 찾지 못했어요.'),
                 )
                     : ListView.builder(
                   physics: NeverScrollableScrollPhysics(), // 스크롤을 부모에게 위임
