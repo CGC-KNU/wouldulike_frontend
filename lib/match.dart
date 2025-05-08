@@ -10,6 +10,10 @@ class MatchingScreen extends StatefulWidget {
 }
 
 class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProviderStateMixin {
+
+  static const int FETCH_THRESHOLD = 3; // 몇 장 남기고 미리 불러올지
+  bool isFetching = false;              // 중복 요청 방지용 플래그
+
   List<Map<String, dynamic>> recommendedFoods = [];
   Map<String, List<Map<String, dynamic>>> foodToRestaurants = {};
   bool isLoading = true;
@@ -63,7 +67,10 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
     }
   }
 
-  Future<void> _fetchFoodRecommendations() async {
+  Future<void> _fetchFoodRecommendations({ bool append = false }) async {
+    if (isFetching) return;
+    isFetching = true;
+
     try {
       final prefs = await SharedPreferences.getInstance();
       final userUUID = prefs.getString('user_uuid') ?? '';
@@ -83,19 +90,30 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
           throw Exception('No food recommendations received');
         }
 
-        List<String> newFoodNames = foods
-            .map((food) => food['food_name'].toString())
-            .toList();
-        await prefs.setStringList('recommended_foods', newFoodNames);
+        // 기존에 있던 음식 제목들
+        final currentTitles = recommendedFoods.map((f) => f['title']).toSet();
+
+        // 중복 제거 후 새로 추가할 음식만 필터링
+        final newItems = foods.where((food) =>
+        !currentTitles.contains(food['food_name'])).map((food) => {
+          'title': food['food_name'] ?? '이름 없음',
+          'description': food['description'] ?? '설명 없음',
+          'image': food['food_image_url'] ?? 'assets/images/food_image0.png',
+        }).toList();
+
+        await prefs.setStringList(
+          'recommended_foods',
+          newItems.map((f) => f['title'].toString()).toList(),
+        );
 
         if (!mounted) return;
 
         setState(() {
-          recommendedFoods = foods.map((food) => {
-            'title': food['food_name'] ?? '이름 없음',
-            'description': food['description'] ?? '설명 없음',
-            'image': food['food_image_url'] ?? 'assets/images/food_image0.png',
-          }).toList();
+          if (append) {
+            recommendedFoods.addAll(newItems); // 이어붙이기
+          } else {
+            recommendedFoods = newItems; // 처음이면 덮어쓰기
+          }
           isLoading = false;
         });
       } else {
@@ -109,6 +127,8 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('음식 추천을 가져오는데 실패했습니다: ${e.toString()}')),
       );
+    } finally {
+      isFetching = false;
     }
   }
 
@@ -215,11 +235,15 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
           onPageChanged: (index) {
             setState(() {
               currentFoodIndex = index;
-              // 페이지가 변경되면 카드를 앞면으로 되돌림
               if (isBack) {
                 _toggleCard();
               }
             });
+
+            // ⭐ 음식이 3개 이하로 남으면 자동으로 추가 요청
+            if (index >= recommendedFoods.length - FETCH_THRESHOLD) {
+              _fetchFoodRecommendations(append: true);
+            }
           },
           itemBuilder: (context, index) {
             final actualIndex = index % recommendedFoods.length;
@@ -229,7 +253,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                 children: [
                   SizedBox(height: size.height * 0.01),
                   Text(
-                    '입맛 유형 테스트 결과',
+                    '입맛을 제대로 저격할 메뉴!',
                     style: TextStyle(
                       fontFamily: 'Pretendard',
                       fontSize: size.width * 0.055,
@@ -239,7 +263,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                   ),
                   SizedBox(height: size.height * 0.005),
                   Text(
-                    '당신의 입맛을 똑 닮은 우주라이크 캐릭터를 만나보세요!',
+                    '당신에게 꼭 맞는 음식을 찾아보세요!',
                     style: TextStyle(
                       fontFamily: 'Pretendard',
                       fontSize: size.width * 0.032,
