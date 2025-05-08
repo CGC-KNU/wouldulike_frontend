@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'question_screen.dart'; // QuizScreen 임포트
 
-
 class StartSurveyScreen extends StatefulWidget {
   const StartSurveyScreen({super.key});
 
@@ -20,12 +19,12 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
   }
 
   void _startAnimations() async {
-    await Future.delayed(const Duration(milliseconds: 1000)); // 첫 번째 텍스트 지연 시간 늘림
+    await Future.delayed(const Duration(milliseconds: 1000)); // 첫 번째 텍스트 지연
     setState(() {
       _opacityFirstText = 1.0;
     });
 
-    await Future.delayed(const Duration(milliseconds: 1000)); // 두 번째 텍스트 지연 시간 늘림
+    await Future.delayed(const Duration(milliseconds: 1000)); // 두 번째 텍스트 지연
     setState(() {
       _opacitySecondText = 1.0;
     });
@@ -42,16 +41,16 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
           Container(
             width: double.infinity,
             height: double.infinity,
-            color: Colors.white, // 짙은 파란색 배경
+            color: Colors.white, // 배경색 흰색 유지
           ),
           Align(
             alignment: Alignment.topCenter,
             child: Padding(
-              padding: EdgeInsets.only(top: screenHeight * 0.35), // 화면 높이에 비례하여 상단 여백 설정
+              padding: EdgeInsets.only(top: screenHeight * 0.35),
               child: const Text(
                 '입맛 유형 테스트',
                 style: TextStyle(
-                  fontFamily: "LaundryGothicOTF",
+                  fontFamily: "Pretendard-Bold",
                   fontWeight: FontWeight.w700,
                   fontSize: 36,
                   color: Color(0xFF1E2761),
@@ -62,34 +61,32 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
           Align(
             alignment: Alignment.topCenter,
             child: Padding(
-              padding: EdgeInsets.only(top: screenHeight * 0.45), // 제목 아래에 위치하도록 설정
+              padding: EdgeInsets.only(top: screenHeight * 0.45),
               child: Column(
                 children: [
                   AnimatedOpacity(
                     opacity: _opacityFirstText,
-                    duration: const Duration(milliseconds: 1700), // 애니메이션 지속 시간을 느리게 설정
+                    duration: const Duration(milliseconds: 1700),
                     child: const Text(
                       '무엇을 먹을지 고민이라면?',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontFamily: "Pretendard",
-                        fontWeight: FontWeight.w400,
                         fontSize: 16,
+                        letterSpacing: -0.5, // 글자 간격 줄이기
                         color: Color(0xFF666666),
                       ),
                     ),
                   ),
-                  SizedBox(height: screenHeight * 0.01), // 텍스트 사이 간격을 화면 높이에 맞게 설정
+                  SizedBox(height: screenHeight * 0.01),
                   AnimatedOpacity(
                     opacity: _opacitySecondText,
-                    duration: const Duration(milliseconds: 1700), // 애니메이션 지속 시간을 느리게 설정
+                    duration: const Duration(milliseconds: 1700),
                     child: const Text(
                       '당신의 음식 취향 유형을 탐험해보세요!',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        fontFamily: "Pretendard",
-                        fontWeight: FontWeight.w400,
                         fontSize: 16,
+                        letterSpacing: -0.5, // 글자 간격 줄이기
                         color: Color(0xFF666666),
                       ),
                     ),
@@ -101,16 +98,16 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
           Align(
             alignment: Alignment.bottomCenter,
             child: Padding(
-              padding: EdgeInsets.only(bottom: screenHeight * 0.1), // 버튼을 화면 비율에 따라 하단에 배치
+              padding: EdgeInsets.only(bottom: screenHeight * 0.1),
               child: SizedBox(
-                width: screenWidth * 0.8, // 버튼의 너비를 화면 너비에 비례하여 설정
+                width: screenWidth * 0.8,
                 child: ElevatedButton(
                   onPressed: () {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (context) => QuizScreen(
-                          questionIndex: 0, // 첫 번째 질문부터 시작
+                          questionIndex: 0,
                           answerPressed: (score) {},
                         ),
                       ),
@@ -118,7 +115,8 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF312E81),
-                    padding: EdgeInsets.symmetric(vertical: screenHeight * 0.025), // 버튼 높이를 화면 높이에 비례하게 설정
+                    padding:
+                    EdgeInsets.symmetric(vertical: screenHeight * 0.025),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(15),
                     ),
@@ -129,7 +127,7 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
                       Text(
                         '테스트 시작하기',
                         style: TextStyle(
-                          fontFamily: "Pretendard",
+                          fontFamily: "Pretendard-SemiBold",
                           fontWeight: FontWeight.w600,
                           fontSize: 18,
                           color: Colors.white,
@@ -139,7 +137,7 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
                       Text(
                         '2분 만에 나의 음식 취향 확인하기',
                         style: TextStyle(
-                          fontFamily: "Pretendard",
+                          fontFamily: "Pretendard-Regular",
                           fontWeight: FontWeight.w400,
                           fontSize: 12,
                           color: Colors.white,

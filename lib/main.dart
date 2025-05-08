@@ -36,8 +36,8 @@ class _MainScreenState extends State<MainScreen> {
   }
   Future<void> _initializeApp() async {
     final prefs = await SharedPreferences.getInstance();
-    //final storedUUID = prefs.getString(_uuidKey);
-    final storedUUID = null;
+    final storedUUID = prefs.getString(_uuidKey);
+    //final storedUUID = null;
     if (storedUUID != null) {
       // 저장된 UUID가 있으면 type 확인
       print('Stored UUID found: $storedUUID');
@@ -66,7 +66,7 @@ class _MainScreenState extends State<MainScreen> {
           // FoodRecommendationScreen의 fetchRecommendedData 로직을 여기서 실행
           final prefs = await SharedPreferences.getInstance();
 
-          // 1. 타입에 맞는 음식 3가지 가져오기
+          // 1. 타입에 맞는 음식 5가지 가져오기
           final foodUrl = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$uuid';
           final foodResponse = await http.get(Uri.parse(foodUrl));
           if (foodResponse.statusCode == 200) {

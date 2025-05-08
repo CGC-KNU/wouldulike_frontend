@@ -24,7 +24,7 @@
     </queries>
 
     <application
-        android:label="new1"
+        android:label="wouldUlike"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:theme="@style/NormalTheme"> <!-- 기본 테마로 설정 -->

@@ -12,7 +12,10 @@ class _WishlistScreenState extends State<WishlistScreen> {
   List<Map<String, dynamic>> filteredRestaurants = [];
   late SharedPreferences prefs;
   String? selectedDistrict;
+  String? selectedCategory;
   List<String> uniqueDistricts = [];
+  List<String> uniqueCategories = [];
+  bool isDistrictFilter = true;
 
   String extractDistrict(String address) {
     try {
@@ -29,12 +32,22 @@ class _WishlistScreenState extends State<WishlistScreen> {
     super.initState();
     _loadLikedRestaurants();
   }
-
+  void _onToggleFilter(int index) {
+    setState(() {
+      isDistrictFilter = (index == 0);
+      // 필터 초기화
+      selectedDistrict = null;
+      selectedCategory = null;
+      // 전체 리스트로 초기화
+      filteredRestaurants = likedRestaurants;
+      //debugPrint('토글 변경: ${isDistrictFilter ? "지역" : "카테고리"} 필터');
+      //debugPrint('필터 초기화됨: 전체 리스트 표시');
+    });
+  }
   Future<void> _loadLikedRestaurants() async {
     prefs = await SharedPreferences.getInstance();
     final List<Map<String, dynamic>> likedList = [];
 
-    // 1. 현재 restaurants_data 확인
     final String? savedRestaurants = prefs.getString('restaurants_data');
     if (savedRestaurants != null) {
       final List<Map<String, dynamic>> currentRestaurants = List<Map<String, dynamic>>.from(
@@ -42,10 +55,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
             'name': restaurant['name'] ?? '이름 없음',
             'road_address': restaurant['road_address'] ?? '주소 없음',
             'category_2': restaurant['category_2'] ?? '카테고리 없음',
-          })
-      );
+            'category_1': restaurant['category_1'] ?? '카테고리 없음',
+          }));
 
-      // 현재 음식점들 중 찜한 것들 확인
       for (var restaurant in currentRestaurants) {
         String name = restaurant['name'];
         String address = restaurant['road_address'];
@@ -57,16 +69,17 @@ class _WishlistScreenState extends State<WishlistScreen> {
       }
     }
 
-    // 2. 이전에 찜한 목록 확인
     final String? savedLikedAll = prefs.getString('liked_restaurants_all');
     if (savedLikedAll != null) {
       Map<String, dynamic> allLikedRestaurants = json.decode(savedLikedAll);
 
-      // 이전 찜 목록에서 현재 리스트에 없는 것들 추가
       allLikedRestaurants.forEach((key, restaurant) {
         if (!likedList.any((r) =>
         r['name'] == restaurant['name'] &&
             r['road_address'] == restaurant['road_address'])) {
+          if (restaurant['category_1'] == null) {
+            restaurant['category_1'] = '카테고리 없음';
+          }
           likedList.add(restaurant);
         }
       });
@@ -74,44 +87,75 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     setState(() {
       likedRestaurants = likedList;
-      filteredRestaurants = likedList;  // 여기서 filteredRestaurants도 같이 초기화
+      filteredRestaurants = likedList;
 
-      // 구 목록 업데이트
       uniqueDistricts = likedRestaurants
           .map((restaurant) => extractDistrict(restaurant['road_address']))
           .where((district) => district != '기타')
           .toSet()
           .toList()
         ..sort();
+
+      uniqueCategories = likedRestaurants
+          .map((restaurant) => (restaurant['category_1'] ?? '카테고리 없음') as String)
+          .where((category) => category != '카테고리 없음')
+          .toSet()
+          .toList()
+        ..sort();
+
+      //
+      // debugPrint('Loaded Categories: $uniqueCategories');
     });
 
-    // 전체 찜 목록 업데이트
     Map<String, dynamic> updatedLikedAll = {};
     for (var restaurant in likedList) {
       String key = '${restaurant['name']}|${restaurant['road_address']}';
       updatedLikedAll[key] = restaurant;
     }
     await prefs.setString('liked_restaurants_all', json.encode(updatedLikedAll));
-
-    //print('찜한 음식점 목록: $likedRestaurants');
   }
+
+  void _applyFilters() {
+    setState(() {
+      filteredRestaurants = likedRestaurants.where((restaurant) {
+        bool matchesDistrict = selectedDistrict == null ||
+            extractDistrict(restaurant['road_address']) == selectedDistrict;
+        bool matchesCategory = selectedCategory == null ||
+            restaurant['category_1'] == selectedCategory;
+
+        return isDistrictFilter ? matchesDistrict : matchesCategory;
+      }).toList();
+
+      //debugPrint('필터 적용 후 리스트: ${filteredRestaurants.map((e) => e['name'])}');
+      //debugPrint('Current filter type: ${isDistrictFilter ? "District" : "Category"}');
+      //debugPrint('Selected District: $selectedDistrict');
+      //debugPrint('Selected Category: $selectedCategory');
+    });
+  }
+
   void _filterRestaurants(String? district) {
     setState(() {
       selectedDistrict = district;
-      if (district == null || district.isEmpty) {
-        filteredRestaurants = likedRestaurants;
-      } else {
-        filteredRestaurants = likedRestaurants
-            .where((restaurant) => extractDistrict(restaurant['road_address']) == district)
-            .toList();
+      if (isDistrictFilter) {
+        selectedCategory = null;
       }
+      _applyFilters();
     });
   }
+
+  void _filterByCategory(String? category) {
+    setState(() {
+      selectedCategory = category;
+      if (!isDistrictFilter) {
+        selectedDistrict = null;
+      }
+      _applyFilters();
+    });
+  }
+
   Future<void> _removeFavorite(String name, String address) async {
-    // 개별 찜하기 상태 제거
     await prefs.setBool('liked_${name}_${address}', false);
 
-    // 전체 찜 목록에서도 제거
     final String? savedLikedAll = prefs.getString('liked_restaurants_all');
     if (savedLikedAll != null) {
       Map<String, dynamic> allLikedRestaurants = json.decode(savedLikedAll);
@@ -121,19 +165,18 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     setState(() {
       likedRestaurants.removeWhere(
-              (restaurant) =>
-          restaurant['name'] == name &&
-              restaurant['road_address'] == address
-      );
+              (restaurant) => restaurant['name'] == name && restaurant['road_address'] == address);
+      _applyFilters();
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('찜 목록에서 제거되었습니다.'),
-        duration: const Duration(seconds: 1),
+        duration: const Duration  (seconds: 1),
       ),
     );
   }
+  //bool isDistrictFilter = true; // true: 구/군 필터, false: 카테고리 필터
 
   @override
   Widget build(BuildContext context) {
@@ -150,77 +193,154 @@ class _WishlistScreenState extends State<WishlistScreen> {
       ),
       body: Column(
         children: [
+          // 필터 전환 버튼
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: ToggleButtons(
+              borderRadius: BorderRadius.circular(20),
+              borderColor: Colors.grey[300],
+              selectedBorderColor: Color(0xFF4A55A4),
+              fillColor: Color(0xFF312E81),
+              selectedColor: Colors.white,
+              color: Colors.black54,
+              isSelected: [isDistrictFilter, !isDistrictFilter],
+              onPressed: (index) {
+                _onToggleFilter(index);
+              },
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text("구/군"),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Text("카테고리"),
+                ),
+              ],
+            ),
+          ),
+
           // 필터 영역
           Container(
             color: Colors.white,
             child: Column(
               children: [
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Wrap(
-                    spacing: 8.0,
-                    children: [
-                      FilterChip(
-                        selected: selectedDistrict == null,
-                        checkmarkColor: Colors.white,
-                        label: Text(
-                          '전체(${likedRestaurants.length})',
-                          style: TextStyle(
-                            color: selectedDistrict == null ? Colors.white : Colors.black54,
-                            fontSize: 13,
-                          ),
-                        ),
-                        backgroundColor: Colors.white,
-                        selectedColor: Color(0xFF312E81),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                          side: BorderSide(
-                            color: selectedDistrict == null ? Color(0xFF4A55A4) : Colors.grey[300]!,
-                          ),
-                        ),
-                        onSelected: (bool selected) {
-                          if (selected) {
-                            _filterRestaurants(null);
-                          }
-                        },
-                      ),
-                      ...uniqueDistricts.map((district) {
-                        final count = likedRestaurants
-                            .where((r) => extractDistrict(r['road_address']) == district)
-                            .length;
-                        return FilterChip(
-                          selected: selectedDistrict == district,
-                          checkmarkColor: Colors.white,
-                          label: Text(
-                            '$district($count)',
-                            style: TextStyle(
-                              color: selectedDistrict == district ? Colors.white : Colors.black54,
-                              fontSize: 13,
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0), // 좌우 패딩 줄임
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      // 4개 칩이 들어갈 수 있도록 너비 계산
+                      final double chipWidth = (constraints.maxWidth - 24) / 4; // 간격 줄임
+
+                      return Wrap(
+                        spacing: 4.0,  // 칩 사이 간격 줄임
+                        runSpacing: 8.0,
+                        alignment: WrapAlignment.start,
+                        children: [
+                          // "전체" 버튼
+                          SizedBox(
+                            width: chipWidth,
+                            child: FilterChip(
+                              selected: isDistrictFilter
+                                  ? selectedDistrict == null
+                                  : selectedCategory == null,
+                              checkmarkColor: Colors.white,
+                              padding: EdgeInsets.symmetric(horizontal: 4.0), // 칩 내부 패딩 줄임
+                              label: Text(
+                                '전체(${likedRestaurants.length})',
+                                style: TextStyle(
+                                  color: (isDistrictFilter
+                                      ? selectedDistrict == null
+                                      : selectedCategory == null)
+                                      ? Colors.white
+                                      : Colors.black54,
+                                  fontSize: 12, // 글자 크기 약간 줄임
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              backgroundColor: Colors.white,
+                              selectedColor: Color(0xFF312E81),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                                side: BorderSide(
+                                  color: (isDistrictFilter
+                                      ? selectedDistrict == null
+                                      : selectedCategory == null)
+                                      ? Color(0xFF4A55A4)
+                                      : Colors.grey[300]!,
+                                ),
+                              ),
+                              onSelected: (bool selected) {
+                                if (selected) {
+                                  isDistrictFilter
+                                      ? _filterRestaurants(null)
+                                      : _filterByCategory(null);
+                                }
+                              },
                             ),
                           ),
-                          backgroundColor: Colors.white,
-                          selectedColor: Color(0xFF312E81),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                            side: BorderSide(
-                              color: selectedDistrict == district ? Color(0xFF4A55A4) : Colors.grey[300]!,
-                            ),
-                          ),
-                          onSelected: (bool selected) {
-                            if (selected) {
-                              _filterRestaurants(district);
-                            }
-                          },
-                        );
-                      }).toList(),
-                    ],
+
+                          // 필터 리스트 (구/군 또는 카테고리)
+                          ...(isDistrictFilter ? uniqueDistricts : uniqueCategories)
+                              .map((item) {
+                            final count = likedRestaurants
+                                .where((r) => isDistrictFilter
+                                ? extractDistrict(r['road_address']) == item
+                                : r['category_1'] == item)
+                                .length;
+
+                            return SizedBox(
+                              width: chipWidth,
+                              child: FilterChip(
+                                selected: isDistrictFilter
+                                    ? selectedDistrict == item
+                                    : selectedCategory == item,
+                                checkmarkColor: Colors.white,
+                                padding: EdgeInsets.symmetric(horizontal: 4.0), // 칩 내부 패딩 줄임
+                                label: Text(
+                                  '$item($count)',
+                                  style: TextStyle(
+                                    color: (isDistrictFilter
+                                        ? selectedDistrict == item
+                                        : selectedCategory == item)
+                                        ? Colors.white
+                                        : Colors.black54,
+                                    fontSize: 12, // 글자 크기 약간 줄임
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                backgroundColor: Colors.white,
+                                selectedColor: Color(0xFF312E81),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(20),
+                                  side: BorderSide(
+                                    color: (isDistrictFilter
+                                        ? selectedDistrict == item
+                                        : selectedCategory == item)
+                                        ? Color(0xFF4A55A4)
+                                        : Colors.grey[300]!,
+                                  ),
+                                ),
+                                onSelected: (bool selected) {
+                                  if (selected) {
+                                    isDistrictFilter
+                                        ? _filterRestaurants(item)
+                                        : _filterByCategory(item);
+                                  }
+                                },
+                              ),
+                            );
+                          }).toList(),
+                        ],
+                      );
+                    },
                   ),
                 ),
                 Divider(height: 1, color: Colors.grey[300]),
               ],
             ),
           ),
+
           // 리스트 영역
           Expanded(
             child: filteredRestaurants.isEmpty
@@ -312,9 +432,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                             color: Colors.red,
                           ),
                           onPressed: () => _removeFavorite(
-                              restaurant['name'],
-                              restaurant['road_address']
-                          ),
+                              restaurant['name'], restaurant['road_address']),
                         ),
                       ),
                     ],
@@ -327,4 +445,5 @@ class _WishlistScreenState extends State<WishlistScreen> {
       ),
     );
   }
+
 }
