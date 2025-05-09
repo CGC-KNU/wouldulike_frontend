@@ -5,6 +5,7 @@ import 'main2.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:geolocator/geolocator.dart';
 void main() {
   runApp(const MyApp());
 }

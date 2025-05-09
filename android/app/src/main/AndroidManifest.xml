@@ -1,7 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.coggiri.new1">
+
     <!-- 인터넷 권한 -->
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- 위치 권한 (추가됨) -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
     <!-- 앱이 수행할 queries 설정 -->
     <queries>
