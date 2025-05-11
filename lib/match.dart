@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
+import 'package:new1/utils/location_helper.dart';
+import 'package:new1/utils/distance_calculator.dart';
 
 class MatchingScreen extends StatefulWidget {
   @override
@@ -160,23 +162,31 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       if (response.statusCode == 200) {
         print('4. 응답 디코딩 시작');
         final responseData = json.decode(response.body);
-        print('디코딩된 응답: $responseData');
-
         final List<dynamic> restaurants = responseData['random_restaurants'] ?? [];
         print('5. 추출된 음식점 수: ${restaurants.length}');
 
-        if (!mounted) return;
+        final position = await LocationHelper.getLatLon();
+        final userLat = position?['lat'] ?? 35.8714;
+        final userLon = position?['lon'] ?? 128.6014;
 
         print('6. 음식점 데이터 매핑 시작');
         final mappedRestaurants = restaurants.map((restaurant) {
+          final restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+          final restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+
+          final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+
           final mapped = {
             'name': restaurant['name'] ?? '이름 없음',
             'road_address': restaurant['road_address'] ?? '주소 없음',
             'category_2': restaurant['category_2'] ?? '카테고리 없음',
+            'distance': distance,
           };
           print('매핑된 음식점: $mapped');
           return mapped;
         }).toList();
+
+        if (!mounted) return;
 
         setState(() {
           foodToRestaurants[foodName] = mappedRestaurants;
@@ -481,7 +491,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
           children: [
             Text(
               '$foodName 관련 음식점',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
@@ -492,6 +502,11 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                 itemCount: restaurants.length,
                 itemBuilder: (context, restaurantIndex) {
                   final restaurant = restaurants[restaurantIndex];
+                  final distance = restaurant['distance'];
+                  final distanceText = distance != null
+                      ? '거리: ${distance.toStringAsFixed(1)} km'
+                      : '거리 정보 없음';
+
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16.0),
                     padding: const EdgeInsets.all(8.0),
@@ -523,7 +538,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(
-                                restaurant['name']!,
+                                restaurant['name'] ?? '이름 없음',
                                 style: const TextStyle(
                                   fontSize: 14,
                                   fontWeight: FontWeight.bold,
@@ -531,13 +546,21 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                restaurant['road_address']!,
+                                restaurant['road_address'] ?? '주소 없음',
                                 style: TextStyle(
                                   fontSize: 10,
                                   color: Colors.grey[600],
                                 ),
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                distanceText,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: Colors.blueGrey,
+                                ),
                               ),
                             ],
                           ),

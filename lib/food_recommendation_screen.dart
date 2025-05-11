@@ -4,6 +4,8 @@ import 'package:new1/main2.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:new1/utils/location_helper.dart';
+import 'package:new1/utils/distance_calculator.dart';
 class FoodRecommendationScreen extends StatefulWidget {
   final String resultMessage;
 
@@ -49,6 +51,21 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
         throw Exception('No recommended food names found');
       }
 
+      // ✅ 위치 정보 불러오기
+      final position = await LocationHelper.getLatLon();
+      if (position == null) {
+        print('[WARN] 위치 정보 없음. 기본 위치 없이 요청합니다.');
+      }
+
+      // ✅ 요청 바디 구성
+      final requestBody = {
+        'food_names': foodNames,
+        if (position != null) ...{
+          'lat': position['lat'],
+          'lon': position['lon'],
+        },
+      };
+
       // API URL 및 요청 데이터 확인
       final url = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
       final body = json.encode({
@@ -81,6 +98,27 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
         //print('[DEBUG] Restaurants data saved to SharedPreferences.');
 
         if (!mounted) return;
+
+        if (position != null) {
+          final double userLat = position['lat'] ?? 0.0;
+          final double userLon = position['lon'] ?? 0.0;
+
+          for (var restaurant in restaurants) {
+            if (restaurant['x'] != null && restaurant['y'] != null) {
+              final double restLon = double.tryParse(restaurant['x'].toString()) ?? 0;
+              final double restLat = double.tryParse(restaurant['y'].toString()) ?? 0;
+
+              final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+              restaurant['distance'] = distance;
+
+              // 🔍 디버깅 로그
+              print('📍 ${restaurant['name']}까지 거리: ${distance.toStringAsFixed(2)} km');
+            } else {
+              restaurant['distance'] = null;
+            }
+          }
+        }
+
 
         // 상태 업데이트
         setState(() {

@@ -37,6 +37,10 @@ class _MainScreenState extends State<MainScreen> {
   }
   Future<void> _initializeApp() async {
     final prefs = await SharedPreferences.getInstance();
+
+    // 🧭 위치 권한 요청 및 수집
+    await _getAndSaveUserLocation();
+
     final storedUUID = prefs.getString(_uuidKey);
     //final storedUUID = null;
     if (storedUUID != null) {
@@ -48,6 +52,39 @@ class _MainScreenState extends State<MainScreen> {
       print('No UUID found in SharedPreferences. Generating a new UUID...');
       await _createUUID();
     }
+  }
+
+  Future<void> _getAndSaveUserLocation() async {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      print('❌ 위치 서비스 꺼짐');
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        print('❌ 위치 권한 거부됨');
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      print('❌ 위치 권한 영구 거부됨');
+      return;
+    }
+
+    // ✅ 위치 가져오기
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+
+    print('📍 현재 위치: ${position.latitude}, ${position.longitude}');
+
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble('user_lat', position.latitude);
+    await prefs.setDouble('user_lon', position.longitude);
   }
 
   Future<void> _checkType(String uuid) async {

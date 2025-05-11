@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:new1/utils/location_helper.dart';
+import 'package:new1/utils/distance_calculator.dart';
 
 class WishlistScreen extends StatefulWidget {
   @override
@@ -44,42 +46,60 @@ class _WishlistScreenState extends State<WishlistScreen> {
       //debugPrint('필터 초기화됨: 전체 리스트 표시');
     });
   }
+
+
   Future<void> _loadLikedRestaurants() async {
     prefs = await SharedPreferences.getInstance();
     final List<Map<String, dynamic>> likedList = [];
 
+    // 사용자 현재 위치 받아오기
+    final position = await LocationHelper.getLatLon();
+    final double userLat = position?['lat'] ?? 35.8714;
+    final double userLon = position?['lon'] ?? 128.6014;
+
     final String? savedRestaurants = prefs.getString('restaurants_data');
     if (savedRestaurants != null) {
-      final List<Map<String, dynamic>> currentRestaurants = List<Map<String, dynamic>>.from(
-          json.decode(savedRestaurants).map((restaurant) => {
-            'name': restaurant['name'] ?? '이름 없음',
-            'road_address': restaurant['road_address'] ?? '주소 없음',
-            'category_2': restaurant['category_2'] ?? '카테고리 없음',
-            'category_1': restaurant['category_1'] ?? '카테고리 없음',
-          }));
+      final List<Map<String, dynamic>> currentRestaurants =
+      List<Map<String, dynamic>>.from(json.decode(savedRestaurants));
 
       for (var restaurant in currentRestaurants) {
-        String name = restaurant['name'];
-        String address = restaurant['road_address'];
-        bool isLiked = prefs.getBool('liked_${name}_${address}') ?? false;
+        final name = restaurant['name'] ?? '이름 없음';
+        final address = restaurant['road_address'] ?? '주소 없음';
+        final isLiked = prefs.getBool('liked_${name}_${address}') ?? false;
 
         if (isLiked) {
-          likedList.add(restaurant);
+          // 거리 계산
+          final double restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+          final double restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+          final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+
+          likedList.add({
+            'name': name,
+            'road_address': address,
+            'category_1': restaurant['category_1'] ?? '카테고리 없음',
+            'category_2': restaurant['category_2'] ?? '카테고리 없음',
+            'x': restLon.toString(),
+            'y': restLat.toString(),
+            'distance': distance,
+          });
         }
       }
     }
 
     final String? savedLikedAll = prefs.getString('liked_restaurants_all');
     if (savedLikedAll != null) {
-      Map<String, dynamic> allLikedRestaurants = json.decode(savedLikedAll);
+      final Map<String, dynamic> allLikedRestaurants = json.decode(savedLikedAll);
 
       allLikedRestaurants.forEach((key, restaurant) {
         if (!likedList.any((r) =>
         r['name'] == restaurant['name'] &&
             r['road_address'] == restaurant['road_address'])) {
-          if (restaurant['category_1'] == null) {
-            restaurant['category_1'] = '카테고리 없음';
-          }
+          final double restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+          final double restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+          final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+
+          restaurant['category_1'] ??= '카테고리 없음';
+          restaurant['distance'] = distance;
           likedList.add(restaurant);
         }
       });
@@ -90,26 +110,24 @@ class _WishlistScreenState extends State<WishlistScreen> {
       filteredRestaurants = likedList;
 
       uniqueDistricts = likedRestaurants
-          .map((restaurant) => extractDistrict(restaurant['road_address']))
-          .where((district) => district != '기타')
+          .map((r) => extractDistrict(r['road_address']))
+          .where((d) => d != '기타')
           .toSet()
           .toList()
         ..sort();
 
       uniqueCategories = likedRestaurants
-          .map((restaurant) => (restaurant['category_1'] ?? '카테고리 없음') as String)
-          .where((category) => category != '카테고리 없음')
+          .map((r) => r['category_1'] ?? '카테고리 없음')
+          .where((c) => c != '카테고리 없음')
+          .cast<String>()
           .toSet()
           .toList()
         ..sort();
-
-      //
-      // debugPrint('Loaded Categories: $uniqueCategories');
     });
 
-    Map<String, dynamic> updatedLikedAll = {};
+    final Map<String, dynamic> updatedLikedAll = {};
     for (var restaurant in likedList) {
-      String key = '${restaurant['name']}|${restaurant['road_address']}';
+      final key = '${restaurant['name']}|${restaurant['road_address']}';
       updatedLikedAll[key] = restaurant;
     }
     await prefs.setString('liked_restaurants_all', json.encode(updatedLikedAll));
@@ -418,6 +436,16 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                 ),
+                                SizedBox(height: 4),
+                                Text(
+                                  restaurant['distance'] != null
+                                      ? '거리: ${restaurant['distance'].toStringAsFixed(1)} km'
+                                      : '거리 정보 없음',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: Colors.blueGrey,
+                                  ),
+                                ),
                               ],
                             ),
                           ),
@@ -432,7 +460,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
                             color: Colors.red,
                           ),
                           onPressed: () => _removeFavorite(
-                              restaurant['name'], restaurant['road_address']),
+                            restaurant['name'],
+                            restaurant['road_address'],
+                          ),
                         ),
                       ),
                     ],

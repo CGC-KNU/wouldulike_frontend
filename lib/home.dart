@@ -3,6 +3,9 @@ import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'match.dart';
+import 'package:new1/utils/location_helper.dart';
+import 'package:new1/utils/distance_calculator.dart';
 
 // URL 열기 도구
 class UrlLauncherUtil {
@@ -60,19 +63,35 @@ class _HomeContentState extends State<HomeContent> {
 
   Future<void> _loadRestaurantsData() async {
     final String? savedRestaurants = prefs.getString('restaurants_data');
+
     if (savedRestaurants != null) {
+      final List<Map<String, dynamic>> decoded = List<Map<String, dynamic>>.from(
+        json.decode(savedRestaurants),
+      );
+
+      // 사용자 위치 가져오기
+      final position = await LocationHelper.getLatLon();
+      final userLat = position?['lat'] ?? 35.8714;
+      final userLon = position?['lon'] ?? 128.6014;
+
+      // 거리 계산 추가
+      for (var restaurant in decoded) {
+        final double restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+        final double restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+        final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+        restaurant['distance'] = distance;
+      }
+
       setState(() {
-        recommendedRestaurants = List<Map<String, dynamic>>.from(
-            json.decode(savedRestaurants).map((restaurant) => {
-              'name': restaurant['name'] ?? '이름 없음',
-              'road_address': restaurant['road_address'] ?? '주소 없음',
-              'category_2': restaurant['category_2'] ?? '카테고리 없음',
-            })
-        );
+        recommendedRestaurants = decoded.map((restaurant) => {
+          'name': restaurant['name'] ?? '이름 없음',
+          'road_address': restaurant['road_address'] ?? '주소 없음',
+          'category_2': restaurant['category_2'] ?? '카테고리 없음',
+          'x': restaurant['x'],
+          'y': restaurant['y'],
+          'distance': restaurant['distance'],
+        }).toList();
       });
-      //print('로드된 음식점 데이터: $recommendedRestaurants');
-    } else {
-      //print('저장된 음식점 데이터가 없습니다.');
     }
   }
 
@@ -230,8 +249,7 @@ class _HomeContentState extends State<HomeContent> {
                 borderRadius: BorderRadius.circular(12.0),
                 child: Container(
                   height: 60,
-                  //width: 60,
-                  color : Colors.white,
+                  color: Colors.white,
                 ),
               ),
               SizedBox(width: 16.0),
@@ -256,6 +274,17 @@ class _HomeContentState extends State<HomeContent> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (restaurant['distance'] != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(
+                          '📍 ${restaurant['distance'].toStringAsFixed(1)} km',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: Colors.blueGrey,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -277,9 +306,9 @@ class _HomeContentState extends State<HomeContent> {
                 final bool currentStatus = _isRestaurantLiked(
                     restaurant['name'], restaurant['road_address']);
                 await _saveLikedStatus(
-                    restaurant['name'],
-                    restaurant['road_address'],
-                    !currentStatus
+                  restaurant['name'],
+                  restaurant['road_address'],
+                  !currentStatus,
                 );
 
                 ScaffoldMessenger.of(context).showSnackBar(
