@@ -9,6 +9,7 @@ class MyScreen extends StatefulWidget {
 class _MyScreenState extends State<MyScreen> {
   String uuid = '';
   String typeCode = '';
+  String type_name = '';
   String description = '';
   String summary = '';
   String menu_mbti = '';
@@ -31,6 +32,7 @@ class _MyScreenState extends State<MyScreen> {
       setState(() {
         uuid = shortUuid;
         typeCode = prefs.getString('user_type') ?? '정보 없음';
+        type_name = prefs.getString('type_name') ?? '정보 없음';
         description = prefs.getString('type_description') ?? '설명 정보를 불러올 수 없습니다.';
         summary = prefs.getString('type_summary') ?? '정보 없음';
         menu_mbti = prefs.getString('menu_and_mbti') ?? '정보 없음';
@@ -86,18 +88,27 @@ class _MyScreenState extends State<MyScreen> {
               screenHeight: screenHeight,
               child: Column(
                 children: [
+                  Text(
+                    "당신의 유형은?",
+                    style: TextStyle(
+                      fontSize: screenWidth * 0.045,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  SizedBox(height: screenHeight * 0.02), // 이미지와 동일 간격
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
                     child: Image.asset(
                       imagePath,
-                      height: screenHeight * 0.25, // 높이 조정
-                      width: screenWidth * 0.5, // 가로 크기 조정
+                      height: screenHeight * 0.25,
+                      width: screenWidth * 0.5,
                       fit: BoxFit.cover,
                     ),
                   ),
                   SizedBox(height: screenHeight * 0.02),
                   Text(
-                    "당신의 유형: $typeCode",
+                    "$type_name",
                     style: TextStyle(
                       fontSize: screenWidth * 0.045,
                       fontWeight: FontWeight.w600,
@@ -105,14 +116,6 @@ class _MyScreenState extends State<MyScreen> {
                     ),
                   ),
                   SizedBox(height: screenHeight * 0.01),
-                  Text(
-                    "게스트 ID: $uuid",
-                    style: TextStyle(
-                      fontSize: screenWidth * 0.04,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
                 ],
               ),
             ),
