@@ -99,11 +99,45 @@ class _MyScreenState extends State<MyScreen> {
                   SizedBox(height: screenHeight * 0.02), // 이미지와 동일 간격
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      imagePath,
-                      height: screenHeight * 0.25,
-                      width: screenWidth * 0.5,
-                      fit: BoxFit.cover,
+                    child: Stack(
+                      children: [
+                        Image.asset(
+                          imagePath,
+                          height: screenHeight * 0.25,
+                          width: screenWidth * 0.5,
+                          fit: BoxFit.cover,
+                        ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            height: screenHeight * 0.05,
+                            alignment: Alignment.center,
+                            padding: EdgeInsets.symmetric(
+                              vertical: screenHeight * 0.005,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.6),
+                                ],
+                              ),
+                            ),
+                            child: Text(
+                              typeCode,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: screenWidth * 0.038,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   SizedBox(height: screenHeight * 0.02),
