@@ -1,3 +1,4 @@
+//테스트용 주석 확인인
 plugins {
     id "com.android.application"
     id "kotlin-android"
