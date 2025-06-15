@@ -42,7 +42,6 @@ class HomeContent extends StatefulWidget {
 }
 
 class _HomeContentState extends State<HomeContent> {
-  final PageController _pageController = PageController();
   late SharedPreferences prefs;
   List<Map<String, dynamic>> recommendedFoods = [];
   List<Map<String, dynamic>> recommendedRestaurants = [];
@@ -326,109 +325,7 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
-/*
-  Widget _buildPage(String imagePath, String title, String subtitle, String url) {
-    return GestureDetector(
-      onTap: () => _launchURL(url),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16.0),
-        child: Container(
-          color: Colors.grey[100],
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Image.asset(
-                imagePath,
-                fit: BoxFit.cover,
-                width: double.infinity,
-              ),
-              Flexible(
-                child: Container(
-                  constraints: BoxConstraints(minHeight: 50),
-                  padding: EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: Colors.grey[600],
-                          fontSize: 12,
-                        ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-*/
-  Widget _buildPage(String imagePath, String title, String subtitle, String url) {
-    return GestureDetector(
-      onTap: () => _launchURL(url),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(16.0),
-        child: Container(
-          color: Colors.grey[100],
-          child: Stack(
-            children: [
-              Image.asset(
-                imagePath,
-                fit: BoxFit.contain,
-                width: double.infinity,
-              ),
-              Positioned(
-                bottom: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  padding: EdgeInsets.all(12),
-                  color: Colors.black.withOpacity(0.4),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Colors.white,
-                        ),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: Colors.white.withOpacity(0.8),
-                          fontSize: 12,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+
   Widget _buildMenuCard(String imagePath, String title, double width) {
     return Container(
       width: width,
@@ -531,63 +428,6 @@ class _HomeContentState extends State<HomeContent> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '이번주 트렌드 뉴스',
-                    style: TextStyle(
-                      fontSize: screenWidth * 0.04,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: padding * 0.5),
-              Container(
-                height: pageViewHeight,
-                child: PageView(
-                  controller: _pageController,
-                  children: [
-                    _buildPage(
-                      'assets/images/trend111.jpg',
-                      '헬로키티와 크라운이 만났다!',
-                      '크라운제과 공식 인스타 (@crownsns)에서 댓글 이벤트도 진행되고 있다고 하니, 놓치지 마세요! 🔥',
-                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223749111277&navType=by',
-                    ),
-                    _buildPage(
-                      'assets/images/trend112.jpg',
-                      '스타들의 요아정 pick..☆',
-                      '요아정, 스타들도 반한 그 매력 ✨ 스타들의 요아정 pick..☆ 궁금하다 !',
-                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223693514046&navType=by',
-                    ),
-                    _buildPage(
-                      'assets/images/trend113.jpg',
-                      '교동에서 맛집을 외치다..👀✨',
-                      '츄카소바 설철수, 옆구리, 오일리버거, 강산면옥, 후발대를 만나보세요!',
-                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223684945450&navType=by',
-                    ),
-                    _buildPage(
-                      'assets/images/trend114.jpg',
-                      '붕어빵의 위치를 알 수 있는 어플이 있다구요?!',
-                      '따끈따끈한 붕어빵과 함께 이번 겨울은 붕어빵 지도가 전해주는 소소한 행복을 누려보세요 ❄',
-                      'https://m.blog.naver.com/PostView.naver?blogId=w_ouldulike&logNo=223687655192&navType=by',
-                    ),
-                  ],
-                ),
-              ),
-              SizedBox(height: padding * 0.6),
-              Center(
-                child: SmoothPageIndicator(
-                  controller: _pageController,
-                  count: 4,
-                  effect: WormEffect(
-                    dotWidth: screenWidth * 0.02,
-                    dotHeight: screenWidth * 0.02,
-                    spacing: screenWidth * 0.02,
-                  ),
-                ),
-              ),
               SizedBox(height: padding * 0.8),
               Text(
                 '이번 주 인기 있는 메뉴를 확인해보세요!',
