@@ -3,6 +3,7 @@ import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'match.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
@@ -47,11 +48,14 @@ class _HomeContentState extends State<HomeContent> {
   List<Map<String, dynamic>> recommendedRestaurants = [];
   Map<String, bool> likedRestaurants = {};
   final PageController _bannerController = PageController();
+  final ScrollController _scrollController = ScrollController();
+  bool _isFetching = false;
   int _currentBannerIndex = 0;
   @override
 
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     _initializePrefs();
   }
 
@@ -193,6 +197,107 @@ class _HomeContentState extends State<HomeContent> {
   bool _isRestaurantLiked(String restaurantName, String address) {
     final String key = '$restaurantName|$address';
     return likedRestaurants[key] ?? false;
+  }
+
+  void _onScroll() {
+    if (!_scrollController.hasClients || _isFetching) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    if (currentScroll > maxScroll - 100) {
+      _refreshData();
+    }
+  }
+
+  Future<void> _refreshData() async {
+    if (_isFetching) return;
+    _isFetching = true;
+    try {
+      final userUuid = prefs.getString('user_uuid') ?? '';
+      if (userUuid.isEmpty) throw Exception('User UUID not found');
+
+      final foodUrl =
+          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$userUuid';
+      final foodResponse = await http.get(Uri.parse(foodUrl));
+
+      if (foodResponse.statusCode == 200) {
+        final Map<String, dynamic> foodData = json.decode(foodResponse.body);
+        final List<dynamic> foods = foodData['random_foods'] ?? [];
+
+        final foodNames =
+        foods.map<String>((f) => f['food_name'].toString()).toList();
+        await prefs.setStringList('recommended_foods', foodNames);
+
+        final foodInfoList = foods
+            .map((f) => {
+          'food_name': f['food_name'],
+          'food_image_url': f['food_image_url'],
+        })
+            .toList();
+        await prefs.setString(
+            'recommended_foods_info', json.encode(foodInfoList));
+
+        final restaurantUrl =
+            'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
+        final restResponse = await http.post(
+          Uri.parse(restaurantUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'food_names': foodNames}),
+        );
+
+        if (restResponse.statusCode == 200) {
+          final restData = json.decode(restResponse.body);
+          final List<dynamic> restaurants = restData['random_restaurants'] ?? [];
+          await prefs.setString(
+              'restaurants_data', json.encode(restaurants));
+
+          final position = await LocationHelper.getLatLon();
+          final userLat = position?['lat'] ?? 35.8714;
+          final userLon = position?['lon'] ?? 128.6014;
+          for (var restaurant in restaurants) {
+            final restLat =
+                double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+            final restLon =
+                double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+            final distance =
+            DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+            restaurant['distance'] = distance;
+          }
+
+          setState(() {
+            recommendedFoods = foodInfoList
+                .map<Map<String, dynamic>>((food) => {
+              'food_name': food['food_name'],
+              'food_image_url': food['food_image_url'],
+            })
+                .toList();
+            recommendedRestaurants = restaurants
+                .map<Map<String, dynamic>>((restaurant) => {
+              'name': restaurant['name'] ?? '이름 없음',
+              'road_address': restaurant['road_address'] ?? '주소 없음',
+              'category_2': restaurant['category_2'] ?? '카테고리 없음',
+              'x': restaurant['x'],
+              'y': restaurant['y'],
+              'distance': restaurant['distance'],
+            })
+                .toList();
+          });
+
+          await _loadLikedRestaurants();
+        } else {
+          throw Exception('Failed to fetch restaurants');
+        }
+      } else {
+        throw Exception('Failed to fetch foods');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('데이터를 불러오는데 실패했습니다: $e')),
+        );
+      }
+    } finally {
+      _isFetching = false;
+    }
   }
 
   Widget _buildRecommendedFoodsSection(double cardWidth) {
@@ -342,10 +447,9 @@ class _HomeContentState extends State<HomeContent> {
             },
             itemBuilder: (context, index) {
               return Container(
-                margin: EdgeInsets.symmetric(horizontal: width * 0.02),
+                margin: EdgeInsets.zero,
                 decoration: BoxDecoration(
                   color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(12),
                 ),
               );
             },
@@ -452,6 +556,7 @@ class _HomeContentState extends State<HomeContent> {
   @override
   void dispose() {
     _bannerController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -475,6 +580,7 @@ class _HomeContentState extends State<HomeContent> {
         ),
       ),
       body: SingleChildScrollView(
+        controller: _scrollController,
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: padding),
           child: Column(
