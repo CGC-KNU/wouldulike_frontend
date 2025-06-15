@@ -46,8 +46,10 @@ class _HomeContentState extends State<HomeContent> {
   List<Map<String, dynamic>> recommendedFoods = [];
   List<Map<String, dynamic>> recommendedRestaurants = [];
   Map<String, bool> likedRestaurants = {};
-
+  final PageController _bannerController = PageController();
+  int _currentBannerIndex = 0;
   @override
+
   void initState() {
     super.initState();
     _initializePrefs();
@@ -325,6 +327,49 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
+  Widget _buildPromotionBanner(double width) {
+    final double height = width / 3.5;
+    return SizedBox(
+      height: height,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _bannerController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentBannerIndex = index % 5;
+              });
+            },
+            itemBuilder: (context, index) {
+              return Container(
+                margin: EdgeInsets.symmetric(horizontal: width * 0.02),
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
+            },
+          ),
+          Positioned(
+            right: 8,
+            bottom: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.black54,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${_currentBannerIndex + 1}/5',
+                style: const TextStyle(color: Colors.white, fontSize: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
 
   Widget _buildMenuCard(String imagePath, String title, double width) {
     return Container(
@@ -403,6 +448,13 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
+
+  @override
+  void dispose() {
+    _bannerController.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -428,6 +480,8 @@ class _HomeContentState extends State<HomeContent> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              SizedBox(height: padding * 0.8),
+              _buildPromotionBanner(screenWidth),
               SizedBox(height: padding * 0.8),
               Text(
                 '이번 주 인기 있는 메뉴를 확인해보세요!',
