@@ -579,8 +579,11 @@ class _HomeContentState extends State<HomeContent> {
           height: 24,
         ),
       ),
-      body: SingleChildScrollView(
+    body: RefreshIndicator(
+      onRefresh: _refreshData,
+      child: SingleChildScrollView(
         controller: _scrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
         child: Padding(
           padding: EdgeInsets.symmetric(horizontal: padding),
           child: Column(
@@ -589,22 +592,42 @@ class _HomeContentState extends State<HomeContent> {
               SizedBox(height: padding * 0.8),
               _buildPromotionBanner(screenWidth),
               SizedBox(height: padding * 0.8),
-              Text(
-                '이번 주 인기 있는 메뉴를 확인해보세요!',
-                style: TextStyle(
-                  fontSize: screenWidth * 0.04,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '이번 주 인기 있는 메뉴를 확인해보세요!',
+                      style: TextStyle(
+                      fontSize: screenWidth * 0.04,
+                      fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _refreshData,
+                  ),
+                ],
               ),
               SizedBox(height: padding * 0.7),
               _buildRecommendedFoodsSection(cardWidth),
               SizedBox(height: padding * 0.8),
-              Text(
-                '입맛에 꼭 맞는 음식점을 추천해드릴게요.',
-                style: TextStyle(
-                  fontSize: screenWidth * 0.04,
-                  fontWeight: FontWeight.bold,
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      '입맛에 꼭 맞는 음식점을 추천해드릴게요.',
+                      style: TextStyle(
+                        fontSize: screenWidth * 0.04,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: _refreshData,
+                  ),
+                ],
               ),
               SizedBox(height: padding * 0.4),
               /*
@@ -641,6 +664,7 @@ class _HomeContentState extends State<HomeContent> {
           ),
         ),
       ),
+    ),
     );
   }
 }
