@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'nearby_restaurants_screen.dart';
 import 'match.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
@@ -644,7 +645,7 @@ class _HomeContentState extends State<HomeContent> {
                   },
                 ),
               ),
-               */
+              */
               Container(
                 // height 제거: 컨텐츠 크기만큼 자동으로 늘어나도록
                 child: recommendedRestaurants.isEmpty
@@ -658,6 +659,34 @@ class _HomeContentState extends State<HomeContent> {
                   itemBuilder: (context, index) {
                     return _buildRestaurantCard(recommendedRestaurants[index]);
                   },
+                ),
+              ),
+              SizedBox(height: padding * 0.8),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => NearbyRestaurantsScreen(),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF312E81),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: Text(
+                    '내 주변 음식점 보기',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontFamily: 'Pretendard',
+                      fontSize: screenWidth * 0.045,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
                 ),
               ),
             ],
