@@ -6,7 +6,12 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
-void main() {
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 
@@ -37,6 +42,7 @@ class _MainScreenState extends State<MainScreen> {
   }
   Future<void> _initializeApp() async {
     final prefs = await SharedPreferences.getInstance();
+    await _initFirebaseMessaging();
 
     // 🧭 위치 권한 요청 및 수집
     await _getAndSaveUserLocation();
@@ -51,6 +57,14 @@ class _MainScreenState extends State<MainScreen> {
       // 저장된 UUID가 없으면 서버에서 새로운 UUID 생성
       print('No UUID found in SharedPreferences. Generating a new UUID...');
       await _createUUID();
+    }
+  }
+
+  Future<void> _initFirebaseMessaging() async {
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+    String? token = await messaging.getToken();
+    if (token != null) {
+      print('FCM Token: \$token');
     }
   }
 
