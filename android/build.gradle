@@ -7,6 +7,8 @@ buildscript {
     dependencies {
         classpath 'com.android.tools.build:gradle:8.2.2'
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version" // ✅ 추가
+        // Firebase 연동을 위한 Google Services 플러그인
+        classpath 'com.google.gms:google-services:4.4.3'
     }
 }
 
