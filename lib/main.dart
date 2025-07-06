@@ -65,8 +65,40 @@ class _MainScreenState extends State<MainScreen> {
     String? token = await messaging.getToken();
     if (token != null) {
       print('FCM Token: \$token');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('fcm_token', token);
+      await _updateFcmToken(token);
     }
   }
+
+  Future<void> _updateFcmToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    final uuid = prefs.getString(_uuidKey);
+
+    if (uuid == null) {
+      print('UUID not found. FCM token update postponed.');
+      return;
+    }
+
+    final url = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/update/fcm_token/');
+
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'uuid': uuid, 'fcm_token': token}),
+      );
+
+      if (response.statusCode == 200) {
+        print('✅ FCM token updated successfully');
+      } else {
+        print('❌ Failed to update FCM token: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('🚨 Error updating FCM token: $e');
+    }
+  }
+
 
   Future<void> _getAndSaveUserLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
