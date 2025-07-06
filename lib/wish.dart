@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 
@@ -171,6 +172,23 @@ class _WishlistScreenState extends State<WishlistScreen> {
     });
   }
 
+  Future<void> _updateFavoriteRestaurant(String name, String action) async {
+    final uuid = prefs.getString('user_uuid') ?? '';
+    if (uuid.isEmpty) return;
+
+    final url = Uri.parse(
+        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/update/favorite_restaurants/');
+    try {
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'uuid': uuid, 'restaurant': name, 'action': action}),
+      );
+    } catch (e) {
+      print('Error updating favorite restaurant: \$e');
+    }
+  }
+
   Future<void> _removeFavorite(String name, String address) async {
     await prefs.setBool('liked_${name}_${address}', false);
 
@@ -186,6 +204,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
               (restaurant) => restaurant['name'] == name && restaurant['road_address'] == address);
       _applyFilters();
     });
+
+    await _updateFavoriteRestaurant(name, 'remove');
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

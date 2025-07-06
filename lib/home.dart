@@ -183,7 +183,26 @@ class _HomeContentState extends State<HomeContent> {
 
     //print('전체 찜 상태: $likedRestaurants');
   }
-  // 찜하기 상태 저장하기도 수정
+  // 서버에 찜 상태 동기화
+  Future<void> _updateFavoriteRestaurant(String restaurantName, String action) async {
+    final uuid = prefs.getString('user_uuid') ?? '';
+    if (uuid.isEmpty) return;
+
+    final url = Uri.parse(
+        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/update/favorite_restaurants/');
+
+    try {
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'uuid': uuid, 'restaurant': restaurantName, 'action': action}),
+      );
+    } catch (e) {
+      print('Error updating favorite restaurant: $e');
+    }
+  }
+
+  // 찜하기 상태 저장 후 서버에 반영
   Future<void> _saveLikedStatus(String restaurantName, String address, bool isLiked) async {
     final String key = '$restaurantName|$address';
     setState(() {
@@ -191,7 +210,8 @@ class _HomeContentState extends State<HomeContent> {
     });
     // 개별 음식점의 찜 상태 저장
     await prefs.setBool('liked_${restaurantName}_${address}', isLiked);
-    //print('$restaurantName 찜 상태 저장: $isLiked');
+    final action = isLiked ? 'add' : 'remove';
+    await _updateFavoriteRestaurant(restaurantName, action);
   }
 
   // 음식점의 찜 상태 확인
