@@ -13,9 +13,9 @@ buildscript {
 }
 
 ext.flutter = [
-        compileSdkVersion: 34,
+        compileSdkVersion: 35,
         minSdkVersion    : 29,
-        targetSdkVersion : 34
+        targetSdkVersion : 35
 ]
 
 allprojects {

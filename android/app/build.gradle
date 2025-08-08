@@ -14,7 +14,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.coggiri.new1"
-    compileSdkVersion 34  // ✅ compileSdkVersion을 34로 통일
+    compileSdk = 35  // SDK 35에 맞춰 컴파일
 
     // ✅ NDK 버전 명확한 값으로 설정하거나 주석 처리
     // ndkVersion = flutter.ndkVersion
@@ -30,8 +30,8 @@ android {
 
     defaultConfig {
         applicationId = "com.coggiri.new1"
-        minSdkVersion 29
-        targetSdkVersion 34  // ✅ 34로 변경하여 플러그인과 일치시킴
+        minSdk = 29
+        targetSdk = 35  // SDK 35와 일치
         versionCode flutter.versionCode
         versionName flutter.versionName
     }
