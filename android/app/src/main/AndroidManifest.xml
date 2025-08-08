@@ -59,5 +59,20 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <meta-data
+            android:name="com.kakao.sdk.AppKey"
+            android:value="YOUR_KAKAO_NATIVE_APP_KEY" />
+
+        <activity
+            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kakaoYOUR_KAKAO_NATIVE_APP_KEY" />
+            </intent-filter>
+        </activity>
     </application>
 </manifest>

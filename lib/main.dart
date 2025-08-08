@@ -8,20 +8,32 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'login_screen.dart';
+import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
+
+const String kakaoNativeAppKey = 'YOUR_KAKAO_NATIVE_APP_KEY';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  runApp(const MyApp());
+  KakaoSdk.init(nativeAppKey: kakaoNativeAppKey);
+  final prefs = await SharedPreferences.getInstance();
+  final loggedIn = prefs.getBool('kakao_logged_in') ?? false;
+  runApp(MyApp(isLoggedIn: loggedIn));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isLoggedIn;
+  const MyApp({super.key, required this.isLoggedIn});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: MainScreen(),
+      home: isLoggedIn ? MainScreen() : const LoginScreen(),
+      routes: {
+        '/main': (context) => MainScreen(),
+        '/login': (context) => const LoginScreen(),
+      },
     );
   }
 }

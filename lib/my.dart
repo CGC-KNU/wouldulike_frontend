@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:new1/start_survey.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 class MyScreen extends StatefulWidget {
   @override
   _MyScreenState createState() => _MyScreenState();
@@ -17,6 +18,7 @@ class _MyScreenState extends State<MyScreen> {
   String matching_type = '';
   String non_matching = '';
   bool isLoading = true;
+  bool isKakaoLoggedIn = false;
 
   @override
   void initState() {
@@ -40,12 +42,32 @@ class _MyScreenState extends State<MyScreen> {
         matching_type = prefs.getString('matching_type') ?? '정보 없음';
         non_matching = prefs.getString('non_matching') ?? '정보 없음';
         isLoading = false;
+        isKakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
       });
     } catch (e) {
       print('Error loading user data: $e');
       setState(() {
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> _handleKakaoLogin() async {
+    try {
+      final installed = await isKakaoTalkInstalled();
+      OAuthToken token = installed
+          ? await UserApi.instance.loginWithKakaoTalk()
+          : await UserApi.instance.loginWithKakaoAccount();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('kakao_logged_in', true);
+      await prefs.setString('kakao_access_token', token.accessToken);
+      setState(() {
+        isKakaoLoggedIn = true;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('카카오 로그인 실패: $e')),
+      );
     }
   }
 
@@ -250,6 +272,17 @@ class _MyScreenState extends State<MyScreen> {
                 ),
               ),
             ),
+            if (!isKakaoLoggedIn) ...[
+              SizedBox(
+                width: double.infinity,
+                height: screenHeight * 0.085,
+                child: OutlinedButton(
+                  onPressed: _handleKakaoLogin,
+                  child: const Text('카카오 로그인'),
+                ),
+              ),
+              SizedBox(height: screenHeight * 0.02),
+            ],
             SizedBox(height: screenHeight * 0.03), // 버튼 아래 여백 추가
           ],
         ),

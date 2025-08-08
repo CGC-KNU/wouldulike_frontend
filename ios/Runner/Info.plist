@@ -43,9 +43,23 @@
 		</array>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
-		<key>UIApplicationSupportsIndirectInputEvents</key>
-		<true/>
-		<key>UIStatusBarHidden</key>
-		<false/>
-	</dict>
+		                <key>UIApplicationSupportsIndirectInputEvents</key>
+                        <true/>
+                        <key>UIStatusBarHidden</key>
+                        <false/>
+                        <key>LSApplicationQueriesSchemes</key>
+                        <array>
+                                <string>kakaocom</string>
+                                <string>kakaolink</string>
+                        </array>
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                                <dict>
+                                        <key>CFBundleURLSchemes</key>
+                                        <array>
+                                                <string>kakaoYOUR_KAKAO_NATIVE_APP_KEY</string>
+                                        </array>
+                                </dict>
+                        </array>
+                </dict>
 </plist>
