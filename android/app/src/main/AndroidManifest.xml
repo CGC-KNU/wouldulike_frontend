@@ -62,7 +62,7 @@
 
         <meta-data
             android:name="com.kakao.sdk.AppKey"
-            android:value="YOUR_KAKAO_NATIVE_APP_KEY" />
+            android:value="967525b584e9c1e2a2b5253888b42c83" />
 
         <activity
             android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
@@ -71,7 +71,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="kakaoYOUR_KAKAO_NATIVE_APP_KEY" />
+                <data android:scheme="967525b584e9c1e2a2b5253888b42c83" />
             </intent-filter>
         </activity>
     </application>
