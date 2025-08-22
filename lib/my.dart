@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:new1/start_survey.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'services/auth_service.dart';
 class MyScreen extends StatefulWidget {
   @override
   _MyScreenState createState() => _MyScreenState();
@@ -59,8 +60,8 @@ class _MyScreenState extends State<MyScreen> {
           ? await UserApi.instance.loginWithKakaoTalk()
           : await UserApi.instance.loginWithKakaoAccount();
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('kakao_logged_in', true);
-      await prefs.setString('kakao_access_token', token.accessToken);
+      final guestUuid = prefs.getString('user_uuid');
+      await AuthService.loginWithKakao(token.accessToken, guestUuid: guestUuid);
       setState(() {
         isKakaoLoggedIn = true;
       });

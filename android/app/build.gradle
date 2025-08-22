@@ -64,4 +64,5 @@ dependencies {
     // Firebase BoM 및 Analytics 라이브러리 추가
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-analytics-ktx'
+//    implementation "com.kakao.sdk:v2-user:2.20.0"
 }

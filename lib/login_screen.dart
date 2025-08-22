@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'services/auth_service.dart';
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 

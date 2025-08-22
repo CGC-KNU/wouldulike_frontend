@@ -89,7 +89,9 @@ class _HomeContentState extends State<HomeContent> {
       }
 
       setState(() {
-        recommendedRestaurants = decoded.map((restaurant) => {
+        recommendedRestaurants = decoded
+            .where((restaurant) => restaurant['distance'] != null && restaurant['distance'] <= 1.0)
+            .map((restaurant) => {
           'name': restaurant['name'] ?? '이름 없음',
           'road_address': restaurant['road_address'] ?? '주소 없음',
           'category_2': restaurant['category_2'] ?? '카테고리 없음',
@@ -97,6 +99,7 @@ class _HomeContentState extends State<HomeContent> {
           'y': restaurant['y'],
           'distance': restaurant['distance'],
         }).toList();
+        //print('추천 음식점 로드 완료: ${recommendedRestaurants.length}개');
       });
     }
   }
@@ -352,7 +355,17 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   Widget _buildRestaurantCard(Map<String, dynamic> restaurant) {
-    return Container(
+    // 사용자가 음식점 카드를 클릭했을 때 상세정보 페이지로 이동
+    return GestureDetector(
+        onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => RestaurantDetailScreen(restaurant: restaurant),
+        ),
+      );
+    },
+    child: Container(
       margin: EdgeInsets.only(bottom: 16.0),
       padding: EdgeInsets.all(8.0),
       decoration: BoxDecoration(
@@ -451,6 +464,7 @@ class _HomeContentState extends State<HomeContent> {
           ),
         ],
       ),
+    ),
     );
   }
   Widget _buildPromotionBanner(double width) {
@@ -714,6 +728,45 @@ class _HomeContentState extends State<HomeContent> {
         ),
       ),
     ),
+    );
+  }
+}
+
+/// 선택한 음식점의 상세 정보를 보여주는 화면
+class RestaurantDetailScreen extends StatelessWidget {
+  final Map<String, dynamic> restaurant;
+
+  const RestaurantDetailScreen({Key? key, required this.restaurant}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(restaurant['name'] ?? '음식점 상세정보'),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '🏠 주소: ${restaurant['road_address'] ?? '정보 없음'}',
+              style: TextStyle(fontSize: 14),
+            ),
+            SizedBox(height: 8),
+            Text(
+              '📂 카테고리: ${restaurant['category_2'] ?? '정보 없음'}',
+              style: TextStyle(fontSize: 14),
+            ),
+            SizedBox(height: 8),
+            if (restaurant['distance'] != null)
+              Text(
+                '📍 현재 거리: ${restaurant['distance'].toStringAsFixed(1)} km',
+                style: TextStyle(fontSize: 14),
+              ),
+          ],
+        ),
+      ),
     );
   }
 }

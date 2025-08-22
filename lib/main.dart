@@ -11,7 +11,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'login_screen.dart';
 import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
 
-const String kakaoNativeAppKey = 'YOUR_KAKAO_NATIVE_APP_KEY';
+const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
