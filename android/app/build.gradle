@@ -59,8 +59,8 @@ flutter {
 
 dependencies {
     // ✅ 최신 버전 사용 추천
-    implementation "androidx.appcompat:appcompat:1.6.1"
-    implementation "com.google.android.material:material:1.9.0"
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "com.google.android.material:material:1.12.0"
     // Firebase BoM 및 Analytics 라이브러리 추가
     implementation platform('com.google.firebase:firebase-bom:32.7.0')
     implementation 'com.google.firebase:firebase-analytics-ktx'
