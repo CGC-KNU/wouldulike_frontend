@@ -1,6 +1,6 @@
 <resources>
     <!-- Kakao native app key -->
     <string name="kakao_app_key">967525b584e9c1e2a2b5253888b42c83</string>
-    <!-- Kakao scheme suffix without 'kakao' prefix -->
-    <string name="kakao_scheme_suffix">967525b584e9c1e2a2b5253888b42c83</string>
+    <!-- Kakao scheme including 'kakao' prefix -->
+    <string name="kakao_scheme">kakao967525b584e9c1e2a2b5253888b42c83</string>
 </resources>
