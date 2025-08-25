@@ -67,6 +67,7 @@
 
         <activity
             android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
+            android:exported="true"
             tools:node="merge">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
