@@ -68,13 +68,14 @@
         <activity
             android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
             android:exported="true"
-            tools:node="merge">
+            tools:replace="android:theme"
+            android:theme="@style/KakaoAuthCodeHandlerTheme">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="@string/kakao_scheme"
+                    android:scheme="kakao967525b584e9c1e2a2b5253888b42c83"
                     android:host="oauth" />
             </intent-filter>
         </activity>

@@ -1,6 +1,4 @@
 <resources>
-    <!-- Kakao native app key -->
+    <!-- Kakao native app key used for SDK init and redirect URI -->
     <string name="kakao_app_key">967525b584e9c1e2a2b5253888b42c83</string>
-    <!-- Kakao scheme including 'kakao' prefix -->
-    <string name="kakao_scheme">kakao967525b584e9c1e2a2b5253888b42c83</string>
 </resources>
