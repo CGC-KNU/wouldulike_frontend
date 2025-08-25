@@ -238,11 +238,28 @@ class _HomeContentState extends State<HomeContent> {
     try {
       final userUuid = prefs.getString('user_uuid') ?? '';
       if (userUuid.isEmpty) throw Exception('User UUID not found');
-
+      final typeCode = prefs.getString('user_type');
+      if (typeCode == null || typeCode.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('타입코드 미등록')),
+          );
+        }
+        _isFetching = false;
+        return;
+      }
       final foodUrl =
           'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$userUuid';
-      final foodResponse = await http.get(Uri.parse(foodUrl));
-
+      http.Response foodResponse;
+      int retry = 0;
+      int delay = 1;
+      do {
+        foodResponse = await http.get(Uri.parse(foodUrl));
+        if (foodResponse.statusCode == 200 || foodResponse.statusCode == 400 || foodResponse.statusCode == 404) break;
+        await Future.delayed(Duration(seconds: delay));
+        delay *= 2;
+        retry++;
+      } while (retry < 3);
       if (foodResponse.statusCode == 200) {
         final Map<String, dynamic> foodData = json.decode(foodResponse.body);
         final List<dynamic> foods = foodData['random_foods'] ?? [];
@@ -262,11 +279,20 @@ class _HomeContentState extends State<HomeContent> {
 
         final restaurantUrl =
             'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
-        final restResponse = await http.post(
-          Uri.parse(restaurantUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({'food_names': foodNames}),
-        );
+        http.Response restResponse;
+        retry = 0;
+        delay = 1;
+        do {
+          restResponse = await http.post(
+            Uri.parse(restaurantUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'food_names': foodNames}),
+          );
+          if (restResponse.statusCode == 200 || restResponse.statusCode == 400 || restResponse.statusCode == 404) break;
+          await Future.delayed(Duration(seconds: delay));
+          delay *= 2;
+          retry++;
+        } while (retry < 3);
 
         if (restResponse.statusCode == 200) {
           final restData = json.decode(restResponse.body);
@@ -307,8 +333,20 @@ class _HomeContentState extends State<HomeContent> {
           });
 
           await _loadLikedRestaurants();
+        } else if (restResponse.statusCode == 400 || restResponse.statusCode == 404) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('타입코드 미등록')),
+            );
+          }
         } else {
           throw Exception('Failed to fetch restaurants');
+        }
+      } else if (foodResponse.statusCode == 400 || foodResponse.statusCode == 404) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('타입코드 미등록')),
+          );
         }
       } else {
         throw Exception('Failed to fetch foods');

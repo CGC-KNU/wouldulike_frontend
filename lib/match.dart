@@ -80,9 +80,28 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       if (userUUID.isEmpty) {
         throw Exception('User UUID not found');
       }
+      final typeCode = prefs.getString('user_type');
+      if (typeCode == null || typeCode.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('타입코드 미등록')),
+          );
+        }
+        setState(() { isLoading = false; });
+        return;
+      }
 
       final url = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/unique-random-foods/?uuid=$userUUID';
-      final response = await http.get(Uri.parse(url));
+      http.Response response;
+      int retry = 0;
+      int delay = 1;
+      do {
+        response = await http.get(Uri.parse(url));
+        if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 404) break;
+        await Future.delayed(Duration(seconds: delay));
+        delay *= 2;
+        retry++;
+      } while (retry < 3);
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = jsonDecode(response.body);
@@ -118,6 +137,13 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
           }
           isLoading = false;
         });
+      } else if (response.statusCode == 400 || response.statusCode == 404) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('타입코드 미등록')),
+          );
+        }
+        setState(() { isLoading = false; });
       } else {
         throw Exception('Failed to load food recommendations');
       }
