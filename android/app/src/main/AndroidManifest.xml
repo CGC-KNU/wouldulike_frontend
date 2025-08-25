@@ -38,7 +38,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|layoutDirection|density|uiMode"
             android:hardwareAccelerated="true"
@@ -62,7 +62,7 @@
 
         <meta-data
             android:name="com.kakao.sdk.AppKey"
-            android:value="967525b584e9c1e2a2b5253888b42c83" />
+            android:value="@string/kakao_app_key" />
 
         <activity
             android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
@@ -72,7 +72,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
-                    android:scheme="kakao967525b584e9c1e2a2b5253888b42c83"
+                    android:scheme="kakao@string/kakao_scheme_suffix"
                     android:host="oauth" />
             </intent-filter>
         </activity>
