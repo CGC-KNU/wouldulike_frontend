@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'start_survey.dart';
 import 'home.dart';
@@ -10,6 +11,8 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'login_screen.dart';
 import 'package:kakao_flutter_sdk_common/kakao_flutter_sdk_common.dart';
+import 'package:uni_links/uni_links.dart';
+import 'package:flutter/services.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 
@@ -17,6 +20,20 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   KakaoSdk.init(nativeAppKey: kakaoNativeAppKey);
+  // Listen for deep links such as the Kakao login redirect.
+  uriLinkStream.listen((Uri? uri) {
+    if (uri != null) {
+      debugPrint('Deep link received: ' + uri.toString());
+    }
+  });
+  try {
+    final initialUri = await getInitialUri();
+    if (initialUri != null) {
+      debugPrint('Initial deep link: ' + initialUri.toString());
+    }
+  } on PlatformException {
+    // Ignored: platform not ready for deep links.
+  }
   final prefs = await SharedPreferences.getInstance();
   final loggedIn = prefs.getBool('kakao_logged_in') ?? false;
   runApp(MyApp(isLoggedIn: loggedIn));

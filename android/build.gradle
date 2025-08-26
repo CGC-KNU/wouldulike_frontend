@@ -30,6 +30,11 @@ allprojects {
 rootProject.buildDir = "../build"
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
+    afterEvaluate { subproject ->
+        if (subproject.name == 'uni_links') {
+            subproject.android.namespace = 'uni_links'
+        }
+    }
 }
 
 tasks.register("clean", Delete) {

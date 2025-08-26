@@ -24,9 +24,21 @@ class _LoginScreenState extends State<LoginScreen> {
           ? await UserApi.instance.loginWithKakaoTalk()
           : await UserApi.instance.loginWithKakaoAccount();
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('kakao_logged_in', true);
+      final guestUuid = prefs.getString('user_uuid');
+      final data =
+        await AuthService.loginWithKakao(token.accessToken, guestUuid: guestUuid);
       await prefs.setString('kakao_access_token', token.accessToken);
+      await prefs.setString('jwt_access_token', data['token']['access']);
+      await prefs.setString('jwt_refresh_token', data['token']['refresh']);
+      await prefs.setInt('user_id', data['user']['id']);
+      await prefs.setString(
+          'user_nickname', data['user']['nickname'] ?? '');
+      await prefs.setString('user_profile_image_url',
+          data['user']['profile_image_url'] ?? '');
       if (!mounted) return;
+      setState(() {
+        _isLoggingIn = false;
+      });
       Navigator.pushReplacementNamed(context, '/main');
     } catch (e) {
       setState(() {
