@@ -2,16 +2,13 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.coggiri.new1">
 
-    <!-- 인터넷 권한 -->
+    <!-- 인터넷/위치 권한 -->
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- 위치 권한 (추가됨) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
-    <!-- 앱이 수행할 queries 설정 -->
+    <!-- 외부 앱 열기/텍스트 처리 쿼리 -->
     <queries>
-        <!-- URL 실행을 위한 intent -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />
@@ -22,7 +19,6 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
         </intent>
-        <!-- 텍스트 처리 -->
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
@@ -31,11 +27,10 @@
 
     <application
         android:label="wouldUlike"
-        android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@style/NormalTheme"> <!-- 기본 테마로 설정 -->
+        android:theme="@style/NormalTheme">
 
-        <!-- 메인 액티비티 설정 -->
+        <!-- 메인 액티비티 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -44,27 +39,28 @@
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|layoutDirection|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- Flutter 테마 -->
+
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
 
-            <!-- 인텐트 필터 -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Flutter 내장 설정 -->
+        <!-- Flutter 임베딩 버전 -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
 
+        <!-- Kakao SDK App Key (strings.xml에 정의) -->
         <meta-data
             android:name="com.kakao.sdk.AppKey"
             android:value="@string/kakao_app_key" />
 
+        <!-- Kakao 인증 핸들러 -->
         <activity
             android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
             android:exported="true"
@@ -74,6 +70,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
+                <!-- 네이티브 앱 키 앞에 kakao 접두어가 정확히 붙어야 합니다 -->
                 <data
                     android:scheme="kakao967525b584e9c1e2a2b5253888b42c83"
                     android:host="oauth" />
