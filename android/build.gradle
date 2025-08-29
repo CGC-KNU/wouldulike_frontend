@@ -1,17 +1,7 @@
-buildscript {
-    ext.kotlin_version = '1.8.10' // ✅ 추가
-    repositories {
-        google()
-        mavenCentral()
-        maven { url 'https://devrepo.kakao.com/nexus/content/groups/public/' }
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.2'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version" // ✅ 추가
-        // Firebase 연동을 위한 Google Services 플러그인
-        classpath 'com.google.gms:google-services:4.4.3'
-    }
-}
+// android/build.gradle  (root)
+
+// 🔹 신형 구조에서는 buildscript/classpath, allprojects 제거
+//    리포지토리/플러그인 관리는 settings.gradle의 pluginManagement / dependencyResolutionManagement가 담당
 
 ext.flutter = [
         compileSdkVersion: 35,
@@ -19,15 +9,8 @@ ext.flutter = [
         targetSdkVersion : 35
 ]
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-        maven { url 'https://devrepo.kakao.com/nexus/content/groups/public/' }
-    }
-}
-
 rootProject.buildDir = "../build"
+
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }

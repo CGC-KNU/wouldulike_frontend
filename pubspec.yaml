@@ -36,8 +36,7 @@ dependencies:
   smooth_page_indicator: ^1.0.0
   url_launcher: ^6.1.14
   video_player: ^2.9.2
-  kakao_flutter_sdk_auth: ^1.9.7+3
-  kakao_flutter_sdk_user: ^1.9.5
+  kakao_flutter_sdk_user: ^1.9.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
