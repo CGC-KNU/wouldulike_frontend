@@ -31,6 +31,30 @@ migrate_working_dir/
 .pub/
 /build/
 
+# Extra local build folders (e.g. build-stuck-YYYYMMDD-*)
+/build-*/
+
+# Local environment files
+.metadata
+*.rej
+.env
+.env.*
+android/local.properties
+
+# iOS CocoaPods (regenerate with `pod install`)
+ios/Pods/
+
+# Windows/Linux CMake & Visual Studio generated (keep CMakeLists.txt)
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/.vs/
+**/*.sln
+**/*.vcxproj*
+**/*.vcproj*
+**/*.props
+**/*.targets
+
 # Symbolication related
 app.*.symbols
 

@@ -20,7 +20,11 @@ const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-  KakaoSdk.init(nativeAppKey: kakaoNativeAppKey);
+  KakaoSdk.init(nativeAppKey: kakaoNativeAppKey, loggingEnabled: true);
+  try {
+    final origin = await KakaoSdk.origin;
+    debugPrint('[Kakao] origin (key hash): ' + origin);
+  } catch (_) {}
   final appLinks = AppLinks();
   // Listen for deep links such as the Kakao login redirect.
   appLinks.uriLinkStream.listen((Uri? uri) {
@@ -37,7 +41,10 @@ Future<void> main() async {
     // Ignored: platform not ready for deep links.
   }
   final prefs = await SharedPreferences.getInstance();
-  final loggedIn = prefs.getBool('kakao_logged_in') ?? false;
+  // Consider a user logged in only if flag is true AND JWT exists
+  final kakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
+  final jwt = prefs.getString('jwt_access_token');
+  final loggedIn = kakaoLoggedIn && jwt != null && jwt.isNotEmpty;
   runApp(MyApp(isLoggedIn: loggedIn));
 }
 

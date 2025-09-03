@@ -29,7 +29,7 @@
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="kakao967525b584e9c1e2a2b5253888b42c83" />
+            <data android:scheme="@string/kakao_scheme" />
         </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
@@ -40,13 +40,14 @@
     <application
         android:label="wouldUlike"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@style/NormalTheme">
+        android:theme="@style/NormalTheme"
+        android:enableOnBackInvokedCallback="true">
 
         <!-- 메인 액티비티 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask"
+            android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|layoutDirection|density|uiMode"
             android:hardwareAccelerated="true"
@@ -72,21 +73,22 @@
             android:name="com.kakao.sdk.AppKey"
             android:value="@string/kakao_app_key" />
 
-        <!-- Kakao 인증 핸들러 -->
+        <!-- Kakao 인증은 CustomTabsActivity가 직접 딥링크를 받도록 설정 -->
+
+        <!-- Ensure CustomTabs activity can directly receive kakao://oauth redirect -->
         <activity
-            android:name="com.kakao.sdk.auth.AuthCodeHandlerActivity"
-            android:exported="true"
-            tools:replace="android:theme"
-            android:theme="@style/KakaoAuthCodeHandlerTheme">
+            android:name="com.kakao.sdk.flutter.AuthCodeCustomTabsActivity"
+            tools:node="merge">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <!-- 네이티브 앱 키 앞에 kakao 접두어가 정확히 붙어야 합니다 -->
                 <data
                     android:scheme="kakao967525b584e9c1e2a2b5253888b42c83"
                     android:host="oauth" />
             </intent-filter>
         </activity>
+
+        <!-- 의도적으로 AuthCodeHandlerActivity 선언을 두지 않음(중복 방지) -->
     </application>
 </manifest>
