@@ -1,8 +1,11 @@
+// android/app/build.gradle (Groovy)
+
 plugins {
     id "com.android.application"
-    id "kotlin-android"
+    id "org.jetbrains.kotlin.android"
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.gms.google-services"
 }
 
 def keystoreProperties = new Properties()
@@ -12,52 +15,68 @@ if (keystorePropertiesFile.exists()) {
 }
 
 android {
-    namespace = "com.coggiri.new1"
-    compileSdkVersion 34  // ✅ compileSdkVersion을 34로 통일
-
-    // ✅ NDK 버전 명확한 값으로 설정하거나 주석 처리
-    // ndkVersion = flutter.ndkVersion
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8
-    }
+    namespace "com.coggiri.new1"
+    compileSdk 35
 
     defaultConfig {
-        applicationId = "com.coggiri.new1"
-        minSdkVersion 29
-        targetSdkVersion 34  // ✅ 34로 변경하여 플러그인과 일치시킴
+        applicationId "com.coggiri.new1"
+        minSdk 29
+        targetSdk 35
         versionCode flutter.versionCode
         versionName flutter.versionName
     }
 
+    // ndkVersion flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    kotlinOptions {
+        jvmTarget = "1.8"
+    }
+
     signingConfigs {
-        release {
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile file(keystoreProperties['storeFile'])
-            storePassword keystoreProperties['storePassword']
+        if (keystorePropertiesFile.exists()) {
+            release {
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+            }
         }
     }
 
     buildTypes {
         release {
-            // ✅ release에서 debug 서명을 참조하는 부분 수정
-            signingConfig signingConfigs.release
+            signingConfig keystorePropertiesFile.exists() ? signingConfigs.release : signingConfigs.debug
+            // minifyEnabled true
+            // proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            signingConfig signingConfigs.debug
         }
     }
 }
 
 flutter {
-    source = "../.."
+    source "../.."
+}
+
+repositories {
+    // Add Kakao's Maven repo in case some versions are not on Maven Central
+    maven { url "https://devrepo.kakao.com/nexus/content/groups/public/" }
 }
 
 dependencies {
-    // ✅ 최신 버전 사용 추천
-    implementation "androidx.appcompat:appcompat:1.6.1"
-    implementation "com.google.android.material:material:1.9.0"
+    implementation "androidx.appcompat:appcompat:1.7.0"
+    implementation "com.google.android.material:material:1.12.0"
+
+    // Firebase BoM & Analytics
+    implementation platform("com.google.firebase:firebase-bom:32.7.0")
+    implementation "com.google.firebase:firebase-analytics-ktx"
+
+    // Kakao Android SDK (includes AuthCodeHandlerActivity)
+    // Align with kakao_flutter_sdk 1.9.x which targets Kakao Android SDK v2
+    implementation "com.kakao.sdk:v2-user:2.20.6"
 }

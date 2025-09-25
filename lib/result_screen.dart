@@ -115,7 +115,7 @@ class _ResultScreenState extends State<ResultScreen> {
 
   Future<void> sendResultMessage(String resultMessage) async {
     // Base URL 설정
-    final baseUrl = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/update/type_code';
+    final baseUrl = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/update/type_code/';
 
     try {
       // SharedPreferences에서 UUID 가져오기
@@ -128,14 +128,30 @@ class _ResultScreenState extends State<ResultScreen> {
         return;
       }
 
-      // URL에 쿼리스트링 추가
-      final url = Uri.parse('$baseUrl?uuid=$uuid&type_code=$resultMessage');
-
-      // GET 요청 (fetch와 유사한 방식)
-      final response = await http.get(url);
+      final url = Uri.parse(baseUrl);
+      http.Response response;
+      int retry = 0;
+      int delay = 1;
+      do {
+        response = await http.post(
+          url,
+          headers: {'Content-Type': 'application/json'},
+          body: json.encode({'uuid': uuid, 'type_code': resultMessage}),
+        );
+        if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 404) break;
+        await Future.delayed(Duration(seconds: delay));
+        delay *= 2;
+        retry++;
+      } while (retry < 3);
       if(response.statusCode == 200){
         await prefs.setString('user_type', resultMessage);
         //print('Type saved to sharedPreferences: $resultMessage');
+      } else if(response.statusCode == 400 || response.statusCode == 404){
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('타입코드 미등록')),
+          );
+        }
       }
       //print('Response status: ${response.statusCode}');
       //print('Response body: ${response.body}');

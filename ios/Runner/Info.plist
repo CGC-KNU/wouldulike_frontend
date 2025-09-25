@@ -43,9 +43,26 @@
 		</array>
 		<key>CADisableMinimumFrameDurationOnPhone</key>
 		<true/>
-		<key>UIApplicationSupportsIndirectInputEvents</key>
-		<true/>
-		<key>UIStatusBarHidden</key>
-		<false/>
-	</dict>
+		                <key>UIApplicationSupportsIndirectInputEvents</key>
+                        <true/>
+                        <key>UIStatusBarHidden</key>
+                        <false/>
+                        <key>LSApplicationQueriesSchemes</key>
+                        <array>
+                            <string>kakaokompassauth</string>
+                            <string>kakaolink</string>
+                            <string>kakaotalk</string>
+                        </array>
+
+                        <key>CFBundleURLTypes</key>
+                        <array>
+                            <dict>
+                                <key>CFBundleURLSchemes</key>
+                                <array>
+                                    <!-- 네이티브 앱 키로 시작하는 kakao 스킴 (이미 올바름) -->
+                                    <string>kakao967525b584e9c1e2a2b5253888b42c83</string>
+                                </array>
+                            </dict>
+                        </array>
+                </dict>
 </plist>

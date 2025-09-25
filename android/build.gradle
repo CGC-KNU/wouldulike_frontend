@@ -1,21 +1,16 @@
-buildscript {
-    repositories {
-        google()
-        mavenCentral()
-    }
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.2.2'
-    }
-}
+// android/build.gradle  (root)
 
-allprojects {
-    repositories {
-        google()
-        mavenCentral()
-    }
-}
+// 🔹 신형 구조에서는 buildscript/classpath, allprojects 제거
+//    리포지토리/플러그인 관리는 settings.gradle의 pluginManagement / dependencyResolutionManagement가 담당
+
+ext.flutter = [
+        compileSdkVersion: 35,
+        minSdkVersion    : 29,
+        targetSdkVersion : 35
+]
 
 rootProject.buildDir = "../build"
+
 subprojects {
     project.buildDir = "${rootProject.buildDir}/${project.name}"
 }

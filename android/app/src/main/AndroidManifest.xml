@@ -1,16 +1,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     package="com.coggiri.new1">
 
-    <!-- 인터넷 권한 -->
+    <!-- 인터넷/위치 권한 -->
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- 위치 권한 (추가됨) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
 
-    <!-- 앱이 수행할 queries 설정 -->
+    <!-- 외부 앱 열기/텍스트 처리 쿼리 -->
     <queries>
-        <!-- URL 실행을 위한 intent -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />
@@ -21,7 +19,18 @@
             <category android:name="android.intent.category.BROWSABLE" />
             <data android:scheme="https" />
         </intent>
-        <!-- 텍스트 처리 -->
+        <!-- For KakaoTalk detection and deep links on Android 11+ -->
+        <package android:name="com.kakao.talk" />
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="kakaolink" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="@string/kakao_scheme" />
+        </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT" />
             <data android:mimeType="text/plain" />
@@ -30,11 +39,11 @@
 
     <application
         android:label="wouldUlike"
-        android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:theme="@style/NormalTheme"> <!-- 기본 테마로 설정 -->
+        android:theme="@style/NormalTheme"
+        android:enableOnBackInvokedCallback="true">
 
-        <!-- 메인 액티비티 설정 -->
+        <!-- 메인 액티비티 -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -43,21 +52,43 @@
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|layoutDirection|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
-            <!-- Flutter 테마 -->
+
             <meta-data
                 android:name="io.flutter.embedding.android.NormalTheme"
                 android:resource="@style/NormalTheme" />
 
-            <!-- 인텐트 필터 -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Flutter 내장 설정 -->
+        <!-- Flutter 임베딩 버전 -->
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+
+        <!-- Kakao SDK App Key (strings.xml에 정의) -->
+        <meta-data
+            android:name="com.kakao.sdk.AppKey"
+            android:value="@string/kakao_app_key" />
+
+        <!-- Kakao 인증은 CustomTabsActivity가 직접 딥링크를 받도록 설정 -->
+
+        <!-- Ensure CustomTabs activity can directly receive kakao://oauth redirect -->
+        <activity
+            android:name="com.kakao.sdk.flutter.AuthCodeCustomTabsActivity"
+            tools:node="merge">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="kakao967525b584e9c1e2a2b5253888b42c83"
+                    android:host="oauth" />
+            </intent-filter>
+        </activity>
+
+        <!-- 의도적으로 AuthCodeHandlerActivity 선언을 두지 않음(중복 방지) -->
     </application>
 </manifest>

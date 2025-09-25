@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:new1/start_survey.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
+import 'services/auth_service.dart';
 class MyScreen extends StatefulWidget {
   @override
   _MyScreenState createState() => _MyScreenState();
@@ -9,6 +11,7 @@ class MyScreen extends StatefulWidget {
 class _MyScreenState extends State<MyScreen> {
   String uuid = '';
   String typeCode = '';
+  String type_name = '';
   String description = '';
   String summary = '';
   String menu_mbti = '';
@@ -16,6 +19,7 @@ class _MyScreenState extends State<MyScreen> {
   String matching_type = '';
   String non_matching = '';
   bool isLoading = true;
+  bool isKakaoLoggedIn = false;
 
   @override
   void initState() {
@@ -31,6 +35,7 @@ class _MyScreenState extends State<MyScreen> {
       setState(() {
         uuid = shortUuid;
         typeCode = prefs.getString('user_type') ?? '정보 없음';
+        type_name = prefs.getString('type_name') ?? '정보 없음';
         description = prefs.getString('type_description') ?? '설명 정보를 불러올 수 없습니다.';
         summary = prefs.getString('type_summary') ?? '정보 없음';
         menu_mbti = prefs.getString('menu_and_mbti') ?? '정보 없음';
@@ -38,12 +43,32 @@ class _MyScreenState extends State<MyScreen> {
         matching_type = prefs.getString('matching_type') ?? '정보 없음';
         non_matching = prefs.getString('non_matching') ?? '정보 없음';
         isLoading = false;
+        isKakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
       });
     } catch (e) {
       print('Error loading user data: $e');
       setState(() {
         isLoading = false;
       });
+    }
+  }
+
+  Future<void> _handleKakaoLogin() async {
+    try {
+      final installed = await isKakaoTalkInstalled();
+      OAuthToken token = installed
+          ? await UserApi.instance.loginWithKakaoTalk()
+          : await UserApi.instance.loginWithKakaoAccount();
+      final prefs = await SharedPreferences.getInstance();
+      final guestUuid = prefs.getString('user_uuid');
+      await AuthService.loginWithKakao(token.accessToken, guestUuid: guestUuid);
+      setState(() {
+        isKakaoLoggedIn = true;
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('카카오 로그인 실패: $e')),
+      );
     }
   }
 
@@ -86,18 +111,61 @@ class _MyScreenState extends State<MyScreen> {
               screenHeight: screenHeight,
               child: Column(
                 children: [
+                  Text(
+                    "당신의 유형은?",
+                    style: TextStyle(
+                      fontSize: screenWidth * 0.045,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black87,
+                    ),
+                  ),
+                  SizedBox(height: screenHeight * 0.02), // 이미지와 동일 간격
                   ClipRRect(
                     borderRadius: BorderRadius.circular(16),
-                    child: Image.asset(
-                      imagePath,
-                      height: screenHeight * 0.25, // 높이 조정
-                      width: screenWidth * 0.5, // 가로 크기 조정
-                      fit: BoxFit.cover,
+                    child: Stack(
+                      children: [
+                        Image.asset(
+                          imagePath,
+                          height: screenHeight * 0.25,
+                          width: screenWidth * 0.5,
+                          fit: BoxFit.cover,
+                        ),
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: 0,
+                          child: Container(
+                            height: screenHeight * 0.05,
+                            alignment: Alignment.center,
+                            padding: EdgeInsets.symmetric(
+                              vertical: screenHeight * 0.005,
+                            ),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.6),
+                                ],
+                              ),
+                            ),
+                            child: Text(
+                              typeCode,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: screenWidth * 0.038,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   SizedBox(height: screenHeight * 0.02),
                   Text(
-                    "당신의 유형: $typeCode",
+                    "$type_name",
                     style: TextStyle(
                       fontSize: screenWidth * 0.045,
                       fontWeight: FontWeight.w600,
@@ -105,14 +173,6 @@ class _MyScreenState extends State<MyScreen> {
                     ),
                   ),
                   SizedBox(height: screenHeight * 0.01),
-                  Text(
-                    "게스트 ID: $uuid",
-                    style: TextStyle(
-                      fontSize: screenWidth * 0.04,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -213,6 +273,17 @@ class _MyScreenState extends State<MyScreen> {
                 ),
               ),
             ),
+            if (!isKakaoLoggedIn) ...[
+              SizedBox(
+                width: double.infinity,
+                height: screenHeight * 0.085,
+                child: OutlinedButton(
+                  onPressed: _handleKakaoLogin,
+                  child: const Text('카카오 로그인'),
+                ),
+              ),
+              SizedBox(height: screenHeight * 0.02),
+            ],
             SizedBox(height: screenHeight * 0.03), // 버튼 아래 여백 추가
           ],
         ),
