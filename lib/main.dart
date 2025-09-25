@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'start_survey.dart';
 import 'home.dart';
 import 'main2.dart';
 import 'package:http/http.dart' as http;
@@ -245,7 +244,7 @@ class _MainScreenState extends State<MainScreen> {
         } else {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => StartSurveyScreen()),
+            MaterialPageRoute(builder: (context) => MainAppScreen()),
           );
         }
       } else {
@@ -277,7 +276,7 @@ class _MainScreenState extends State<MainScreen> {
           } else {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (context) => StartSurveyScreen()),
+              MaterialPageRoute(builder: (context) => MainAppScreen()),
             );
           }
         } else {
@@ -308,7 +307,7 @@ class _MainScreenState extends State<MainScreen> {
           // 새로운 UUID 생성 후 바로 설문 화면으로 이동
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (context) => StartSurveyScreen()),
+            MaterialPageRoute(builder: (context) => MainAppScreen()),
           );
         } else {
           throw Exception('UUID creation failed: Response does not contain UUID');
