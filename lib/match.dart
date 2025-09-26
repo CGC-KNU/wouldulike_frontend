@@ -7,6 +7,7 @@ import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 
 class MatchingScreen extends StatefulWidget {
+  const MatchingScreen({super.key});
   @override
   _MatchingScreenState createState() => _MatchingScreenState();
 }
@@ -196,17 +197,26 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         final userLon = position?['lon'] ?? 128.6014;
 
         print('6. 음식점 데이터 매핑 시작');
-        final mappedRestaurants = restaurants.map((restaurant) {
+        final prefs = await SharedPreferences.getInstance();
+
+        final mappedRestaurants = restaurants.map<Map<String, dynamic>>((restaurant) {
           final restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
           final restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
 
           final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+          final name = restaurant['name'] ?? '이름 없음';
+          final address = restaurant['road_address'] ?? '주소 없음';
+          final isLiked = prefs.getBool('liked_${name}_${address}') ?? false;
 
           final mapped = {
-            'name': restaurant['name'] ?? '이름 없음',
-            'road_address': restaurant['road_address'] ?? '주소 없음',
+            'name': name,
+            'road_address': address,
+            'category_1': restaurant['category_1'] ?? '카테고리 없음',
             'category_2': restaurant['category_2'] ?? '카테고리 없음',
+            'x': restaurant['x']?.toString(),
+            'y': restaurant['y']?.toString(),
             'distance': distance,
+            'isLiked': isLiked,
           };
           print('매핑된 음식점: $mapped');
           return mapped;
@@ -231,6 +241,71 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
     }
   }
 
+  Future<void> _toggleRestaurantLike(String foodName, int restaurantIndex) async {
+    final restaurants = foodToRestaurants[foodName];
+    if (restaurants == null || restaurantIndex < 0 || restaurantIndex >= restaurants.length) {
+      return;
+    }
+
+    final prefs = await SharedPreferences.getInstance();
+    final restaurant = restaurants[restaurantIndex];
+    final name = restaurant['name']?.toString() ?? '';
+    final address = restaurant['road_address']?.toString() ?? '';
+    if (name.isEmpty || address.isEmpty) {
+      return;
+    }
+
+    final currentlyLiked = restaurant['isLiked'] == true;
+    final newLiked = !currentlyLiked;
+
+    if (!mounted) return;
+    setState(() {
+      restaurants[restaurantIndex]['isLiked'] = newLiked;
+    });
+
+    await prefs.setBool('liked_${name}_${address}', newLiked);
+
+    Map<String, dynamic> allLiked = {};
+    final savedLikedAll = prefs.getString('liked_restaurants_all');
+    if (savedLikedAll != null && savedLikedAll.isNotEmpty) {
+      try {
+        allLiked = Map<String, dynamic>.from(json.decode(savedLikedAll));
+      } catch (_) {
+        allLiked = {};
+      }
+    }
+
+    final compositeKey = '$name|$address';
+    if (newLiked) {
+      final storedRestaurant = Map<String, dynamic>.from(restaurants[restaurantIndex]);
+      allLiked[compositeKey] = storedRestaurant;
+    } else {
+      allLiked.remove(compositeKey);
+    }
+    await prefs.setString('liked_restaurants_all', json.encode(allLiked));
+
+    final uuid = prefs.getString('user_uuid') ?? '';
+    if (uuid.isEmpty) {
+      return;
+    }
+
+    await _updateFavoriteRestaurant(uuid, name, newLiked ? 'add' : 'remove');
+  }
+
+  Future<void> _updateFavoriteRestaurant(String uuid, String restaurantName, String action) async {
+    if (restaurantName.isEmpty) return;
+
+    final url = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/update/favorite_restaurants/');
+    try {
+      await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'uuid': uuid, 'restaurant': restaurantName, 'action': action}),
+      );
+    } catch (e) {
+      print('Error updating favorite restaurant: $e');
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
@@ -532,6 +607,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                   final distanceText = distance != null
                       ? '거리: ${distance.toStringAsFixed(1)} km'
                       : '거리 정보 없음';
+                  final isLiked = restaurant['isLiked'] == true;
 
                   return Container(
                     margin: const EdgeInsets.only(bottom: 16.0),
@@ -555,6 +631,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                           borderRadius: BorderRadius.circular(12.0),
                           child: Container(
                             height: 60,
+                            width: 60,
                             color: Colors.white,
                           ),
                         ),
@@ -590,6 +667,12 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                               ),
                             ],
                           ),
+                        ),
+                        const SizedBox(width: 8.0),
+                        IconButton(
+                          icon: Icon(isLiked ? Icons.favorite : Icons.favorite_border),
+                          color: isLiked ? Colors.red : Colors.grey,
+                          onPressed: () => _toggleRestaurantLike(foodName, restaurantIndex),
                         ),
                       ],
                     ),

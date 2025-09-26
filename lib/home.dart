@@ -39,6 +39,7 @@ class UrlLauncherUtil {
 }
 
 class HomeContent extends StatefulWidget {
+  const HomeContent({super.key});
   @override
   _HomeContentState createState() => _HomeContentState();
 }
