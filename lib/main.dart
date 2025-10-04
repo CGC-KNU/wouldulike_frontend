@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'home.dart';
 import 'main2.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -9,7 +8,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'login_screen.dart';
-import 'package:kakao_flutter_sdk_auth/kakao_flutter_sdk_auth.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/services.dart';
@@ -54,9 +52,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: isLoggedIn ? MainScreen() : const LoginScreen(),
+      home: isLoggedIn ? const MainScreen() : const LoginScreen(),
       routes: {
-        '/main': (context) => MainScreen(),
+        '/main': (context) => const MainScreen(),
         '/login': (context) => const LoginScreen(),
       },
     );
@@ -64,34 +62,47 @@ class MyApp extends StatelessWidget {
 }
 
 class MainScreen extends StatefulWidget {
+  const MainScreen({super.key});
+
   @override
-  _MainScreenState createState() => _MainScreenState();
+  MainScreenState createState() => MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
-  static const String _uuidKey = 'user_uuid'; // SharedPreferences 키
+  static const String _uuidKey = 'user_uuid'; // SharedPreferences ??
+
+  void _navigateToMainScreen() {
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => const MainAppScreen(),
+      ),
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     _initializeApp();
   }
+
   Future<void> _initializeApp() async {
     final prefs = await SharedPreferences.getInstance();
     await _initFirebaseMessaging();
 
-    // 🧭 위치 권한 요청 및 수집
+    // ?㎛ ?꾩튂 沅뚰븳 ?붿껌 諛??섏쭛
     await _getAndSaveUserLocation();
 
     final storedUUID = prefs.getString(_uuidKey);
     //final storedUUID = null;
     if (storedUUID != null) {
-      // 저장된 UUID가 있으면 type 확인
+      // ??λ맂 UUID媛 ?덉쑝硫?type ?뺤씤
       print('Stored UUID found: $storedUUID');
       await _checkType(storedUUID);
     } else {
-      // 저장된 UUID가 없으면 서버에서 새로운 UUID 생성
+      // ??λ맂 UUID媛 ?놁쑝硫??쒕쾭?먯꽌 ?덈줈??UUID ?앹꽦
       print('No UUID found in SharedPreferences. Generating a new UUID...');
       await _createUUID();
     }
@@ -117,7 +128,8 @@ class _MainScreenState extends State<MainScreen> {
       return;
     }
 
-    final url = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/update/fcm_token/');
+    final url = Uri.parse(
+        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/update/fcm_token/');
 
     try {
       final response = await http.post(
@@ -127,20 +139,19 @@ class _MainScreenState extends State<MainScreen> {
       );
 
       if (response.statusCode == 200) {
-        print('✅ FCM token updated successfully');
+        print('FCM token updated successfully');
       } else {
-        print('❌ Failed to update FCM token: ${response.statusCode}');
+        print('Failed to update FCM token: ${response.statusCode}');
       }
     } catch (e) {
-      print('🚨 Error updating FCM token: $e');
+      print('Error updating FCM token: $e');
     }
   }
-
 
   Future<void> _getAndSaveUserLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      print('❌ 위치 서비스 꺼짐');
+      print('Location services are disabled');
       return;
     }
 
@@ -148,22 +159,22 @@ class _MainScreenState extends State<MainScreen> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        print('❌ 위치 권한 거부됨');
+        print('Location permission denied');
         return;
       }
     }
 
     if (permission == LocationPermission.deniedForever) {
-      print('❌ 위치 권한 영구 거부됨');
+      print('Location permission permanently denied');
       return;
     }
 
-    // ✅ 위치 가져오기
+    // ???꾩튂 媛?몄삤湲?
     Position position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
 
-    print('📍 현재 위치: ${position.latitude}, ${position.longitude}');
+    print('Current location: ${position.latitude}, ${position.longitude}');
 
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble('user_lat', position.latitude);
@@ -181,36 +192,40 @@ class _MainScreenState extends State<MainScreen> {
         final data = json.decode(checkResponse.body);
 
         if (data['type_code'] != null) {
-          // Type이 존재하면 음식과 음식점 데이터를 먼저 가져옴
-         print('Type found: ${data['type_code']}');
+          // Type??議댁옱?섎㈃ ?뚯떇怨??뚯떇???곗씠?곕? 癒쇱? 媛?몄샂
+          print('Type found: ${data['type_code']}');
 
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString('user_type', data['type_code']);
 
-          // 1. 타입에 맞는 음식 5가지 가져오기
-          final foodUrl = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$uuid';
-         http.Response foodResponse;
-         int retry = 0;
-         int delay = 1;
-         do {
-           foodResponse = await http.get(Uri.parse(foodUrl));
-           if (foodResponse.statusCode == 200 || foodResponse.statusCode == 400 || foodResponse.statusCode == 404) break;
-           await Future.delayed(Duration(seconds: delay));
-           delay *= 2;
-           retry++;
-         } while (retry < 3);
+          // 1. ??낆뿉 留욌뒗 ?뚯떇 5媛吏 媛?몄삤湲?
+          final foodUrl =
+              'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$uuid';
+          http.Response foodResponse;
+          int retry = 0;
+          int delay = 1;
+          do {
+            foodResponse = await http.get(Uri.parse(foodUrl));
+            if (foodResponse.statusCode == 200 ||
+                foodResponse.statusCode == 400 ||
+                foodResponse.statusCode == 404) break;
+            await Future.delayed(Duration(seconds: delay));
+            delay *= 2;
+            retry++;
+          } while (retry < 3);
           if (foodResponse.statusCode == 200) {
             final foodData = json.decode(foodResponse.body);
             final foods = foodData['random_foods'];
 
-            // 음식 이름들 저장
+            // ?뚯떇 ?대쫫?????
             List<String> foodNames = foods
                 .map<String>((food) => food['food_name'].toString())
                 .toList();
             await prefs.setStringList('recommended_foods', foodNames);
 
-            // 2. 음식점 데이터 가져오기
-            final restaurantUrl = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
+            // 2. ?뚯떇???곗씠??媛?몄삤湲?
+            final restaurantUrl =
+                'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
             http.Response restaurantResponse;
             retry = 0;
             delay = 1;
@@ -220,7 +235,9 @@ class _MainScreenState extends State<MainScreen> {
                 headers: {'Content-Type': 'application/json'},
                 body: json.encode({'food_names': foodNames}),
               );
-              if (restaurantResponse.statusCode == 200 || restaurantResponse.statusCode == 400 || restaurantResponse.statusCode == 404) break;
+              if (restaurantResponse.statusCode == 200 ||
+                  restaurantResponse.statusCode == 400 ||
+                  restaurantResponse.statusCode == 404) break;
               await Future.delayed(Duration(seconds: delay));
               delay *= 2;
               retry++;
@@ -228,24 +245,21 @@ class _MainScreenState extends State<MainScreen> {
 
             if (restaurantResponse.statusCode == 200) {
               final restaurantData = json.decode(restaurantResponse.body);
-              await prefs.setString('restaurants_data', json.encode(restaurantData['random_restaurants']));
-            } else if (restaurantResponse.statusCode == 400 || restaurantResponse.statusCode == 404) {
+              await prefs.setString('restaurants_data',
+                  json.encode(restaurantData['random_restaurants']));
+            } else if (restaurantResponse.statusCode == 400 ||
+                restaurantResponse.statusCode == 404) {
               _showTypeError();
             }
-          } else if (foodResponse.statusCode == 400 || foodResponse.statusCode == 404) {
+          } else if (foodResponse.statusCode == 400 ||
+              foodResponse.statusCode == 404) {
             _showTypeError();
           }
 
-          // 데이터를 모두 가져온 후 메인 화면으로 이동
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => MainAppScreen()),
-          );
+          // ?곗씠?곕? 紐⑤몢 媛?몄삩 ??硫붿씤 ?붾㈃?쇰줈 ?대룞
+          _navigateToMainScreen();
         } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => MainAppScreen()),
-          );
+          _navigateToMainScreen();
         }
       } else {
         throw Exception('Failed to check type');
@@ -255,29 +269,25 @@ class _MainScreenState extends State<MainScreen> {
       _showErrorDialog();
     }
   }
+
   Future<void> _checkUUID() async {
     try {
-      final checkUrl = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
+      final checkUrl = Uri.parse(
+          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
       final checkResponse = await http.get(checkUrl);
 
       if (checkResponse.statusCode == 200) {
         final data = json.decode(checkResponse.body);
 
         if (data['uuid'] != null) {
-          // UUID를 SharedPreferences에 저장
+          // UUID瑜?SharedPreferences?????
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString(_uuidKey, data['uuid']);
 
           if (data['type_code'] != null) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => MainAppScreen()),
-            );
+            _navigateToMainScreen();
           } else {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => MainAppScreen()),
-            );
+            _navigateToMainScreen();
           }
         } else {
           await _createUUID();
@@ -290,6 +300,7 @@ class _MainScreenState extends State<MainScreen> {
       _showErrorDialog();
     }
   }
+
   Future<void> _createUUID() async {
     try {
       final url = Uri.parse(
@@ -304,13 +315,11 @@ class _MainScreenState extends State<MainScreen> {
           await prefs.setString(_uuidKey, data['uuid']);
           print('New UUID created and saved: ${data['uuid']}');
 
-          // 새로운 UUID 생성 후 바로 설문 화면으로 이동
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (context) => MainAppScreen()),
-          );
+          // ?덈줈??UUID ?앹꽦 ??諛붾줈 ?ㅻЦ ?붾㈃?쇰줈 ?대룞
+          _navigateToMainScreen();
         } else {
-          throw Exception('UUID creation failed: Response does not contain UUID');
+          throw Exception(
+              'UUID creation failed: Response does not contain UUID');
         }
       } else {
         throw Exception('Failed to create UUID');
@@ -321,12 +330,13 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-void _showErrorDialog() {
-    showDialog(
+  void _showErrorDialog() {
+    if (!mounted) return;
+    showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Error'),
-        content: const Text('UUID를 확인하거나 생성하는 데 문제가 발생했습니다.'),
+        content: const Text('There was a problem verifying your UUID.'),
         actions: [
           TextButton(
             onPressed: () {
@@ -335,7 +345,7 @@ void _showErrorDialog() {
                 _isLoading = false;
               });
             },
-            child: const Text('확인'),
+            child: const Text('OK'),
           ),
         ],
       ),
@@ -343,8 +353,9 @@ void _showErrorDialog() {
   }
 
   void _showTypeError() {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('타입코드 미등록')),
+      const SnackBar(content: Text('Type information is missing.')),
     );
     setState(() {
       _isLoading = false;
@@ -361,9 +372,10 @@ void _showErrorDialog() {
             Spacer(flex: 9),
             Center(
               child: Image.asset(
-                'assets/images/Logo-Final.png', // 로고 이미지 경로
-                width: MediaQuery.of(context).size.width * 0.6, // 화면 너비의 50%로 설정
-                fit: BoxFit.contain, // 이미지 비율 유지
+                'assets/images/Logo-Final.png', // 濡쒓퀬 ?대?吏 寃쎈줈
+                width: MediaQuery.of(context).size.width *
+                    0.6, // ?붾㈃ ?덈퉬??50%濡??ㅼ젙
+                fit: BoxFit.contain, // ?대?吏 鍮꾩쑉 ?좎?
               ),
             ),
             Spacer(flex: 10),
@@ -371,13 +383,13 @@ void _showErrorDialog() {
         ),
       );
     }
-    // 로딩이 아닐 때의 화면
+    // 濡쒕뵫???꾨땺 ?뚯쓽 ?붾㈃
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
         child: ElevatedButton(
           onPressed: _checkUUID,
-          child: const Text('다시 시도'),
+          child: const Text('Retry'),
         ),
       ),
     );

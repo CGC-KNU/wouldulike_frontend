@@ -1,10 +1,14 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/services.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:new1/start_survey.dart';
 import 'package:new1/wish.dart';
 
 import 'services/auth_service.dart';
+import 'services/coupon_service.dart';
+import 'services/api_client.dart';
 
 class MyScreen extends StatefulWidget {
   const MyScreen({super.key});
@@ -26,6 +30,9 @@ class _MyScreenState extends State<MyScreen> {
   bool hasTypeInfo = false;
   bool isLoading = true;
   bool isKakaoLoggedIn = false;
+  String? inviteCode;
+  bool _isInviteLoading = false;
+  String? _inviteError;
 
   @override
   void initState() {
@@ -38,20 +45,29 @@ class _MyScreenState extends State<MyScreen> {
       final prefs = await SharedPreferences.getInstance();
       final storedUuid = prefs.getString('user_uuid');
       final storedTypeCode = prefs.getString('user_type');
+      final loggedIn = prefs.getBool('kakao_logged_in') ?? false;
       setState(() {
         uuid = _shortenUuid(storedUuid);
         typeCode = storedTypeCode ?? '정보 없음';
         typeName = prefs.getString('type_name') ?? '정보 없음';
-        description = prefs.getString('type_description') ?? '설명 정보를 불러오지 못했습니다.';
+        description =
+            prefs.getString('type_description') ?? '설명 정보를 불러오지 못했어요.';
         summary = prefs.getString('type_summary') ?? '정보 없음';
         menuMbti = prefs.getString('menu_and_mbti') ?? '정보 없음';
         mealExample = prefs.getString('meal_example') ?? '정보 없음';
         matchingType = prefs.getString('matching_type') ?? '정보 없음';
         nonMatching = prefs.getString('non_matching') ?? '정보 없음';
         hasTypeInfo = storedTypeCode != null && storedTypeCode.trim().isNotEmpty;
-        isKakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
+        isKakaoLoggedIn = loggedIn;
+        if (!loggedIn) {
+          inviteCode = null;
+          _inviteError = null;
+        }
         isLoading = false;
       });
+      if (loggedIn) {
+        await _loadInviteCode();
+      }
     } catch (e) {
       debugPrint('Error loading user data: $e');
       setState(() {
@@ -75,16 +91,165 @@ class _MyScreenState extends State<MyScreen> {
       final prefs = await SharedPreferences.getInstance();
       final guestUuid = prefs.getString('user_uuid');
       await AuthService.loginWithKakao(token.accessToken, guestUuid: guestUuid);
+      await prefs.setBool('signup_coupon_checked', false);
       if (!mounted) return;
       setState(() {
         isKakaoLoggedIn = true;
       });
+      await _loadInviteCode();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('카카오 로그인에 실패했어요: $e')),
       );
     }
+  }
+
+  Future<void> _loadInviteCode() async {
+    setState(() {
+      _isInviteLoading = true;
+      _inviteError = null;
+    });
+    try {
+      final result = await CouponService.fetchInviteCode();
+      final code = result['code']?.toString() ??
+          result['invite_code']?.toString() ??
+          result['coupon_code']?.toString();
+      if (!mounted) return;
+      setState(() {
+        inviteCode = code;
+        _isInviteLoading = false;
+      });
+    } on ApiAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isInviteLoading = false;
+        _inviteError = e.message;
+      });
+    } on ApiHttpException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isInviteLoading = false;
+        _inviteError =
+            _extractDetailMessage(e.body) ?? '추천 코드를 불러오지 못했어요.';
+      });
+    } on ApiNetworkException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isInviteLoading = false;
+        _inviteError = '네트워크 오류: ' + e.toString();
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _isInviteLoading = false;
+        _inviteError = e.toString();
+      });
+    }
+  }
+
+  String? _extractDetailMessage(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        if (decoded['detail'] != null) return decoded['detail'].toString();
+        if (decoded['message'] != null) return decoded['message'].toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> _copyInviteCode() async {
+    if (inviteCode == null || inviteCode!.isEmpty) return;
+    await Clipboard.setData(ClipboardData(text: inviteCode!));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('추천 코드가 복사되었습니다.')),
+    );
+  }
+
+  Widget _buildInviteCard(double screenWidth) {
+    return Container(
+      padding: EdgeInsets.all(screenWidth * 0.04),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF2FF),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.card_giftcard_outlined, color: Color(0xFF312E81)),
+              const SizedBox(width: 8),
+              const Text(
+                '내 추천 코드',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: '다시 불러오기',
+                onPressed: _isInviteLoading ? null : _loadInviteCode,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_isInviteLoading)
+            const Center(
+              child: SizedBox(
+                height: 24,
+                width: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (_inviteError != null)
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _inviteError!,
+                  style: const TextStyle(color: Color(0xFFB91C1C)),
+                ),
+                const SizedBox(height: 8),
+                TextButton(
+                  onPressed: _loadInviteCode,
+                  child: const Text('다시 시도'),
+                ),
+              ],
+            )
+          else if (inviteCode != null && inviteCode!.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      inviteCode!,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF312E81),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy),
+                    tooltip: '복사하기',
+                    onPressed: _copyInviteCode,
+                  ),
+                ],
+              ),
+            )
+          else
+            const Text('추천 코드를 불러오지 못했어요.'),
+        ],
+      ),
+    );
   }
 
   @override
@@ -118,6 +283,11 @@ class _MyScreenState extends State<MyScreen> {
               children: [
                 _buildLoginBanner(screenWidth, screenHeight),
                 SizedBox(height: screenHeight * 0.03),
+                if (isKakaoLoggedIn) ...[
+                  SizedBox(height: screenHeight * 0.02),
+                  _buildInviteCard(screenWidth),
+                  SizedBox(height: screenHeight * 0.03),
+                ],
                 _buildMenuTile(
                   context: context,
                   icon: Icons.info_outline,

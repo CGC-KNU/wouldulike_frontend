@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'nearby_restaurants_screen.dart';
-import 'match.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 
@@ -134,10 +132,6 @@ class _HomeContentState extends State<HomeContent> {
         });
 
         // 로드된 데이터 확인
-        for (var food in recommendedFoods) {
-          //print('음식 이름: ${food['food_name']}');
-          //print('이미지 URL: ${food['food_image_url']}');
-        }
 
       } catch (e) {
         //print('Error decoding food info: $e');
@@ -243,7 +237,7 @@ class _HomeContentState extends State<HomeContent> {
       if (typeCode == null || typeCode.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('타입코드 미등록')),
+            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
           );
         }
         _isFetching = false;
@@ -262,7 +256,7 @@ class _HomeContentState extends State<HomeContent> {
         retry++;
       } while (retry < 3);
       if (foodResponse.statusCode == 200) {
-        final Map<String, dynamic> foodData = json.decode(foodResponse.body);
+        final Map<String, dynamic> foodData = jsonDecode(utf8.decode(foodResponse.bodyBytes));
         final List<dynamic> foods = foodData['random_foods'] ?? [];
 
         final foodNames =
@@ -296,7 +290,7 @@ class _HomeContentState extends State<HomeContent> {
         } while (retry < 3);
 
         if (restResponse.statusCode == 200) {
-          final restData = json.decode(restResponse.body);
+          final restData = jsonDecode(utf8.decode(restResponse.bodyBytes));
           final List<dynamic> restaurants = restData['random_restaurants'] ?? [];
           await prefs.setString(
               'restaurants_data', json.encode(restaurants));
@@ -337,7 +331,7 @@ class _HomeContentState extends State<HomeContent> {
         } else if (restResponse.statusCode == 400 || restResponse.statusCode == 404) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('타입코드 미등록')),
+              const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
             );
           }
         } else {
@@ -346,7 +340,7 @@ class _HomeContentState extends State<HomeContent> {
       } else if (foodResponse.statusCode == 400 || foodResponse.statusCode == 404) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('타입코드 미등록')),
+            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
           );
         }
       } else {
@@ -355,7 +349,7 @@ class _HomeContentState extends State<HomeContent> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('데이터를 불러오는데 실패했습니다: $e')),
+          SnackBar(content: Text('데이터를 불러오지 못했어요: $e')),
         );
       }
     } finally {
@@ -371,7 +365,7 @@ class _HomeContentState extends State<HomeContent> {
           children: [
             _buildMenuCard(
               'assets/images/food_image0.png',
-              '추천 음식이 없습니다',
+              '추천 음식이 아직 준비되지 않았어요',
               cardWidth,
             ),
           ],
@@ -382,31 +376,44 @@ class _HomeContentState extends State<HomeContent> {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: recommendedFoods.map<Widget>((Map<String, dynamic> food) =>
+        children: recommendedFoods.map<Widget>((food) =>
             _buildMenuCard(
-              food['food_image_url'] ?? 'assets/images/food_image0.png',
-              food['food_name'] ?? '이름 없음',
+              food['food_image_url']?.toString() ?? 'assets/images/food_image0.png',
+              food['food_name']?.toString() ?? '이름 없음',
               cardWidth,
+              onTap: () => _onFoodSelected(food),
             ),
         ).toList(),
       ),
     );
   }
 
-  Widget _buildRestaurantCard(Map<String, dynamic> restaurant) {
-    // 사용자가 음식점 카드를 클릭했을 때 상세정보 페이지로 이동
-    return GestureDetector(
-        onTap: () {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => RestaurantDetailScreen(restaurant: restaurant),
+
+  void _onFoodSelected(Map<String, dynamic> food) {
+    final foodName = food['food_name']?.toString().trim() ?? '';
+    if (foodName.isEmpty) {
+      return;
+    }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FoodRestaurantListScreen(
+          foodName: foodName,
+          imageUrl: food['food_image_url']?.toString(),
         ),
-      );
-    },
-    child: Container(
-      margin: EdgeInsets.only(bottom: 16.0),
-      padding: EdgeInsets.all(8.0),
+      ),
+    );
+  }
+
+  Widget _buildRestaurantCard(Map<String, dynamic> restaurant) {
+    final distance = restaurant['distance'];
+    final distanceText = distance is num
+        ? '거리 ${distance.toStringAsFixed(1)} km'
+        : null;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16.0),
+      padding: const EdgeInsets.all(8.0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.0),
@@ -415,7 +422,7 @@ class _HomeContentState extends State<HomeContent> {
             color: Colors.grey.withOpacity(0.2),
             spreadRadius: 1,
             blurRadius: 4,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
@@ -428,42 +435,48 @@ class _HomeContentState extends State<HomeContent> {
                 borderRadius: BorderRadius.circular(12.0),
                 child: Container(
                   height: 60,
+                  width: 60,
                   color: Colors.white,
                 ),
               ),
-              SizedBox(width: 16.0),
+              const SizedBox(width: 16.0),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       restaurant['name'] ?? '이름 없음',
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: const TextStyle(
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       restaurant['road_address'] ?? '주소 없음',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: Colors.grey[600],
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF6B7280),
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    if (restaurant['distance'] != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          '📍 ${restaurant['distance'].toStringAsFixed(1)} km',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Colors.blueGrey,
-                          ),
+                    if (distanceText != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        distanceText,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF6B7280),
                         ),
                       ),
+                    ],
+                    const SizedBox(height: 4),
+                    Text(
+                      restaurant['category_2'] ?? '카테고리 없음',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF4B5563),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -482,18 +495,22 @@ class _HomeContentState extends State<HomeContent> {
                     : Colors.grey,
               ),
               onPressed: () async {
-                final bool currentStatus = _isRestaurantLiked(
-                    restaurant['name'], restaurant['road_address']);
+                final bool currentStatus =
+                    _isRestaurantLiked(restaurant['name'], restaurant['road_address']);
                 await _saveLikedStatus(
                   restaurant['name'],
                   restaurant['road_address'],
                   !currentStatus,
                 );
 
+                if (!mounted) {
+                  return;
+                }
+
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
-                      !currentStatus ? '찜 목록에 추가되었습니다.' : '찜 목록에서 제거되었습니다.',
+                      !currentStatus ? '찜 목록에 추가했어요' : '찜 목록에서 제거했습니다',
                     ),
                     duration: const Duration(seconds: 1),
                   ),
@@ -503,7 +520,6 @@ class _HomeContentState extends State<HomeContent> {
           ),
         ],
       ),
-    ),
     );
   }
   Widget _buildPromotionBanner(double width) {
@@ -549,80 +565,81 @@ class _HomeContentState extends State<HomeContent> {
   }
 
 
-  Widget _buildMenuCard(String imagePath, String title, double width) {
-    return Container(
-      width: width,
-      margin: EdgeInsets.only(right: width * 0.05),
-      decoration: BoxDecoration(
-        color: Color(0xFFF4F4F4),
-        borderRadius: BorderRadius.circular(25),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-            child: imagePath.startsWith('http')  // URL인지 확인
-                ? Image.network(
-              imagePath,
-              height: width * 0.8,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              // 로딩 중일 때 표시할 위젯
-              loadingBuilder: (context, child, loadingProgress) {
-                if (loadingProgress == null) return child;
-                return Center(
-                  child: CircularProgressIndicator(
-                    value: loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                        : null,
-                  ),
-                );
-              },
-              // 에러 발생시 기본 이미지 표시
-              errorBuilder: (context, error, stackTrace) {
-                return Image.asset(
-                  'assets/images/food_image0.png',
-                  height: width * 0.8,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                );
-              },
-            )
-                : Image.asset(
-              imagePath,
-              height: width * 0.8,
-              width: double.infinity,
-              fit: BoxFit.cover,
+  Widget _buildMenuCard(String imagePath, String title, double width, {VoidCallback? onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: width,
+        margin: EdgeInsets.only(right: width * 0.05),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF4F4F4),
+          borderRadius: BorderRadius.circular(25),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.grey.withOpacity(0.2),
+              spreadRadius: 1,
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
-          ),
-          Padding(
-            padding: EdgeInsets.all(width * 0.05),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: width * 0.08,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              child: imagePath.startsWith('http')
+                  ? Image.network(
+                      imagePath,
+                      height: width * 0.8,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Image.asset(
+                          'assets/images/food_image0.png',
+                          height: width * 0.8,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        );
+                      },
+                    )
+                  : Image.asset(
+                      imagePath,
+                      height: width * 0.8,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
             ),
-          ),
-        ],
+            Padding(
+              padding: EdgeInsets.all(width * 0.05),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: width * 0.08,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -637,10 +654,8 @@ class _HomeContentState extends State<HomeContent> {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
     final double padding = screenWidth * 0.04;
     final double cardWidth = screenWidth * 0.35;
-    final double pageViewHeight = screenWidth * 0.52;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -653,7 +668,7 @@ class _HomeContentState extends State<HomeContent> {
           height: 24,
         ),
       ),
-    body: RefreshIndicator(
+      body: RefreshIndicator(
       onRefresh: _refreshData,
       child: SingleChildScrollView(
         controller: _scrollController,
@@ -771,41 +786,225 @@ class _HomeContentState extends State<HomeContent> {
   }
 }
 
-/// 선택한 음식점의 상세 정보를 보여주는 화면
-class RestaurantDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> restaurant;
 
-  const RestaurantDetailScreen({Key? key, required this.restaurant}) : super(key: key);
+class FoodRestaurantListScreen extends StatefulWidget {
+  const FoodRestaurantListScreen({super.key, required this.foodName, this.imageUrl});
+
+  final String foodName;
+  final String? imageUrl;
+
+  @override
+  State<FoodRestaurantListScreen> createState() => _FoodRestaurantListScreenState();
+}
+
+class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
+  List<Map<String, dynamic>> _restaurants = [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRestaurants();
+  }
+
+  Future<void> _loadRestaurants() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/'),
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'food_names': [widget.foodName],
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        final restaurants =
+            (decoded['random_restaurants'] as List<dynamic>? ?? const [])
+                .map<Map<String, dynamic>>((item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+
+        final position = await LocationHelper.getLatLon();
+        final userLat = position?['lat'] ?? 35.8714;
+        final userLon = position?['lon'] ?? 128.6014;
+
+        final mapped = restaurants.map<Map<String, dynamic>>((restaurant) {
+          final restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+          final restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+          final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+          return {
+            'name': restaurant['name'] ?? '이름 없음',
+            'road_address': restaurant['road_address'] ?? '주소 정보 없음',
+            'category_2': restaurant['category_2'] ?? restaurant['category_1'] ?? '카테고리 정보 없음',
+            'distance': distance,
+          };
+        }).toList();
+
+        if (!mounted) return;
+        setState(() {
+          _restaurants = mapped;
+          _isLoading = false;
+        });
+      } else if (response.statusCode == 400 || response.statusCode == 404) {
+        if (!mounted) return;
+        setState(() {
+          _restaurants = const [];
+          _errorMessage = '추천할 만한 맛집을 찾지 못했어요.';
+          _isLoading = false;
+        });
+      } else {
+        throw Exception('음식점 정보를 불러오지 못했어요. (status ${response.statusCode})');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = '음식점 정보를 불러오지 못했어요. 다시 시도해주세요.';
+        _isLoading = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(restaurant['name'] ?? '음식점 상세정보'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0,
+        title: Text('${widget.foodName} 추천 맛집'),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '🏠 주소: ${restaurant['road_address'] ?? '정보 없음'}',
-              style: TextStyle(fontSize: 14),
+              _errorMessage!,
+              textAlign: TextAlign.center,
             ),
-            SizedBox(height: 8),
-            Text(
-              '📂 카테고리: ${restaurant['category_2'] ?? '정보 없음'}',
-              style: TextStyle(fontSize: 14),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadRestaurants,
+              child: const Text('다시 시도'),
             ),
-            SizedBox(height: 8),
-            if (restaurant['distance'] != null)
-              Text(
-                '📍 현재 거리: ${restaurant['distance'].toStringAsFixed(1)} km',
-                style: TextStyle(fontSize: 14),
-              ),
           ],
         ),
-      ),
+      );
+    }
+
+    if (_restaurants.isEmpty) {
+      return const Center(child: Text('추천할 만한 맛집을 찾지 못했어요.'));
+    }
+
+    final hasHeaderImage = widget.imageUrl != null && widget.imageUrl!.isNotEmpty;
+    final itemCount = _restaurants.length + (hasHeaderImage ? 1 : 0);
+
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: itemCount,
+      separatorBuilder: (_, __) => const SizedBox(height: 16),
+      itemBuilder: (context, index) {
+        int dataIndex = index;
+        if (hasHeaderImage) {
+          if (index == 0) {
+            return _FoodHeader(imageUrl: widget.imageUrl!, foodName: widget.foodName);
+          }
+          dataIndex -= 1;
+        }
+
+        final restaurant = _restaurants[dataIndex];
+        final distance = restaurant['distance'];
+        final distanceText = distance is num ? '거리 ${distance.toStringAsFixed(1)} km' : null;
+
+        return Card(
+          elevation: 2,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          child: ListTile(
+            title: Text(restaurant['name'] ?? '이름 없음'),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                Text(
+                  restaurant['road_address'] ?? '주소 정보 없음',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                ),
+                if (distanceText != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    distanceText,
+                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                  ),
+                ],
+                const SizedBox(height: 4),
+                Text(
+                  restaurant['category_2'] ?? '카테고리 정보 없음',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFF4B5563)),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FoodHeader extends StatelessWidget {
+  const _FoodHeader({required this.imageUrl, required this.foodName});
+
+  final String imageUrl;
+  final String foodName;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: imageUrl.startsWith('http')
+              ? Image.network(
+                  imageUrl,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Image.asset(
+                    'assets/images/food_image0.png',
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                )
+              : Image.asset(
+                  imageUrl,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          foodName,
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+        ),
+      ],
     );
   }
 }

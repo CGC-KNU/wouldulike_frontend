@@ -1,449 +1,392 @@
-﻿import 'package:flutter/material.dart';
+import 'dart:convert';
 
-class AffiliateCoupon {
-  AffiliateCoupon({
-    required this.id,
-    required this.name,
-    required this.expiresAt,
-    required this.status,
-    this.description,
-  });
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-  final String id;
-  final String name;
-  final DateTime expiresAt;
-  String status; // 'available' or 'used'
-  final String? description;
-
-  bool get isUsed => status == 'used';
-}
-
-class AffiliateStampHistory {
-  AffiliateStampHistory({
-    required this.id,
-    required this.accruedAt,
-    required this.note,
-  });
-
-  final String id;
-  final DateTime accruedAt;
-  final String note;
-}
-
-class AffiliateRestaurant {
-  AffiliateRestaurant({
-    required this.id,
-    required this.name,
-    required this.categoryId,
-    required this.categoryLabel,
-    required this.address,
-    required this.distanceKm,
-    required this.heroImage,
-    required this.galleryImages,
-    required this.description,
-    required this.phoneNumber,
-    required this.businessHours,
-    required this.stampGoal,
-    required this.stampCount,
-    required List<AffiliateCoupon> coupons,
-    required List<AffiliateStampHistory> stampHistory,
-  })  : coupons = List<AffiliateCoupon>.of(coupons),
-        stampHistory = List<AffiliateStampHistory>.of(stampHistory),
-        recentUsage = stampHistory.isNotEmpty ? stampHistory.first.accruedAt : null;
-
-  final String id;
-  final String name;
-  final String categoryId;
-  final String categoryLabel;
-  final String address;
-  final double distanceKm;
-  final String heroImage;
-  final List<String> galleryImages;
-  final String description;
-  final String phoneNumber;
-  final String businessHours;
-  final int stampGoal;
-  final List<AffiliateCoupon> coupons;
-  final List<AffiliateStampHistory> stampHistory;
-  int stampCount;
-  DateTime? recentUsage;
-
-  int get availableCouponCount => coupons.where((coupon) => !coupon.isUsed).length;
-  int get totalCouponCount => coupons.length;
-
-  void addStamp() {
-    if (stampCount >= stampGoal) return;
-
-    stampCount += 1;
-    final entry = AffiliateStampHistory(
-      id: 'stamp-${stampHistory.length + 1}',
-      accruedAt: DateTime.now(),
-      note: '관리자 적립',
-    );
-    stampHistory.insert(0, entry);
-    recentUsage = entry.accruedAt;
-
-    if (stampCount == 5 || stampCount == stampGoal) {
-      coupons.insert(
-        0,
-        AffiliateCoupon(
-          id: 'coupon-$id-${coupons.length + 1}',
-          name: stampCount == stampGoal ? '무료 메뉴 쿠폰' : '추가 적립 쿠폰',
-          expiresAt: DateTime.now().add(const Duration(days: 30)),
-          status: 'available',
-          description: '스탬프 적립 리워드로 자동 발급',
-        ),
-      );
-    }
-  }
-
-  void useCoupon(String couponId) {
-    final target = coupons.firstWhere(
-      (coupon) => coupon.id == couponId,
-      orElse: () => throw ArgumentError('Coupon not found'),
-    );
-    target.status = 'used';
-    recentUsage = DateTime.now();
-  }
-}
-
-class _AffiliateCategory {
-  const _AffiliateCategory({
-    required this.id,
-    required this.label,
-    required this.icon,
-  });
-
-  final String id;
-  final String label;
-  final String icon;
-}
+import 'services/affiliate_service.dart';
+import 'services/api_client.dart';
+import 'services/coupon_service.dart';
 
 class AffiliateBenefitsScreen extends StatefulWidget {
   const AffiliateBenefitsScreen({super.key});
 
   @override
-  State<AffiliateBenefitsScreen> createState() => _AffiliateBenefitsScreenState();
+  State<AffiliateBenefitsScreen> createState() =>
+      _AffiliateBenefitsScreenState();
 }
 
 class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
-  static const _adminPin = '0000';
-  late final List<_AffiliateCategory> _categories;
-  late final List<AffiliateRestaurant> _catalog;
-
-  String _selectedCategoryId = 'all';
-  List<AffiliateRestaurant> _visibleRestaurants = [];
+  List<AffiliateRestaurantSummary> _restaurants = [];
+  List<UserCoupon> _issuedCoupons = [];
+  Map<int, int> _couponCounts = {};
+  bool _isLoading = false;
+  String? _error;
+  bool _requiresLogin = false;
+  String _selectedCategory = 'ALL';
+  List<String> _categories = const ['ALL'];
 
   @override
   void initState() {
     super.initState();
-    _categories = _buildCategories();
-    _catalog = _buildMockRestaurants();
-    _applyFilter();
+    _load();
   }
 
-  List<_AffiliateCategory> _buildCategories() => const [
-        _AffiliateCategory(id: 'all', label: '전체', icon: '🍽️'),
-        _AffiliateCategory(id: 'korean', label: '한식', icon: '🍚'),
-        _AffiliateCategory(id: 'japanese', label: '일식', icon: '🍜'),
-        _AffiliateCategory(id: 'western', label: '양식', icon: '🍝'),
-        _AffiliateCategory(id: 'cafe', label: '카페', icon: '☕'),
-        _AffiliateCategory(id: 'dessert', label: '디저트', icon: '🧁'),
-      ];
-
-  List<AffiliateRestaurant> _buildMockRestaurants() {
-    List<AffiliateStampHistory> buildHistory(int count, int step) {
-      return List.generate(count, (index) {
-        return AffiliateStampHistory(
-          id: 'history-${index + 1}',
-          accruedAt: DateTime.now().subtract(Duration(days: index * step + 1)),
-          note: index.isEven ? '방문 적립' : '이벤트 적립',
-        );
-      });
-    }
-
-    List<AffiliateCoupon> buildCoupons(String prefix) => [
-          AffiliateCoupon(
-            id: '$prefix-1',
-            name: '사이드 메뉴 무료',
-            expiresAt: DateTime.now().add(const Duration(days: 15)),
-            status: 'available',
-            description: '2만원 이상 주문 시 사용 가능',
-          ),
-          AffiliateCoupon(
-            id: '$prefix-2',
-            name: '전 메뉴 10% 할인',
-            expiresAt: DateTime.now().add(const Duration(days: 30)),
-            status: 'available',
-            description: '첫 방문 고객 전용',
-          ),
-        ];
-
-    return [
-      AffiliateRestaurant(
-        id: 'rest-001',
-        name: '나이스샤워 경북대점',
-        categoryId: 'japanese',
-        categoryLabel: '일식 · 텐동 전문점',
-        address: '대구 북구 대학로13길 20 1층',
-        distanceKm: 2.3,
-        heroImage: 'https://images.unsplash.com/photo-1604908177698-af4182d9fd1e',
-        galleryImages: [
-          'https://images.unsplash.com/photo-1604908177488-1991701b9efa',
-          'https://images.unsplash.com/photo-1574966745260-83ac948ec7ed',
-          'https://images.unsplash.com/photo-1504674900247-0877df9cc836',
-        ],
-        description: '바삭한 튀김과 고소한 소스로 유명한 텐동 전문점입니다. 제휴 고객에게 다양한 스탬프 혜택을 제공합니다.',
-        phoneNumber: '0507-1495-5701',
-        businessHours: '매일 10:00 ~ 22:00',
-        stampGoal: 10,
-        stampCount: 7,
-        coupons: buildCoupons('rest-001'),
-        stampHistory: buildHistory(7, 1),
-      ),
-      AffiliateRestaurant(
-        id: 'rest-002',
-        name: '카페 달콤',
-        categoryId: 'cafe',
-        categoryLabel: '카페 · 디저트',
-        address: '서울 마포구 합정로 45',
-        distanceKm: 1.3,
-        heroImage: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836',
-        galleryImages: [
-          'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4',
-          'https://images.unsplash.com/photo-1504674900247-0877df9cc836',
-        ],
-        description: '싱글 오리진 커피와 수제 디저트를 즐길 수 있는 합정 카페입니다.',
-        phoneNumber: '02-1234-5678',
-        businessHours: '매일 09:00 ~ 21:00',
-        stampGoal: 10,
-        stampCount: 3,
-        coupons: buildCoupons('rest-002'),
-        stampHistory: buildHistory(3, 2),
-      ),
-      AffiliateRestaurant(
-        id: 'rest-003',
-        name: '한강 뷰 한식당',
-        categoryId: 'korean',
-        categoryLabel: '모던 한식',
-        address: '서울 영등포구 여의서로 130',
-        distanceKm: 4.8,
-        heroImage: 'https://images.unsplash.com/photo-1482049016688-2d3e1b311543',
-        galleryImages: [
-          'https://images.unsplash.com/photo-1466978913421-dad2ebd01d17',
-          'https://images.unsplash.com/photo-1504674900247-0877df9cc836',
-        ],
-        description: '한강 야경과 함께 정갈한 한식 코스를 즐길 수 있는 제휴 레스토랑입니다.',
-        phoneNumber: '010-9876-5432',
-        businessHours: '매일 17:00 ~ 24:00',
-        stampGoal: 10,
-        stampCount: 9,
-        coupons: buildCoupons('rest-003'),
-        stampHistory: buildHistory(9, 1),
-      ),
-    ];
-  }
-
-  void _applyFilter() {
-    final filtered = _selectedCategoryId == 'all'
-        ? _catalog
-        : _catalog.where((restaurant) => restaurant.categoryId == _selectedCategoryId).toList();
-
+  Future<void> _load() async {
     setState(() {
-      _visibleRestaurants = filtered;
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final restaurants = await AffiliateService.fetchRestaurants();
+      final issuedCoupons = await _fetchIssuedCoupons();
+
+      final categories = <String>{'ALL'};
+      for (final restaurant in restaurants) {
+        if (restaurant.category.isNotEmpty) {
+          categories.add(restaurant.category);
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _restaurants = restaurants;
+        _issuedCoupons = issuedCoupons;
+        _couponCounts = _buildCouponCounts(issuedCoupons);
+        _categories = categories.toList();
+        _selectedCategory = 'ALL';
+      });
+    } on ApiNetworkException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = '네트워크 연결 오류: $e');
+    } on ApiHttpException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = 'HTTP ${e.statusCode}: ${e.body}');
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<List<UserCoupon>> _fetchIssuedCoupons() async {
+    try {
+      final coupons = await CouponService.fetchMyCoupons(
+        status: CouponStatus.issued,
+      );
+      if (mounted) {
+        setState(() => _requiresLogin = false);
+      }
+      return coupons;
+    } on ApiAuthException catch (e) {
+      if (mounted) {
+        setState(() {
+          _requiresLogin = true;
+          _error = e.message;
+        });
+      }
+      return const [];
+    } on ApiHttpException catch (e) {
+      if (mounted) {
+        setState(() {
+          _requiresLogin = false;
+          _error = 'HTTP ${e.statusCode}: ${e.body}';
+        });
+      }
+      return const [];
+    } catch (e) {
+      if (mounted) {
+        setState(() => _error = e.toString());
+      }
+      return const [];
+    }
+  }
+
+  Map<int, int> _buildCouponCounts(List<UserCoupon> coupons) {
+    final counts = <int, int>{};
+    for (final coupon in coupons) {
+      final restaurantId = coupon.restaurantId;
+      if (restaurantId == null) continue;
+      counts.update(restaurantId, (value) => value + 1, ifAbsent: () => 1);
+    }
+    return counts;
+  }
+
+  List<AffiliateRestaurantSummary> get _filteredRestaurants {
+    if (_selectedCategory == 'ALL') return _restaurants;
+    return _restaurants
+        .where((restaurant) => restaurant.category == _selectedCategory)
+        .toList();
+  }
+
+  void _selectCategory(String category) {
+    if (_selectedCategory == category) return;
+    setState(() => _selectedCategory = category);
+  }
+
+  List<UserCoupon> _couponsForRestaurant(int restaurantId) {
+    return _issuedCoupons
+        .where((coupon) => coupon.restaurantId == restaurantId)
+        .toList();
+  }
+
+  void _handleCouponRedeemed(String couponCode, int restaurantId) {
+    setState(() {
+      _issuedCoupons =
+          _issuedCoupons.where((coupon) => coupon.code != couponCode).toList();
+      final current = _couponCounts[restaurantId] ?? 0;
+      if (current <= 1) {
+        _couponCounts.remove(restaurantId);
+      } else {
+        _couponCounts[restaurantId] = current - 1;
+      }
     });
   }
 
-  void _selectCategory(String categoryId) {
-    if (_selectedCategoryId == categoryId) return;
-    setState(() => _selectedCategoryId = categoryId);
-    _applyFilter();
+  void _handleRewardCouponIssued(String couponCode, int restaurantId) {
+    setState(() {
+      _issuedCoupons = List<UserCoupon>.from(_issuedCoupons)
+        ..add(UserCoupon(
+          code: couponCode,
+          status: CouponStatus.issued,
+          restaurantId: restaurantId,
+        ));
+      _couponCounts.update(restaurantId, (value) => value + 1,
+          ifAbsent: () => 1);
+    });
   }
 
-  void _openRestaurantDetail(AffiliateRestaurant restaurant) {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => AffiliateRestaurantDetailPage(
+  Future<void> _openRestaurantDetail(
+      AffiliateRestaurantSummary restaurant) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return AffiliateRestaurantDetailSheet(
           restaurant: restaurant,
-          adminPin: _adminPin,
-          onChanged: () => setState(() {}),
+          coupons: _couponsForRestaurant(restaurant.id),
+          requiresLogin: _requiresLogin,
+          onCouponRedeemed: (code) =>
+              _handleCouponRedeemed(code, restaurant.id),
+          onRewardCouponIssued: (code) =>
+              _handleRewardCouponIssued(code, restaurant.id),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_error != null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('제휴 / 혜택')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: theme.colorScheme.error,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _load,
+                  child: const Text('다시 시도'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('제휴 / 혜택'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          children: [
+            _buildCategoryFilter(),
+            const SizedBox(height: 12),
+            if (_filteredRestaurants.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(child: Text('표시할 제휴 매장이 없어요.')),
+              )
+            else
+              ..._filteredRestaurants
+                  .map((restaurant) => Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        child: _buildRestaurantCard(restaurant),
+                      ))
+                  .toList(),
+          ],
         ),
       ),
     );
   }
 
   Widget _buildCategoryFilter() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: _categories.map((category) {
-          final selected = category.id == _selectedCategoryId;
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: ChoiceChip(
-              label: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(category.icon, style: const TextStyle(fontSize: 22)),
-                  const SizedBox(height: 6),
-                  Text(category.label),
-                ],
-              ),
-              labelPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              selected: selected,
-              onSelected: (_) => _selectCategory(category.id),
-              selectedColor: const Color(0xFFEEF2FF),
-              backgroundColor: Colors.white,
-              labelStyle: TextStyle(
-                color: selected ? const Color(0xFF312E81) : const Color(0xFF6B7280),
-                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-              ),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    return SizedBox(
+      height: 44,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemBuilder: (context, index) {
+          final category = _categories[index];
+          final selected = category == _selectedCategory;
+          return ChoiceChip(
+            label: Text(category == 'ALL' ? '전체' : category),
+            selected: selected,
+            onSelected: (_) => _selectCategory(category),
+            selectedColor: const Color(0xFFEEF2FF),
+            labelStyle: TextStyle(
+              color:
+                  selected ? const Color(0xFF312E81) : const Color(0xFF4B5563),
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             ),
           );
-        }).toList(),
+        },
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemCount: _categories.length,
       ),
     );
   }
 
-  Widget _buildStatChip({
-    required IconData icon,
-    required String label,
-    required Color background,
-    required Color foreground,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: foreground),
-          const SizedBox(width: 4),
-          Text(label, style: TextStyle(color: foreground, fontWeight: FontWeight.w600, fontSize: 12)),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRestaurantCard(AffiliateRestaurant restaurant) {
-    final recentUsage = restaurant.recentUsage != null
-        ? _formatDate(restaurant.recentUsage!)
-        : '최근 사용 없음';
+  Widget _buildRestaurantCard(AffiliateRestaurantSummary restaurant) {
+    final couponCount = _couponCounts[restaurant.id] ?? 0;
+    final hasImage = restaurant.imageUrls.isNotEmpty;
+    final couponLabel = _requiresLogin
+        ? '로그인이 필요해요'
+        : couponCount > 0
+            ? '보유 쿠폰 $couponCount'
+            : '보유 쿠폰 없음';
 
     return InkWell(
       onTap: () => _openRestaurantDetail(restaurant),
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(16),
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
               blurRadius: 12,
-              offset: const Offset(0, 8),
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-        padding: const EdgeInsets.all(16),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: SizedBox(
-                width: 110,
-                height: 110,
-                child: Image.network(restaurant.heroImage, fit: BoxFit.cover),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(16),
+                bottomLeft: Radius.circular(16),
+              ),
+              child: Container(
+                color: const Color(0xFFE5E7EB),
+                width: 108,
+                height: 108,
+                child: hasImage
+                    ? Image.network(
+                        restaurant.imageUrls.first,
+                        fit: BoxFit.cover,
+                      )
+                    : const Icon(
+                        Icons.store_mall_directory_outlined,
+                        size: 36,
+                        color: Color(0xFF6B7280),
+                      ),
               ),
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    restaurant.name,
-                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: Color(0xFF1F2937)),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    restaurant.address,
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      Text(restaurant.categoryLabel, style: const TextStyle(fontSize: 12.5, color: Color(0xFF6B7280))),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.place_outlined, size: 14, color: Color(0xFFDC2626)),
-                      Text(' ${restaurant.distanceKm.toStringAsFixed(1)} km', style: const TextStyle(fontSize: 12.5, color: Color(0xFFDC2626), fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _buildStatChip(
-                        icon: Icons.stars_rounded,
-                        label: '스탬프 ${restaurant.stampCount}/${restaurant.stampGoal}',
-                        background: const Color(0xFFE0E7FF),
-                        foreground: const Color(0xFF312E81),
-                      ),
-                      _buildStatChip(
-                        icon: Icons.card_giftcard,
-                        label: '쿠폰 ${restaurant.availableCouponCount}/${restaurant.totalCouponCount}',
-                        background: const Color(0xFFFFF7E6),
-                        foreground: const Color(0xFFB45309),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text('최근 사용: $recentUsage', style: const TextStyle(fontSize: 11.5, color: Color(0xFF9CA3AF))),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    final local = date.toLocal();
-    return '${local.year}.${local.month.toString().padLeft(2, '0')}.${local.day.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF3F4F6),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF101828),
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('제휴 식당'),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildCategoryFilter(),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ListView.separated(
-                  itemCount: _visibleRestaurants.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 16),
-                  padding: const EdgeInsets.only(bottom: 32),
-                  itemBuilder: (context, index) {
-                    return _buildRestaurantCard(_visibleRestaurants[index]);
-                  },
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            restaurant.name.isNotEmpty
+                                ? restaurant.name
+                                : '매장 정보를 찾을 수 없어요',
+                            style: const TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF1F2937),
+                            ),
+                          ),
+                        ),
+                        const Icon(
+                          Icons.keyboard_arrow_right,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      restaurant.address.isNotEmpty
+                          ? restaurant.address
+                          : '주소 정보를 불러오지 못했어요.',
+                      style: const TextStyle(
+                          fontSize: 13, color: Color(0xFF6B7280)),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        _buildTag(restaurant.category.isNotEmpty
+                            ? restaurant.category
+                            : '카테고리 정보 없음'),
+                        if (restaurant.zone.isNotEmpty)
+                          _buildTag(restaurant.zone),
+                        _buildTag(couponLabel,
+                            background: const Color(0xFFF3F4F6),
+                            textColor: _requiresLogin
+                                ? const Color(0xFFEF4444)
+                                : const Color(0xFF4B5563)),
+                      ],
+                    ),
+                    if (restaurant.phoneNumber.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        '전화: ${restaurant.phoneNumber}',
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -452,86 +395,250 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       ),
     );
   }
+
+  Widget _buildTag(String label,
+      {Color background = const Color(0xFFEEF2FF),
+      Color textColor = const Color(0xFF312E81)}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: textColor,
+          fontWeight: FontWeight.w600,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
 }
 
-class AffiliateRestaurantDetailPage extends StatefulWidget {
-  const AffiliateRestaurantDetailPage({
+class AffiliateRestaurantDetailSheet extends StatefulWidget {
+  const AffiliateRestaurantDetailSheet({
     super.key,
     required this.restaurant,
-    required this.adminPin,
-    required this.onChanged,
+    required this.coupons,
+    required this.requiresLogin,
+    required this.onCouponRedeemed,
+    required this.onRewardCouponIssued,
   });
 
-  final AffiliateRestaurant restaurant;
-  final String adminPin;
-  final VoidCallback onChanged;
+  final AffiliateRestaurantSummary restaurant;
+  final List<UserCoupon> coupons;
+  final bool requiresLogin;
+  final void Function(String couponCode) onCouponRedeemed;
+  final void Function(String couponCode) onRewardCouponIssued;
 
   @override
-  State<AffiliateRestaurantDetailPage> createState() => _AffiliateRestaurantDetailPageState();
+  State<AffiliateRestaurantDetailSheet> createState() =>
+      _AffiliateRestaurantDetailSheetState();
 }
 
-class _AffiliateRestaurantDetailPageState extends State<AffiliateRestaurantDetailPage>
-    with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  bool _isStamping = false;
-  bool _isUsingCoupon = false;
-
-  AffiliateRestaurant get restaurant => widget.restaurant;
+class _AffiliateRestaurantDetailSheetState
+    extends State<AffiliateRestaurantDetailSheet> {
+  late List<UserCoupon> _coupons;
+  StampStatus? _stampStatus;
+  bool _isStampLoading = true;
+  bool _isStampProcessing = false;
+  String? _stampError;
+  String? _processingCouponCode;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _coupons = List<UserCoupon>.from(widget.coupons);
+    if (!widget.requiresLogin) {
+      _loadStampStatus();
+    } else {
+      _isStampLoading = false;
+      _stampError = '로그인 후 스탬프 정보를 확인할 수 있어요.';
+    }
   }
 
-  Future<String?> _promptPin({required String title}) async {
+  Future<void> _loadStampStatus() async {
+    setState(() {
+      _isStampLoading = true;
+      _stampError = null;
+    });
+    try {
+      final status = await CouponService.fetchStampStatus(
+        restaurantId: widget.restaurant.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _stampStatus = status;
+      });
+    } on ApiAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stampError = e.message;
+      });
+    } on ApiHttpException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stampError =
+            _extractDetailMessage(e.body) ?? 'HTTP ${e.statusCode}: ${e.body}';
+      });
+    } on ApiNetworkException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stampError = '네트워크 오류: ${e.cause}';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _stampError = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isStampLoading = false);
+      }
+    }
+  }
+
+  Future<void> _handleAddStamp() async {
+    final pin = await _promptForPin(
+      title: '스탬프 적립',
+      confirmLabel: '적립하기',
+    );
+    if (pin == null) return;
+
+    setState(() => _isStampProcessing = true);
+    try {
+      final result = await CouponService.addStamp(
+        restaurantId: widget.restaurant.id,
+        pin: pin,
+      );
+      if (!mounted) return;
+      setState(() {
+        _stampStatus = result.status;
+      });
+      _showSnack('스탬프를 적립했어요.');
+      final reward = result.rewardCouponCode;
+      if (reward != null && reward.isNotEmpty) {
+        final rewardCoupon = UserCoupon(
+          code: reward,
+          status: CouponStatus.issued,
+          restaurantId: widget.restaurant.id,
+        );
+        setState(() {
+          _coupons = List<UserCoupon>.from(_coupons)..add(rewardCoupon);
+        });
+        widget.onRewardCouponIssued(reward);
+        _showSnack('리워드 쿠폰이 발급되었어요: $reward');
+      }
+    } on ApiAuthException catch (e) {
+      _showSnack(e.message);
+    } on ApiHttpException catch (e) {
+      _showSnack(
+          _extractDetailMessage(e.body) ?? '요청이 실패했어요 (HTTP ${e.statusCode})');
+    } on ApiNetworkException catch (e) {
+      _showSnack('네트워크 오류: ${e.cause}');
+    } catch (e) {
+      _showSnack(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _isStampProcessing = false);
+      }
+    }
+  }
+
+  Future<void> _handleRedeem(UserCoupon coupon) async {
+    final pin = await _promptForPin(
+      title: '쿠폰 사용',
+      confirmLabel: '사용하기',
+    );
+    if (pin == null) return;
+
+    setState(() => _processingCouponCode = coupon.code);
+    try {
+      await CouponService.redeemCoupon(
+        couponCode: coupon.code,
+        restaurantId: widget.restaurant.id,
+        pin: pin,
+      );
+      if (!mounted) return;
+      setState(() {
+        _coupons = _coupons.where((item) => item.code != coupon.code).toList();
+      });
+      widget.onCouponRedeemed(coupon.code);
+      _showSnack('쿠폰을 사용했어요.');
+    } on ApiAuthException catch (e) {
+      _showSnack(e.message);
+    } on ApiHttpException catch (e) {
+      _showSnack(
+          _extractDetailMessage(e.body) ?? '요청이 실패했어요 (HTTP ${e.statusCode})');
+    } on ApiNetworkException catch (e) {
+      _showSnack('네트워크 오류: ${e.cause}');
+    } catch (e) {
+      _showSnack(e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _processingCouponCode = null);
+      }
+    }
+  }
+
+  Future<String?> _promptForPin({
+    required String title,
+    required String confirmLabel,
+  }) async {
     final controller = TextEditingController();
+    String? error;
     return showDialog<String>(
       context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        String? errorText;
+      builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
               title: Text(title),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('관리자 PIN 4자리를 입력해주세요.'),
-                  const SizedBox(height: 12),
                   TextField(
                     controller: controller,
                     keyboardType: TextInputType.number,
-                    maxLength: 4,
                     obscureText: true,
+                    maxLength: 4,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4),
+                    ],
                     decoration: InputDecoration(
+                      labelText: 'PIN (4자리)',
                       counterText: '',
-                      hintText: '0000',
-                      errorText: errorText,
-                      border: const OutlineInputBorder(),
+                      errorText: error,
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '제휴 매장 관리자가 제공한 4자리 PIN을 입력해 주세요.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                   ),
                 ],
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: () => Navigator.of(dialogContext).pop(),
                   child: const Text('취소'),
                 ),
                 ElevatedButton(
                   onPressed: () {
                     final value = controller.text.trim();
-                    if (value.isEmpty) {
+                    if (value.length != 4) {
                       setState(() {
-                        errorText = 'PIN을 입력해주세요.';
+                        error = 'PIN은 4자리 숫자여야 합니다.';
                       });
                       return;
                     }
-                    Navigator.of(context).pop(value);
+                    Navigator.of(dialogContext).pop(value);
                   },
-                  child: const Text('확인'),
+                  child: Text(confirmLabel),
                 ),
               ],
             );
@@ -541,425 +648,389 @@ class _AffiliateRestaurantDetailPageState extends State<AffiliateRestaurantDetai
     );
   }
 
-  void _showSnack(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: isError ? Colors.redAccent : const Color(0xFF312E81),
-      ),
-    );
+  void _showSnack(String message) {
+    if (message.isEmpty) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _handleStampCollect() async {
-    final pin = await _promptPin(title: '스탬프 적립');
-    if (pin == null) return;
-    if (pin != widget.adminPin) {
-      _showSnack('관리자 PIN이 올바르지 않습니다.', isError: true);
-      return;
-    }
+  @override
+  Widget build(BuildContext context) {
+    final restaurant = widget.restaurant;
+    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    setState(() => _isStamping = true);
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-    setState(() {
-      restaurant.addStamp();
-      _isStamping = false;
-    });
-    widget.onChanged();
-    _showSnack('스탬프가 적립되었습니다.');
-  }
-
-  Future<void> _handleCouponUse(String couponId) async {
-    final pin = await _promptPin(title: '쿠폰 사용');
-    if (pin == null) return;
-    if (pin != widget.adminPin) {
-      _showSnack('관리자 PIN이 올바르지 않습니다.', isError: true);
-      return;
-    }
-
-    setState(() => _isUsingCoupon = true);
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-
-    try {
-      restaurant.useCoupon(couponId);
-      setState(() => _isUsingCoupon = false);
-      widget.onChanged();
-      _showSnack('쿠폰 사용이 완료되었습니다.');
-    } on ArgumentError catch (_) {
-      setState(() => _isUsingCoupon = false);
-      _showSnack('쿠폰 정보를 찾을 수 없습니다.', isError: true);
-    }
-  }
-
-  Widget _buildHero() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Stack(
-          children: [
-            AspectRatio(
-              aspectRatio: 16 / 9,
-              child: Image.network(restaurant.heroImage, fit: BoxFit.cover),
-            ),
-            Positioned(
-              right: 16,
-              bottom: 16,
-              child: Row(
-                children: [
-                  _circleIconButton(Icons.share),
-                  const SizedBox(width: 8),
-                  _circleIconButton(Icons.favorite_border),
+    return SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.only(bottom: bottomInset),
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 48,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5E7EB),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                Text(
+                  restaurant.name.isNotEmpty
+                      ? restaurant.name
+                      : '매장 정보를 찾을 수 없어요',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  restaurant.address.isNotEmpty
+                      ? restaurant.address
+                      : '주소 정보를 불러오지 못했어요.',
+                  style:
+                      const TextStyle(fontSize: 13, color: Color(0xFF6B7280)),
+                ),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    if (restaurant.category.isNotEmpty)
+                      _buildInfoChip(restaurant.category),
+                    if (restaurant.zone.isNotEmpty)
+                      _buildInfoChip(restaurant.zone),
+                    if (restaurant.phoneNumber.isNotEmpty)
+                      _buildInfoChip('전화 ${restaurant.phoneNumber}'),
+                  ],
+                ),
+                if (restaurant.url != null && restaurant.url!.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: _openRestaurantPage,
+                    icon: const Icon(Icons.open_in_new),
+                    label: const Text('매장 페이지 열기'),
+                  ),
                 ],
-              ),
+                const SizedBox(height: 24),
+                _buildStampSection(),
+                const SizedBox(height: 24),
+                _buildCouponSection(),
+              ],
             ),
-          ],
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                restaurant.name,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
-              ),
-              const SizedBox(height: 8),
-              Text(restaurant.categoryLabel, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 14)),
-              const SizedBox(height: 4),
-              Text(
-                '${restaurant.distanceKm.toStringAsFixed(1)} km',
-                style: const TextStyle(color: Color(0xFFDC2626), fontSize: 14, fontWeight: FontWeight.w600),
-              ),
-            ],
           ),
         ),
-      ],
+      ),
     );
   }
 
-  Widget _circleIconButton(IconData icon) {
+  Widget _buildStampSection() {
     return Container(
-      width: 40,
-      height: 40,
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.12), blurRadius: 8, offset: const Offset(0, 2))],
-      ),
-      alignment: Alignment.center,
-      child: Icon(icon, color: const Color(0xFF4B5563)),
-    );
-  }
-
-  Widget _buildStampBoard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: const Color(0xFF111C44),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.card_giftcard, color: Color(0xFFFFD600)),
-              SizedBox(width: 8),
-              Text(
-                '스탬프 혜택',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+              const Text(
+                '스탬프 적립',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                tooltip: '스탬프 갱신',
+                onPressed: _isStampLoading || widget.requiresLogin
+                    ? null
+                    : _loadStampStatus,
+                icon: const Icon(Icons.refresh),
               ),
             ],
           ),
           const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: List.generate(restaurant.stampGoal, (index) {
-              final filled = index < restaurant.stampCount;
-              return Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: filled ? Colors.white : const Color(0xFF1E2959),
-                  borderRadius: BorderRadius.circular(14),
+          if (widget.requiresLogin)
+            const Text('로그인 후 스탬프를 적립할 수 있어요.')
+          else if (_isStampLoading)
+            const Center(child: CircularProgressIndicator())
+          else ...[
+            _buildStampProgress(),
+            if (_stampError != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                _stampError!,
+                style: const TextStyle(
+                  color: Color(0xFFDC2626),
+                  fontSize: 13,
                 ),
-                alignment: Alignment.center,
-                child: filled
-                    ? const Icon(Icons.restaurant, color: Color(0xFF1E2959))
-                    : Text('${index + 1}', style: const TextStyle(color: Color(0xFF94A3B8), fontWeight: FontWeight.w600)),
-              );
-            }),
-          ),
-          const SizedBox(height: 16),
-          const Text('현재 진행도', style: TextStyle(color: Colors.white70, fontSize: 13)),
-          const SizedBox(height: 6),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(999),
-            child: LinearProgressIndicator(
-              value: restaurant.stampCount / restaurant.stampGoal,
-              minHeight: 8,
-              backgroundColor: const Color(0xFF1E2959),
-              valueColor: const AlwaysStoppedAnimation(Color(0xFFFFD600)),
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            '리워드 획득까지 ${restaurant.stampGoal - restaurant.stampCount}개 남았어요!',
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _isStamping ? null : _handleStampCollect,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF1E2959),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              child: Text(_isStamping ? '적립 중...' : '스탬프 적립하기'),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _isStampProcessing ? null : _handleAddStamp,
+                child: _isStampProcessing
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          ),
+                          SizedBox(width: 8),
+                          Text('적립 중...'),
+                        ],
+                      )
+                    : const Text('스탬프 적립하기'),
+              ),
             ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStampProgress() {
+    final status = _stampStatus;
+    if (status == null) {
+      return const Text('스탬프 정보를 불러오지 못했어요.');
+    }
+    final target = status.target <= 0 ? 1 : status.target;
+    final progress = (status.current / target).clamp(0.0, 1.0);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: LinearProgressIndicator(
+            value: progress,
+            minHeight: 10,
+            backgroundColor: const Color(0xFFE5E7EB),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF6366F1)),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text('${status.current} / ${status.target}'),
+        if (status.updatedAt != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            '업데이트: ${_formatDate(status.updatedAt!)}',
+            style: const TextStyle(
+              fontSize: 12,
+              color: Color(0xFF9CA3AF),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCouponSection() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '보유 쿠폰',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (widget.requiresLogin)
+            const Text('로그인하면 제휴 쿠폰을 확인할 수 있어요.')
+          else if (_coupons.isEmpty)
+            const Text('사용 가능한 쿠폰이 없어요.')
+          else
+            Column(
+              children:
+                  _coupons.map((coupon) => _buildCouponTile(coupon)).toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCouponTile(UserCoupon coupon) {
+    final isProcessing = _processingCouponCode == coupon.code;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF9FAFB),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  coupon.code,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _couponStatusLabel(coupon.status),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: isProcessing || widget.requiresLogin
+                ? null
+                : () => _handleRedeem(coupon),
+            child: isProcessing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Text('사용'),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildCouponList() {
-    if (restaurant.coupons.isEmpty) {
-      return const Text('보유 쿠폰이 없습니다.', style: TextStyle(color: Color(0xFF6B7280)));
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('보유 쿠폰', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
-        Column(
-          children: restaurant.coupons.map((coupon) {
-            final used = coupon.isUsed;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: used ? const Color(0xFF1F2937) : const Color(0xFF1E2959),
-                borderRadius: BorderRadius.circular(18),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          coupon.name,
-                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 15),
-                        ),
-                        if (coupon.description != null) ...[
-                          const SizedBox(height: 4),
-                          Text(coupon.description!, style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                        ],
-                        const SizedBox(height: 6),
-                        Text(
-                          '만료일 ${_formatDate(coupon.expiresAt)}',
-                          style: const TextStyle(color: Color(0xFFFFD600), fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  ElevatedButton(
-                    onPressed: used || _isUsingCoupon ? null : () => _handleCouponUse(coupon.id),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: used ? Colors.grey.shade500 : Colors.white,
-                      foregroundColor: used ? Colors.white : const Color(0xFF1E2959),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-                      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                    ),
-                    child: Text(used ? '사용완료' : '사용하기'),
-                  ),
-                ],
-              ),
-            );
-          }).toList(),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildGallery() {
-    if (restaurant.galleryImages.isEmpty) {
-      return const SizedBox.shrink();
-    }
-    return SizedBox(
-      height: 100,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: restaurant.galleryImages.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(14),
-            child: AspectRatio(
-              aspectRatio: 1,
-              child: Image.network(restaurant.galleryImages[index], fit: BoxFit.cover),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _buildInfoTable() {
-    Text infoLabel(String text) => Text(text, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13));
-    Text infoValue(String text) => Text(text, style: const TextStyle(color: Color(0xFF1F2937), fontSize: 14, fontWeight: FontWeight.w600));
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('기본 정보', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 12),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  infoLabel('주소'),
-                  const SizedBox(height: 4),
-                  infoValue(restaurant.address),
-                  const SizedBox(height: 12),
-                  infoLabel('전화번호'),
-                  const SizedBox(height: 4),
-                  infoValue(restaurant.phoneNumber),
-                ],
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  infoLabel('영업 시간'),
-                  const SizedBox(height: 4),
-                  infoValue(restaurant.businessHours),
-                  const SizedBox(height: 12),
-                  infoLabel('카테고리'),
-                  const SizedBox(height: 4),
-                  infoValue(restaurant.categoryLabel),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    final local = date.toLocal();
-    return '${local.year}.${local.month.toString().padLeft(2, '0')}.${local.day.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7F7FB),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1F2937),
-        elevation: 0,
-        title: Text(restaurant.name),
-      ),
-      body: SafeArea(
-        child: NestedScrollView(
-          headerSliverBuilder: (context, _) {
-            return [
-              SliverToBoxAdapter(child: _buildHero()),
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _TabBarDelegate(
-                  TabBar(
-                    controller: _tabController,
-                    labelColor: const Color(0xFF312E81),
-                    unselectedLabelColor: const Color(0xFF9CA3AF),
-                    indicatorColor: const Color(0xFF312E81),
-                    tabs: const [
-                      Tab(text: '혜택'),
-                      Tab(text: '매장정보'),
-                    ],
-                  ),
-                ),
-              ),
-            ];
-          },
-          body: TabBarView(
-            controller: _tabController,
-            children: [
-              SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildStampBoard(),
-                    const SizedBox(height: 24),
-                    _buildCouponList(),
-                    const SizedBox(height: 24),
-                    const Text('최근 적립 내역', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                    const SizedBox(height: 12),
-                    ...restaurant.stampHistory.take(5).map((entry) {
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.stars_rounded, color: Color(0xFF6366F1)),
-                        title: Text(entry.note, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text(_formatDate(entry.accruedAt)),
-                      );
-                    }),
-                  ],
-                ),
-              ),
-              SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildGallery(),
-                    const SizedBox(height: 20),
-                    _buildInfoTable(),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _TabBarDelegate extends SliverPersistentHeaderDelegate {
-  _TabBarDelegate(this._tabBar);
-
-  final TabBar _tabBar;
-
-  @override
-  double get minExtent => _tabBar.preferredSize.height;
-
-  @override
-  double get maxExtent => _tabBar.preferredSize.height;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+  Widget _buildInfoChip(String label) {
     return Container(
-      color: Colors.white,
-      child: _tabBar,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 12,
+          color: Color(0xFF4B5563),
+          fontWeight: FontWeight.w600,
+        ),
+      ),
     );
   }
 
-  @override
-  bool shouldRebuild(covariant _TabBarDelegate oldDelegate) => false;
+  Future<void> _openRestaurantPage() async {
+    final url = widget.restaurant.url;
+    if (url == null || url.isEmpty) return;
+    final uri = Uri.tryParse(url);
+    if (uri == null) {
+      _showSnack('유효한 링크가 아니에요.');
+      return;
+    }
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      _showSnack('링크를 열 수 없어요.');
+    }
+  }
+
+  String _couponStatusLabel(CouponStatus status) {
+    switch (status) {
+      case CouponStatus.issued:
+        return '사용 가능';
+      case CouponStatus.redeemed:
+        return '사용됨';
+      case CouponStatus.expired:
+        return '만료됨';
+      case CouponStatus.canceled:
+        return '취소됨';
+      case CouponStatus.unknown:
+        return '상태 확인 불가';
+    }
+  }
+
+  String _formatDate(DateTime value) {
+    final year = value.year.toString().padLeft(4, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final day = value.day.toString().padLeft(2, '0');
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$year-$month-$day $hour:$minute';
+  }
+
+  String? _extractDetailMessage(String body) {
+    if (body.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        const keys = ['detail', 'message', 'error'];
+        for (final key in keys) {
+          final value = decoded[key];
+          if (value is String && value.isNotEmpty) {
+            return value;
+          }
+          if (value is List && value.isNotEmpty) {
+            final first = value.first;
+            if (first is String && first.isNotEmpty) {
+              return first;
+            }
+          }
+        }
+        for (final entry in decoded.entries) {
+          final value = entry.value;
+          if (value is String && value.isNotEmpty) {
+            return value;
+          }
+          if (value is List && value.isNotEmpty) {
+            final first = value.first;
+            if (first is String && first.isNotEmpty) {
+              return first;
+            }
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
 }
