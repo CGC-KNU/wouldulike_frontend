@@ -51,7 +51,7 @@ class _MyScreenState extends State<MyScreen> {
         typeCode = storedTypeCode ?? '정보 없음';
         typeName = prefs.getString('type_name') ?? '정보 없음';
         description =
-            prefs.getString('type_description') ?? '설명 정보를 불러오지 못했어요.';
+            prefs.getString('type_description') ?? '유형 테스트를 진행하고 결과를 확인해보세요!';
         summary = prefs.getString('type_summary') ?? '정보 없음';
         menuMbti = prefs.getString('menu_and_mbti') ?? '정보 없음';
         mealExample = prefs.getString('meal_example') ?? '정보 없음';

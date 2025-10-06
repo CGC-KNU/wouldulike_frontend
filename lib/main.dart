@@ -98,11 +98,11 @@ class MainScreenState extends State<MainScreen> {
     final storedUUID = prefs.getString(_uuidKey);
     //final storedUUID = null;
     if (storedUUID != null) {
-      // ??λ맂 UUID媛 ?덉쑝硫?type ?뺤씤
+      // ??λ맂 UUID媛 ?덉쑝硫?type ?뺤씤
       print('Stored UUID found: $storedUUID');
       await _checkType(storedUUID);
     } else {
-      // ??λ맂 UUID媛 ?놁쑝硫??쒕쾭?먯꽌 ?덈줈??UUID ?앹꽦
+      // ??λ맂 UUID媛 ?놁쑝硫??쒕쾭?먯꽌 ?덈줈??UUID ?앹꽦
       print('No UUID found in SharedPreferences. Generating a new UUID...');
       await _createUUID();
     }
@@ -169,7 +169,7 @@ class MainScreenState extends State<MainScreen> {
       return;
     }
 
-    // ???꾩튂 媛?몄삤湲?
+    // ???꾩튂 媛?몄삤湲?
     Position position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
@@ -184,93 +184,171 @@ class MainScreenState extends State<MainScreen> {
   Future<void> _checkType(String uuid) async {
     try {
       final checkUrl = Uri.parse(
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/?uuid=$uuid');
-      print('Checking type for UUID: $uuid');
+          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/?uuid=' + uuid);
+      print('Checking type for UUID: ' + uuid);
       final checkResponse = await http.get(checkUrl);
 
       if (checkResponse.statusCode == 200) {
         final data = json.decode(checkResponse.body);
+        final prefs = await SharedPreferences.getInstance();
 
         if (data['type_code'] != null) {
-          // Type??議댁옱?섎㈃ ?뚯떇怨??뚯떇???곗씠?곕? 癒쇱? 媛?몄샂
-          print('Type found: ${data['type_code']}');
-
-          final prefs = await SharedPreferences.getInstance();
+          print('Type found: ' + data['type_code']);
           await prefs.setString('user_type', data['type_code']);
-
-          // 1. ??낆뿉 留욌뒗 ?뚯떇 5媛吏 媛?몄삤湲?
-          final foodUrl =
-              'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$uuid';
-          http.Response foodResponse;
-          int retry = 0;
-          int delay = 1;
-          do {
-            foodResponse = await http.get(Uri.parse(foodUrl));
-            if (foodResponse.statusCode == 200 ||
-                foodResponse.statusCode == 400 ||
-                foodResponse.statusCode == 404) break;
-            await Future.delayed(Duration(seconds: delay));
-            delay *= 2;
-            retry++;
-          } while (retry < 3);
-          if (foodResponse.statusCode == 200) {
-            final foodData = json.decode(foodResponse.body);
-            final foods = foodData['random_foods'];
-
-            // ?뚯떇 ?대쫫?????
-            List<String> foodNames = foods
-                .map<String>((food) => food['food_name'].toString())
-                .toList();
-            await prefs.setStringList('recommended_foods', foodNames);
-
-            // 2. ?뚯떇???곗씠??媛?몄삤湲?
-            final restaurantUrl =
-                'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
-            http.Response restaurantResponse;
-            retry = 0;
-            delay = 1;
-            do {
-              restaurantResponse = await http.post(
-                Uri.parse(restaurantUrl),
-                headers: {'Content-Type': 'application/json'},
-                body: json.encode({'food_names': foodNames}),
-              );
-              if (restaurantResponse.statusCode == 200 ||
-                  restaurantResponse.statusCode == 400 ||
-                  restaurantResponse.statusCode == 404) break;
-              await Future.delayed(Duration(seconds: delay));
-              delay *= 2;
-              retry++;
-            } while (retry < 3);
-
-            if (restaurantResponse.statusCode == 200) {
-              final restaurantData = json.decode(restaurantResponse.body);
-              await prefs.setString('restaurants_data',
-                  json.encode(restaurantData['random_restaurants']));
-            } else if (restaurantResponse.statusCode == 400 ||
-                restaurantResponse.statusCode == 404) {
-              _showTypeError();
-            }
-          } else if (foodResponse.statusCode == 400 ||
-              foodResponse.statusCode == 404) {
-            _showTypeError();
-          }
-
-          // ?곗씠?곕? 紐⑤몢 媛?몄삩 ??硫붿씤 ?붾㈃?쇰줈 ?대룞
-          _navigateToMainScreen();
-        } else {
-          _navigateToMainScreen();
         }
+
+        final bool recommendationsReady = await _populateRecommendations(uuid);
+        if (!recommendationsReady) {
+          await _assignFallbackType(force: data['type_code'] == null);
+        }
+
+        _navigateToMainScreen();
       } else {
         throw Exception('Failed to check type');
       }
     } catch (e) {
-      print('Error checking type: $e');
+      print('Error checking type: ' + e.toString());
       _showErrorDialog();
     }
   }
 
+  Future<bool> _populateRecommendations(String uuid) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+
+      final foodUrl =
+          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=' + uuid;
+      http.Response foodResponse;
+      int retry = 0;
+      int delay = 1;
+
+      do {
+        foodResponse = await http.get(Uri.parse(foodUrl));
+        if (foodResponse.statusCode == 200 ||
+            foodResponse.statusCode == 400 ||
+            foodResponse.statusCode == 404) {
+          break;
+        }
+        await Future.delayed(Duration(seconds: delay));
+        delay *= 2;
+        retry++;
+      } while (retry < 3);
+
+      if (foodResponse.statusCode == 200) {
+        final foodData =
+            json.decode(utf8.decode(foodResponse.bodyBytes)) as Map<String, dynamic>;
+        final List<dynamic> foods = foodData['random_foods'] ?? [];
+
+        final List<String> foodNames = foods
+            .map<String>((food) => food['food_name'].toString())
+            .toList();
+        await prefs.setStringList('recommended_foods', foodNames);
+
+        final foodInfoList = foods
+            .map<Map<String, dynamic>>((food) => {
+                  'food_name': food['food_name'],
+                  'food_image_url': food['food_image_url'],
+                })
+            .toList();
+        await prefs.setString(
+            'recommended_foods_info', json.encode(foodInfoList));
+
+        final restaurantUrl =
+            'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
+        http.Response restaurantResponse;
+        retry = 0;
+        delay = 1;
+
+        do {
+          restaurantResponse = await http.post(
+            Uri.parse(restaurantUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'food_names': foodNames}),
+          );
+          if (restaurantResponse.statusCode == 200 ||
+              restaurantResponse.statusCode == 400 ||
+              restaurantResponse.statusCode == 404) {
+            break;
+          }
+          await Future.delayed(Duration(seconds: delay));
+          delay *= 2;
+          retry++;
+        } while (retry < 3);
+
+        if (restaurantResponse.statusCode == 200) {
+          final restaurantData = json.decode(
+              utf8.decode(restaurantResponse.bodyBytes)) as Map<String, dynamic>;
+          await prefs.setString('restaurants_data',
+              json.encode(restaurantData['random_restaurants']));
+          return true;
+        } else if (restaurantResponse.statusCode == 400 ||
+            restaurantResponse.statusCode == 404) {
+          _showTypeError();
+          return false;
+        } else {
+          throw Exception('Failed to fetch restaurants');
+        }
+      } else if (foodResponse.statusCode == 400 ||
+          foodResponse.statusCode == 404) {
+        _showTypeError();
+        return false;
+      } else {
+        throw Exception('Failed to fetch foods');
+      }
+    } catch (e) {
+      print('Error preparing recommendations: ' + e.toString());
+      return false;
+    }
+  }
+
+  Future<void> _assignFallbackType({bool force = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    const fallbackTypeCode = 'FALLBACK';
+    final currentType = prefs.getString('user_type');
+    if (force || currentType == null || currentType.isEmpty) {
+      await prefs.setString('user_type', fallbackTypeCode);
+    }
+
+    const fallbackFoods = [
+      {
+        'food_name': '추천 음식을 준비 중이에요',
+        'food_image_url': 'assets/images/food_image0.png',
+      },
+    ];
+
+    await prefs.setStringList(
+      'recommended_foods',
+      fallbackFoods.map((food) => food['food_name'] as String).toList(),
+    );
+    await prefs.setString(
+      'recommended_foods_info',
+      json.encode(fallbackFoods),
+    );
+
+    const fallbackRestaurants = [
+      {
+        'name': '추천 식당을 준비 중이에요',
+        'road_address': '맞춤 메뉴를 설정하면 더 많은 정보를 볼 수 있어요.',
+        'category_2': '안내',
+        'x': '0',
+        'y': '0',
+        'distance': 0,
+      },
+    ];
+
+    await prefs.setString(
+      'restaurants_data',
+      json.encode(fallbackRestaurants),
+    );
+  }
+
   Future<void> _checkUUID() async {
+    if (mounted && !_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     try {
       final checkUrl = Uri.parse(
           'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
@@ -280,15 +358,17 @@ class MainScreenState extends State<MainScreen> {
         final data = json.decode(checkResponse.body);
 
         if (data['uuid'] != null) {
-          // UUID瑜?SharedPreferences?????
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(_uuidKey, data['uuid']);
+          final String fetchedUuid = data['uuid'];
+          await prefs.setString(_uuidKey, fetchedUuid);
 
           if (data['type_code'] != null) {
-            _navigateToMainScreen();
+            await prefs.setString('user_type', data['type_code']);
           } else {
-            _navigateToMainScreen();
+            await _assignFallbackType(force: true);
           }
+
+          await _checkType(fetchedUuid);
         } else {
           await _createUUID();
         }
@@ -296,12 +376,17 @@ class MainScreenState extends State<MainScreen> {
         throw Exception('Failed to check UUID');
       }
     } catch (e) {
-      print('Error checking UUID: $e');
+      print('Error checking UUID: ' + e.toString());
       _showErrorDialog();
     }
   }
 
   Future<void> _createUUID() async {
+    if (mounted && !_isLoading) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
     try {
       final url = Uri.parse(
           'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
@@ -312,11 +397,12 @@ class MainScreenState extends State<MainScreen> {
 
         if (data['uuid'] != null) {
           final prefs = await SharedPreferences.getInstance();
-          await prefs.setString(_uuidKey, data['uuid']);
-          print('New UUID created and saved: ${data['uuid']}');
+          final String newUuid = data['uuid'];
+          await prefs.setString(_uuidKey, newUuid);
+          print('New UUID created and saved: ' + newUuid);
 
-          // ?덈줈??UUID ?앹꽦 ??諛붾줈 ?ㅻЦ ?붾㈃?쇰줈 ?대룞
-          _navigateToMainScreen();
+          await _assignFallbackType(force: true);
+          await _checkType(newUuid);
         } else {
           throw Exception(
               'UUID creation failed: Response does not contain UUID');
@@ -325,7 +411,7 @@ class MainScreenState extends State<MainScreen> {
         throw Exception('Failed to create UUID');
       }
     } catch (e) {
-      print('Error creating UUID: $e');
+      print('Error creating UUID: ' + e.toString());
       _showErrorDialog();
     }
   }
@@ -372,10 +458,10 @@ class MainScreenState extends State<MainScreen> {
             Spacer(flex: 9),
             Center(
               child: Image.asset(
-                'assets/images/Logo-Final.png', // 濡쒓퀬 ?대?吏 寃쎈줈
+                'assets/images/Logo-Final.png', // 濡쒓퀬 ?대?吏 寃쎈줈
                 width: MediaQuery.of(context).size.width *
                     0.6, // ?붾㈃ ?덈퉬??50%濡??ㅼ젙
-                fit: BoxFit.contain, // ?대?吏 鍮꾩쑉 ?좎?
+                fit: BoxFit.contain, // ?대?吏 鍮꾩쑉 ?좎?
               ),
             ),
             Spacer(flex: 10),
