@@ -64,6 +64,7 @@ class _HomeContentState extends State<HomeContent> {
     await _loadRecommendedFoods();
     await _loadRestaurantsData();
     await _loadLikedRestaurants();
+    await _refreshData(refreshFoods: false);
   }
 
   Future<void> _loadRestaurantsData() async {
@@ -227,7 +228,7 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
-  Future<void> _refreshData() async {
+  Future<void> _refreshData({bool refreshFoods = true}) async {
     if (_isFetching) return;
     _isFetching = true;
     try {
@@ -260,8 +261,7 @@ class _HomeContentState extends State<HomeContent> {
         final List<dynamic> foods = foodData['random_foods'] ?? [];
 
         final foodNames =
-        foods.map<String>((f) => f['food_name'].toString()).toList();
-        await prefs.setStringList('recommended_foods', foodNames);
+            foods.map<String>((f) => f['food_name'].toString()).toList();
 
         final foodInfoList = foods
             .map((f) => {
@@ -269,8 +269,12 @@ class _HomeContentState extends State<HomeContent> {
           'food_image_url': f['food_image_url'],
         })
             .toList();
-        await prefs.setString(
-            'recommended_foods_info', json.encode(foodInfoList));
+
+        if (refreshFoods) {
+          await prefs.setStringList('recommended_foods', foodNames);
+          await prefs.setString(
+              'recommended_foods_info', json.encode(foodInfoList));
+        }
 
         final restaurantUrl =
             'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
@@ -303,18 +307,19 @@ class _HomeContentState extends State<HomeContent> {
                 double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
             final restLon =
                 double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
-            final distance =
-            DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+            final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
             restaurant['distance'] = distance;
           }
 
           setState(() {
-            recommendedFoods = foodInfoList
-                .map<Map<String, dynamic>>((food) => {
-              'food_name': food['food_name'],
-              'food_image_url': food['food_image_url'],
-            })
-                .toList();
+            if (refreshFoods) {
+              recommendedFoods = foodInfoList
+                  .map<Map<String, dynamic>>((food) => {
+                'food_name': food['food_name'],
+                'food_image_url': food['food_image_url'],
+              })
+                  .toList();
+            }
             recommendedRestaurants = restaurants
                 .map<Map<String, dynamic>>((restaurant) => {
               'name': restaurant['name'] ?? '이름 없음',
@@ -669,7 +674,7 @@ class _HomeContentState extends State<HomeContent> {
         ),
       ),
       body: RefreshIndicator(
-      onRefresh: _refreshData,
+      onRefresh: () => _refreshData(),
       child: SingleChildScrollView(
         controller: _scrollController,
         physics: const AlwaysScrollableScrollPhysics(),
@@ -694,7 +699,7 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh),
-                    onPressed: _refreshData,
+                    onPressed: () => _refreshData(),
                   ),
                 ],
               ),
@@ -714,7 +719,7 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                   IconButton(
                     icon: const Icon(Icons.refresh),
-                    onPressed: _refreshData,
+                    onPressed: () => _refreshData(),
                   ),
                 ],
               ),
