@@ -64,6 +64,13 @@ class _HomeContentState extends State<HomeContent> {
     await _loadRecommendedFoods();
     await _loadRestaurantsData();
     await _loadLikedRestaurants();
+    final cachedFoodNames = _getCachedFoodNames();
+
+    if (cachedFoodNames.isEmpty) {
+      await _refreshFoodsAndRestaurants();
+    } else if (recommendedRestaurants.isEmpty) {
+      await _refreshRestaurantsOnly();
+    }
   }
 
   Future<void> _loadRestaurantsData() async {
@@ -139,6 +146,33 @@ class _HomeContentState extends State<HomeContent> {
           recommendedFoods = [];
         });
       }
+    }
+  }
+
+  List<String> _getCachedFoodNames() {
+    final fromState = recommendedFoods
+        .map((food) => food['food_name']?.toString().trim() ?? '')
+        .where((name) => name.isNotEmpty)
+        .toList();
+
+    if (fromState.isNotEmpty) {
+      return fromState;
+    }
+
+    final String? savedFoodInfo = prefs.getString('recommended_foods_info');
+    if (savedFoodInfo == null) {
+      return const [];
+    }
+
+    try {
+      final List<dynamic> decodedInfo = json.decode(savedFoodInfo);
+      return decodedInfo
+          .map((item) =>
+      (item as Map<String, dynamic>)['food_name']?.toString().trim() ?? '')
+          .where((name) => name.isNotEmpty)
+          .toList();
+    } catch (_) {
+      return const [];
     }
   }
   // 찜한 음식점 상태 로드
@@ -223,129 +257,19 @@ class _HomeContentState extends State<HomeContent> {
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.position.pixels;
     if (currentScroll > maxScroll - 100) {
-      _refreshData();
+      _refreshRestaurantsOnly();
     }
   }
 
-  Future<void> _refreshData() async {
+  Future<void> _refreshFoodsAndRestaurants() async {
     if (_isFetching) return;
     _isFetching = true;
     try {
-      final userUuid = prefs.getString('user_uuid') ?? '';
-      if (userUuid.isEmpty) throw Exception('사용자 UUID를 찾을 수 없습니다');
-      final typeCode = prefs.getString('user_type');
-      if (typeCode == null || typeCode.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
-          );
-        }
-        _isFetching = false;
+      final foodNames = await _fetchFoods();
+      if (foodNames.isEmpty) {
         return;
       }
-      final foodUrl =
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$userUuid';
-      http.Response foodResponse;
-      int retry = 0;
-      int delay = 1;
-      do {
-        foodResponse = await http.get(Uri.parse(foodUrl));
-        if (foodResponse.statusCode == 200 || foodResponse.statusCode == 400 || foodResponse.statusCode == 404) break;
-        await Future.delayed(Duration(seconds: delay));
-        delay *= 2;
-        retry++;
-      } while (retry < 3);
-      if (foodResponse.statusCode == 200) {
-        final Map<String, dynamic> foodData = jsonDecode(utf8.decode(foodResponse.bodyBytes));
-        final List<dynamic> foods = foodData['random_foods'] ?? [];
-
-        final foodNames =
-        foods.map<String>((f) => f['food_name'].toString()).toList();
-        await prefs.setStringList('recommended_foods', foodNames);
-
-        final foodInfoList = foods
-            .map((f) => {
-          'food_name': f['food_name'],
-          'food_image_url': f['food_image_url'],
-        })
-            .toList();
-        await prefs.setString(
-            'recommended_foods_info', json.encode(foodInfoList));
-
-        final restaurantUrl =
-            'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
-        http.Response restResponse;
-        retry = 0;
-        delay = 1;
-        do {
-          restResponse = await http.post(
-            Uri.parse(restaurantUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: json.encode({'food_names': foodNames}),
-          );
-          if (restResponse.statusCode == 200 || restResponse.statusCode == 400 || restResponse.statusCode == 404) break;
-          await Future.delayed(Duration(seconds: delay));
-          delay *= 2;
-          retry++;
-        } while (retry < 3);
-
-        if (restResponse.statusCode == 200) {
-          final restData = jsonDecode(utf8.decode(restResponse.bodyBytes));
-          final List<dynamic> restaurants = restData['random_restaurants'] ?? [];
-          await prefs.setString(
-              'restaurants_data', json.encode(restaurants));
-
-          final position = await LocationHelper.getLatLon();
-          final userLat = position?['lat'] ?? 35.8714;
-          final userLon = position?['lon'] ?? 128.6014;
-          for (var restaurant in restaurants) {
-            final restLat =
-                double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
-            final restLon =
-                double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
-            final distance =
-            DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
-            restaurant['distance'] = distance;
-          }
-
-          setState(() {
-            recommendedFoods = foodInfoList
-                .map<Map<String, dynamic>>((food) => {
-              'food_name': food['food_name'],
-              'food_image_url': food['food_image_url'],
-            })
-                .toList();
-            recommendedRestaurants = restaurants
-                .map<Map<String, dynamic>>((restaurant) => {
-              'name': restaurant['name'] ?? '이름 없음',
-              'road_address': restaurant['road_address'] ?? '주소 없음',
-              'category_2': restaurant['category_2'] ?? '카테고리 없음',
-              'x': restaurant['x'],
-              'y': restaurant['y'],
-              'distance': restaurant['distance'],
-            })
-                .toList();
-          });
-
-          await _loadLikedRestaurants();
-        } else if (restResponse.statusCode == 400 || restResponse.statusCode == 404) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
-            );
-          }
-        } else {
-          throw Exception('음식점을 불러오지 못했습니다');
-        }
-      } else if (foodResponse.statusCode == 400 || foodResponse.statusCode == 404) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
-          );
-        }
-      } else {
-        throw Exception('음식을 불러오지 못했습니다');
-      }
+      await _fetchRestaurants(foodNames);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -354,6 +278,175 @@ class _HomeContentState extends State<HomeContent> {
       }
     } finally {
       _isFetching = false;
+    }
+  }
+
+  Future<void> _refreshRestaurantsOnly() async {
+    if (_isFetching) return;
+
+    final foodNames = _getCachedFoodNames();
+    if (foodNames.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('먼저 음식 추천을 새로고침 해주세요.')),
+        );
+      }
+      return;
+    }
+
+    _isFetching = true;
+    try {
+      await _fetchRestaurants(foodNames);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('음식점을 불러오지 못했어요: $e')),
+        );
+      }
+    } finally {
+      _isFetching = false;
+    }
+  }
+
+  Future<List<String>> _fetchFoods() async {
+    final userUuid = prefs.getString('user_uuid') ?? '';
+    if (userUuid.isEmpty) throw Exception('사용자 UUID를 찾을 수 없습니다');
+    final String? typeCode = prefs.getString('user_type');
+
+    if (typeCode == null || typeCode.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
+        );
+      }
+      return const [];
+    }
+
+    final foodUrl =
+        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$userUuid';
+    http.Response foodResponse;
+    int retry = 0;
+    int delay = 1;
+    do {
+      foodResponse = await http.get(Uri.parse(foodUrl));
+      if (foodResponse.statusCode == 200 ||
+          foodResponse.statusCode == 400 ||
+          foodResponse.statusCode == 404) break;
+      await Future.delayed(Duration(seconds: delay));
+      delay *= 2;
+      retry++;
+    } while (retry < 3);
+
+    if (foodResponse.statusCode == 200) {
+      final Map<String, dynamic> foodData =
+      jsonDecode(utf8.decode(foodResponse.bodyBytes));
+      final List<dynamic> foods = foodData['random_foods'] ?? [];
+
+      final foodInfoList = foods
+          .map<Map<String, dynamic>>((f) => {
+        'food_name': f['food_name'],
+        'food_image_url': f['food_image_url'],
+      })
+          .toList();
+
+      final foodNames = foodInfoList
+          .map((food) => food['food_name']?.toString().trim() ?? '')
+          .where((name) => name.isNotEmpty)
+          .toList();
+
+      await prefs.setStringList('recommended_foods', foodNames);
+      await prefs.setString('recommended_foods_info', json.encode(foodInfoList));
+
+      if (mounted) {
+        setState(() {
+          recommendedFoods = foodInfoList
+              .map<Map<String, dynamic>>((food) => {
+            'food_name': food['food_name'],
+            'food_image_url': food['food_image_url'],
+          })
+              .toList();
+        });
+      }
+
+      return foodNames;
+    } else if (foodResponse.statusCode == 400 ||
+        foodResponse.statusCode == 404) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
+        );
+      }
+      return const [];
+    } else {
+      throw Exception('음식을 불러오지 못했습니다');
+    }
+  }
+
+  Future<void> _fetchRestaurants(List<String> foodNames) async {
+    final restaurantUrl =
+        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
+    http.Response restResponse;
+    int retry = 0;
+    int delay = 1;
+    do {
+      restResponse = await http.post(
+        Uri.parse(restaurantUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'food_names': foodNames}),
+      );
+      if (restResponse.statusCode == 200 ||
+          restResponse.statusCode == 400 ||
+          restResponse.statusCode == 404) break;
+      await Future.delayed(Duration(seconds: delay));
+      delay *= 2;
+      retry++;
+    } while (retry < 3);
+
+    if (restResponse.statusCode == 200) {
+      final restData = jsonDecode(utf8.decode(restResponse.bodyBytes));
+      final List<dynamic> restaurants = restData['random_restaurants'] ?? [];
+      await prefs.setString('restaurants_data', json.encode(restaurants));
+
+      final position = await LocationHelper.getLatLon();
+      final userLat = position?['lat'] ?? 35.8714;
+      final userLon = position?['lon'] ?? 128.6014;
+      for (var restaurant in restaurants) {
+        final restLat =
+            double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+        final restLon =
+            double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+        final distance =
+        DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+        restaurant['distance'] = distance;
+      }
+
+      if (mounted) {
+        setState(() {
+          recommendedRestaurants = restaurants
+              .map<Map<String, dynamic>>((restaurant) => {
+            'name': restaurant['name'] ?? '이름 없음',
+            'road_address':
+            restaurant['road_address'] ?? '주소 없음',
+            'category_2':
+            restaurant['category_2'] ?? '카테고리 없음',
+            'x': restaurant['x'],
+            'y': restaurant['y'],
+            'distance': restaurant['distance'],
+          })
+              .toList();
+        });
+      }
+
+      await _loadLikedRestaurants();
+    } else if (restResponse.statusCode == 400 ||
+        restResponse.statusCode == 404) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
+        );
+      }
+    } else {
+      throw Exception('음식점을 불러오지 못했습니다');
     }
   }
 
@@ -669,7 +762,7 @@ class _HomeContentState extends State<HomeContent> {
         ),
       ),
       body: RefreshIndicator(
-        onRefresh: _refreshData,
+        onRefresh: _refreshFoodsAndRestaurants,
         child: SingleChildScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -694,7 +787,7 @@ class _HomeContentState extends State<HomeContent> {
                     ),
                     IconButton(
                       icon: const Icon(Icons.refresh),
-                      onPressed: _refreshData,
+                      onPressed: _refreshFoodsAndRestaurants,
                     ),
                   ],
                 ),
@@ -714,7 +807,7 @@ class _HomeContentState extends State<HomeContent> {
                     ),
                     IconButton(
                       icon: const Icon(Icons.refresh),
-                      onPressed: _refreshData,
+                      onPressed: _refreshRestaurantsOnly,
                     ),
                   ],
                 ),
