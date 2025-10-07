@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'food_recommendation_screen.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
@@ -149,7 +149,7 @@ class _ResultScreenState extends State<ResultScreen> {
       } else if(response.statusCode == 400 || response.statusCode == 404){
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('타입코드 미등록')),
+            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
           );
         }
       }

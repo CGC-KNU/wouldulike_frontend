@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
+import 'package:new1/utils/user_type_helper.dart';
 
 class MatchingScreen extends StatefulWidget {
   const MatchingScreen({super.key});
@@ -20,7 +21,6 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
   List<Map<String, dynamic>> recommendedFoods = [];
   Map<String, List<Map<String, dynamic>>> foodToRestaurants = {};
   bool isLoading = true;
-  String? userUUID;
   bool isBack = false;
   late AnimationController _controller;
   late Animation<double> _animation;
@@ -70,7 +70,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
     }
   }
 
-  Future<void> _fetchFoodRecommendations({ bool append = false }) async {
+  Future<void> _fetchFoodRecommendations({bool append = false}) async {
     if (isFetching) return;
     isFetching = true;
 
@@ -79,13 +79,18 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       final userUUID = prefs.getString('user_uuid') ?? '';
 
       if (userUUID.isEmpty) {
-        throw Exception('User UUID not found');
+        throw Exception('사용자 UUID를 찾을 수 없습니다');
       }
+      await ensureUserTypeCode(
+        prefs,
+        uuid: userUUID,
+      );
+
       final typeCode = prefs.getString('user_type');
       if (typeCode == null || typeCode.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('타입코드 미등록')),
+            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
           );
         }
         setState(() { isLoading = false; });
@@ -109,15 +114,16 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         final List<dynamic> foods = responseData['random_foods'];
 
         if (foods.isEmpty) {
-          throw Exception('No food recommendations received');
+          throw Exception('추천 음식 정보를 받지 못했습니다');
         }
 
         // 기존에 있던 음식 제목들
         final currentTitles = recommendedFoods.map((f) => f['title']).toSet();
 
         // 중복 제거 후 새로 추가할 음식만 필터링
-        final newItems = foods.where((food) =>
-        !currentTitles.contains(food['food_name'])).map((food) => {
+        final newItems = foods
+            .where((food) => !currentTitles.contains(food['food_name']))
+            .map((food) => {
           'title': food['food_name'] ?? '이름 없음',
           'description': food['description'] ?? '설명 없음',
           'image': food['food_image_url'] ?? 'assets/images/food_image0.png',
@@ -141,12 +147,12 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       } else if (response.statusCode == 400 || response.statusCode == 404) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('타입코드 미등록')),
+            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
           );
         }
         setState(() { isLoading = false; });
       } else {
-        throw Exception('Failed to load food recommendations');
+        throw Exception('음식 추천을 불러오지 못했습니다');
       }
     } catch (e) {
       if (!mounted) return;
@@ -154,7 +160,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('음식 추천을 가져오는데 실패했습니다: ${e.toString()}')),
+        SnackBar(content: Text('음식 추천을 가져오는 중 오류가 발생했습니다: ${e.toString()}')),
       );
     } finally {
       isFetching = false;
@@ -230,13 +236,13 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         print('7. 상태 업데이트 완료');
       } else {
         print('8. API 오류 응답: ${response.statusCode}');
-        throw Exception('Failed to fetch restaurants: ${response.body}');
+        throw Exception('음식점 정보를 불러오지 못했습니다: ${response.body}');
       }
     } catch (e) {
       print('9. 에러 발생: ${e.toString()}');
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('음식점 정보를 가져오는데 실패했습니다: ${e.toString()}')),
+        SnackBar(content: Text('음식점 정보를 불러오는 중 오류가 발생했습니다: ${e.toString()}')),
       );
     }
   }
@@ -303,7 +309,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         body: json.encode({'uuid': uuid, 'restaurant': restaurantName, 'action': action}),
       );
     } catch (e) {
-      print('Error updating favorite restaurant: $e');
+      print('찜한 음식점 정보를 업데이트하는 중 오류가 발생했습니다: $e');
     }
   }
   @override
@@ -685,4 +691,5 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       ),
     );
   }
+
 }

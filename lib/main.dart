@@ -4,6 +4,7 @@ import 'main2.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:new1/utils/user_type_helper.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -92,17 +93,17 @@ class MainScreenState extends State<MainScreen> {
     final prefs = await SharedPreferences.getInstance();
     await _initFirebaseMessaging();
 
-    // ?㎛ ?꾩튂 沅뚰븳 ?붿껌 諛??섏쭛
+    // ????꾩튂 沅뚰�??붿껌 �???�쭛
     await _getAndSaveUserLocation();
 
     final storedUUID = prefs.getString(_uuidKey);
     //final storedUUID = null;
     if (storedUUID != null) {
-      // ??λ맂 UUID媛 ?덉쑝硫?type ?뺤씤
+      // ??λ�?UUID�???�쑝�?type ?뺤씤
       print('Stored UUID found: $storedUUID');
       await _checkType(storedUUID);
     } else {
-      // ??λ맂 UUID媛 ?놁쑝硫??쒕쾭?먯꽌 ?덈줈??UUID ?앹꽦
+      // ??λ�?UUID�???�쑝�???�쾭?�?�� ??�줈??UUID ??�꽦
       print('No UUID found in SharedPreferences. Generating a new UUID...');
       await _createUUID();
     }
@@ -169,7 +170,7 @@ class MainScreenState extends State<MainScreen> {
       return;
     }
 
-    // ???꾩튂 媛?몄삤湲?
+    // ???꾩튂 �?몄삤�?
     Position position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
@@ -192,9 +193,16 @@ class MainScreenState extends State<MainScreen> {
         final data = json.decode(checkResponse.body);
         final prefs = await SharedPreferences.getInstance();
 
-        if (data['type_code'] != null) {
-          print('Type found: ' + data['type_code']);
-          await prefs.setString('user_type', data['type_code']);
+        final remoteType = (data['type_code'] as String?)?.trim();
+        if (remoteType != null && remoteType.isNotEmpty) {
+          print('Type found: ' + remoteType);
+          await prefs.setString('user_type', remoteType);
+        } else {
+          await ensureUserTypeCode(
+            prefs,
+            uuid: uuid,
+            forceDefault: true,
+          );
         }
 
         final bool recommendationsReady = await _populateRecommendations(uuid);
@@ -304,15 +312,15 @@ class MainScreenState extends State<MainScreen> {
   Future<void> _assignFallbackType({bool force = false}) async {
     final prefs = await SharedPreferences.getInstance();
 
-    const fallbackTypeCode = 'FALLBACK';
-    final currentType = prefs.getString('user_type');
-    if (force || currentType == null || currentType.isEmpty) {
-      await prefs.setString('user_type', fallbackTypeCode);
-    }
+    await ensureUserTypeCode(
+      prefs,
+      uuid: prefs.getString(_uuidKey),
+      forceDefault: force,
+    );
 
     const fallbackFoods = [
       {
-        'food_name': '추천 음식을 준비 중이에요',
+        'food_name': '추천 ?�식??준�?중이?�요',
         'food_image_url': 'assets/images/food_image0.png',
       },
     ];
@@ -328,9 +336,9 @@ class MainScreenState extends State<MainScreen> {
 
     const fallbackRestaurants = [
       {
-        'name': '추천 식당을 준비 중이에요',
-        'road_address': '맞춤 메뉴를 설정하면 더 많은 정보를 볼 수 있어요.',
-        'category_2': '안내',
+        'name': '추천 ?�당??준�?중이?�요',
+        'road_address': '맞춤 메뉴�??�정?�면 ??많�? ?�보�?�????�어??',
+        'category_2': '?�내',
         'x': '0',
         'y': '0',
         'distance': 0,
@@ -458,10 +466,10 @@ class MainScreenState extends State<MainScreen> {
             Spacer(flex: 9),
             Center(
               child: Image.asset(
-                'assets/images/Logo-Final.png', // 濡쒓퀬 ?대?吏 寃쎈줈
+                'assets/images/Logo-Final.png', // 濡쒓????�?�?寃쎈�?
                 width: MediaQuery.of(context).size.width *
-                    0.6, // ?붾㈃ ?덈퉬??50%濡??ㅼ젙
-                fit: BoxFit.contain, // ?대?吏 鍮꾩쑉 ?좎?
+                    0.6, // ?붾㈃ ??�퉬??50%�???�젙
+                fit: BoxFit.contain, // ??�?�???��???�?
               ),
             ),
             Spacer(flex: 10),
@@ -469,7 +477,7 @@ class MainScreenState extends State<MainScreen> {
         ),
       );
     }
-    // 濡쒕뵫???꾨땺 ?뚯쓽 ?붾㈃
+    // 濡쒕�???꾨땺 ???�� ?붾㈃
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
@@ -481,3 +489,6 @@ class MainScreenState extends State<MainScreen> {
     );
   }
 }
+
+
+

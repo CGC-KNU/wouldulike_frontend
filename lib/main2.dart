@@ -1,6 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 
-import 'affiliate_benefits_screen.dart';
+import 'package:new1/affiliate_benefits_screen.dart';
 import 'home.dart';
 import 'match.dart';
 import 'my.dart';
