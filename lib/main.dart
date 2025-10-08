@@ -398,7 +398,7 @@ class MainScreenState extends State<MainScreen> {
     try {
       final url = Uri.parse(
           'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
-      final response = await http.post(url);
+      final response = await http.get(url);
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);

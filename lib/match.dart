@@ -26,6 +26,103 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
   late Animation<double> _animation;
   int currentFoodIndex = 0;
   final PageController pageController = PageController();
+  static const String _matchingFoodCacheKey = 'matching_foods_cache';
+  static const String _fallbackDescription =
+      '';
+
+  List<Map<String, dynamic>> _buildDefaultFallbackFoods() {
+    return [
+      {
+        'title': '',
+        'description': _fallbackDescription,
+        'image': 'assets/images/food_image0.png',
+      },
+    ];
+  }
+
+  List<Map<String, dynamic>> _loadFallbackFoods(SharedPreferences prefs) {
+    final cachedJson = prefs.getString(_matchingFoodCacheKey);
+    if (cachedJson != null && cachedJson.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(cachedJson);
+        if (decoded is List) {
+          final normalized = <Map<String, dynamic>>[];
+          for (final element in decoded) {
+            if (element is Map) {
+              final title = element['title']?.toString() ?? '';
+              final description =
+                  element['description']?.toString() ?? _fallbackDescription;
+              final image =
+                  element['image']?.toString() ?? 'assets/images/food_image0.png';
+              if (title.trim().isEmpty) continue;
+              normalized.add({
+                'title': title,
+                'description': description,
+                'image': image,
+              });
+            }
+          }
+          if (normalized.isNotEmpty) {
+            return normalized;
+          }
+        }
+      } catch (_) {}
+    }
+
+    final savedHome = prefs.getString('recommended_foods_info');
+    if (savedHome != null && savedHome.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(savedHome);
+        if (decoded is List) {
+          final normalized = <Map<String, dynamic>>[];
+          for (final element in decoded) {
+            if (element is Map) {
+              final title = element['food_name']?.toString() ?? '';
+              final image =
+                  element['food_image_url']?.toString() ?? 'assets/images/food_image0.png';
+              if (title.trim().isEmpty) continue;
+              normalized.add({
+                'title': title,
+                'description': _fallbackDescription,
+                'image': image,
+              });
+            }
+          }
+          if (normalized.isNotEmpty) {
+            return normalized;
+          }
+        }
+      } catch (_) {}
+    }
+
+    return _buildDefaultFallbackFoods();
+  }
+
+  Future<void> _handleRecommendationFailure(
+    SharedPreferences prefs, {
+    bool append = false,
+    String? message,
+  }) async {
+    final fallbackFoods = _loadFallbackFoods(prefs);
+    await prefs.setString(
+      _matchingFoodCacheKey,
+      jsonEncode(fallbackFoods),
+    );
+    if (!mounted) return;
+    setState(() {
+      if (!append || recommendedFoods.isEmpty) {
+        recommendedFoods = fallbackFoods;
+        currentFoodIndex = 0;
+      }
+      isLoading = false;
+    });
+    if (message != null && message.isNotEmpty) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(message)));
+    }
+  }
+
 
   @override
   void initState() {
@@ -74,12 +171,13 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
     if (isFetching) return;
     isFetching = true;
 
+    SharedPreferences? prefs;
     try {
-      final prefs = await SharedPreferences.getInstance();
+      prefs = await SharedPreferences.getInstance();
       final userUUID = prefs.getString('user_uuid') ?? '';
 
       if (userUUID.isEmpty) {
-        throw Exception('사용자 UUID를 찾을 수 없습니다');
+        throw Exception('??? UUID? ?? ? ????');
       }
       await ensureUserTypeCode(
         prefs,
@@ -88,22 +186,24 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
 
       final typeCode = prefs.getString('user_type');
       if (typeCode == null || typeCode.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
-          );
-        }
-        setState(() { isLoading = false; });
+        await _handleRecommendationFailure(
+          prefs,
+          append: append,
+          message: '?? ??? ???? ?? ????.',
+        );
         return;
       }
 
-      final url = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/unique-random-foods/?uuid=$userUUID';
+      final url =
+          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/unique-random-foods/?uuid=$userUUID';
       http.Response response;
       int retry = 0;
       int delay = 1;
       do {
         response = await http.get(Uri.parse(url));
-        if (response.statusCode == 200 || response.statusCode == 400 || response.statusCode == 404) break;
+        if (response.statusCode == 200 ||
+            response.statusCode == 400 ||
+            response.statusCode == 404) break;
         await Future.delayed(Duration(seconds: delay));
         delay *= 2;
         retry++;
@@ -114,53 +214,59 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         final List<dynamic> foods = responseData['random_foods'];
 
         if (foods.isEmpty) {
-          throw Exception('추천 음식 정보를 받지 못했습니다');
+          throw Exception('?? ?? ??? ?? ?????');
         }
 
-        // 기존에 있던 음식 제목들
         final currentTitles = recommendedFoods.map((f) => f['title']).toSet();
 
-        // 중복 제거 후 새로 추가할 음식만 필터링
         final newItems = foods
             .where((food) => !currentTitles.contains(food['food_name']))
             .map((food) => {
-          'title': food['food_name'] ?? '이름 없음',
-          'description': food['description'] ?? '설명 없음',
-          'image': food['food_image_url'] ?? 'assets/images/food_image0.png',
-        }).toList();
+                  'title': food['food_name'] ?? '?? ??',
+                  'description': food['description'] ?? '?? ??',
+                  'image': food['food_image_url'] ?? 'assets/images/food_image0.png',
+                })
+            .toList();
 
+        final updatedFoods =
+            append ? [...recommendedFoods, ...newItems] : newItems;
+
+        await prefs.setString(
+          _matchingFoodCacheKey,
+          jsonEncode(updatedFoods),
+        );
         await prefs.setStringList(
           'recommended_foods',
-          newItems.map((f) => f['title'].toString()).toList(),
+          updatedFoods
+              .map((f) => f['title']?.toString() ?? '')
+              .where((title) => title.trim().isNotEmpty)
+              .toList(),
         );
 
         if (!mounted) return;
 
         setState(() {
-          if (append) {
-            recommendedFoods.addAll(newItems); // 이어붙이기
-          } else {
-            recommendedFoods = newItems; // 처음이면 덮어쓰기
-          }
+          recommendedFoods = updatedFoods;
           isLoading = false;
         });
       } else if (response.statusCode == 400 || response.statusCode == 404) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
-          );
-        }
-        setState(() { isLoading = false; });
+        await _handleRecommendationFailure(
+          prefs,
+          append: append,
+          message: '?? ??? ???? ?? ????.',
+        );
       } else {
-        throw Exception('음식 추천을 불러오지 못했습니다');
+        throw Exception('?? ??? ???? ?????');
       }
     } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        isLoading = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('음식 추천을 가져오는 중 오류가 발생했습니다: ${e.toString()}')),
+      final fallbackPrefs = prefs ?? await SharedPreferences.getInstance();
+      print('Error fetching matching foods: $e');
+      await _handleRecommendationFailure(
+        fallbackPrefs,
+        append: append,
+        message: append
+            ? '??? ??? ???? ????. ?? ? ?? ??? ???.'
+            : '?? ???? ???? ????. ?? ??? ??????.',
       );
     } finally {
       isFetching = false;
