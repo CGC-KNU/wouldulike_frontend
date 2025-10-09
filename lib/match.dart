@@ -28,12 +28,12 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
   final PageController pageController = PageController();
   static const String _matchingFoodCacheKey = 'matching_foods_cache';
   static const String _fallbackDescription =
-      '';
+      '취향 데이터를 불러오지 못했어요. 잠시 후 다시 시도해 주세요.';
 
   List<Map<String, dynamic>> _buildDefaultFallbackFoods() {
     return [
       {
-        'title': '',
+        'title': '추천 메뉴가 준비 중이에요',
         'description': _fallbackDescription,
         'image': 'assets/images/food_image0.png',
       },

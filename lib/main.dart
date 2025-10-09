@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:new1/utils/user_type_helper.dart';
+import 'services/api_client.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -93,17 +94,17 @@ class MainScreenState extends State<MainScreen> {
     final prefs = await SharedPreferences.getInstance();
     await _initFirebaseMessaging();
 
-    // ????꾩튂 沅뚰�??붿껌 �???�쭛
+    // ????꾩튂 沅뚰??붿껌 ???쭛
     await _getAndSaveUserLocation();
 
     final storedUUID = prefs.getString(_uuidKey);
     //final storedUUID = null;
     if (storedUUID != null) {
-      // ??λ�?UUID�???�쑝�?type ?뺤씤
+      // ??λ?UUID???쑝?type ?뺤씤
       print('Stored UUID found: $storedUUID');
       await _checkType(storedUUID);
     } else {
-      // ??λ�?UUID�???�쑝�???�쾭?�?�� ??�줈??UUID ??�꽦
+      // ??λ?UUID???쑝???쾭?? ??줈??UUID ??꽦
       print('No UUID found in SharedPreferences. Generating a new UUID...');
       await _createUUID();
     }
@@ -170,7 +171,7 @@ class MainScreenState extends State<MainScreen> {
       return;
     }
 
-    // ???꾩튂 �?몄삤�?
+    // ???꾩튂 ?몄삤?
     Position position = await Geolocator.getCurrentPosition(
       desiredAccuracy: LocationAccuracy.high,
     );
@@ -182,38 +183,74 @@ class MainScreenState extends State<MainScreen> {
     await prefs.setDouble('user_lon', position.longitude);
   }
 
+  Future<String?> _resolveRemoteType(
+      SharedPreferences prefs, String uuid) async {
+    final bool isLoggedIn = (prefs.getBool('kakao_logged_in') ?? false) &&
+        ((prefs.getString('jwt_access_token') ?? '').isNotEmpty);
+
+    if (isLoggedIn) {
+      try {
+        final response = await ApiClient.get('/api/users/me/');
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        if (data is Map<String, dynamic>) {
+          final remoteType = data['type_code']?.toString().trim();
+          if (remoteType != null && remoteType.isNotEmpty) {
+            return remoteType;
+          }
+        }
+      } catch (e) {
+        print('User profile type lookup failed: ' + e.toString());
+      }
+    }
+
+    final checkUrl = Uri.parse(
+        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/?uuid=' +
+            uuid);
+    final checkResponse = await http.get(checkUrl);
+
+    if (checkResponse.statusCode == 200) {
+      final data = json.decode(checkResponse.body);
+      if (data is Map<String, dynamic>) {
+        final remoteType = data['type_code']?.toString().trim();
+        if (remoteType != null && remoteType.isNotEmpty) {
+          return remoteType;
+        }
+      }
+      return null;
+    }
+
+    if (checkResponse.statusCode == 400 || checkResponse.statusCode == 404) {
+      return null;
+    }
+
+    throw Exception(
+        'Failed to check type: ' + checkResponse.statusCode.toString());
+  }
+
   Future<void> _checkType(String uuid) async {
     try {
-      final checkUrl = Uri.parse(
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/?uuid=' + uuid);
+      final prefs = await SharedPreferences.getInstance();
       print('Checking type for UUID: ' + uuid);
-      final checkResponse = await http.get(checkUrl);
 
-      if (checkResponse.statusCode == 200) {
-        final data = json.decode(checkResponse.body);
-        final prefs = await SharedPreferences.getInstance();
+      final remoteType = await _resolveRemoteType(prefs, uuid);
 
-        final remoteType = (data['type_code'] as String?)?.trim();
-        if (remoteType != null && remoteType.isNotEmpty) {
-          print('Type found: ' + remoteType);
-          await prefs.setString('user_type', remoteType);
-        } else {
-          await ensureUserTypeCode(
-            prefs,
-            uuid: uuid,
-            forceDefault: true,
-          );
-        }
-
-        final bool recommendationsReady = await _populateRecommendations(uuid);
-        if (!recommendationsReady) {
-          await _assignFallbackType(force: data['type_code'] == null);
-        }
-
-        _navigateToMainScreen();
+      if (remoteType != null && remoteType.isNotEmpty) {
+        print('Type found: ' + remoteType);
+        await prefs.setString('user_type', remoteType);
       } else {
-        throw Exception('Failed to check type');
+        await ensureUserTypeCode(
+          prefs,
+          uuid: uuid,
+          forceDefault: true,
+        );
       }
+
+      final bool recommendationsReady = await _populateRecommendations(uuid);
+      if (!recommendationsReady) {
+        await _assignFallbackType(force: remoteType == null);
+      }
+
+      _navigateToMainScreen();
     } catch (e) {
       print('Error checking type: ' + e.toString());
       _showErrorDialog();
@@ -225,7 +262,8 @@ class MainScreenState extends State<MainScreen> {
       final prefs = await SharedPreferences.getInstance();
 
       final foodUrl =
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=' + uuid;
+          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=' +
+              uuid;
       http.Response foodResponse;
       int retry = 0;
       int delay = 1;
@@ -243,13 +281,12 @@ class MainScreenState extends State<MainScreen> {
       } while (retry < 3);
 
       if (foodResponse.statusCode == 200) {
-        final foodData =
-            json.decode(utf8.decode(foodResponse.bodyBytes)) as Map<String, dynamic>;
+        final foodData = json.decode(utf8.decode(foodResponse.bodyBytes))
+            as Map<String, dynamic>;
         final List<dynamic> foods = foodData['random_foods'] ?? [];
 
-        final List<String> foodNames = foods
-            .map<String>((food) => food['food_name'].toString())
-            .toList();
+        final List<String> foodNames =
+            foods.map<String>((food) => food['food_name'].toString()).toList();
         await prefs.setStringList('recommended_foods', foodNames);
 
         final foodInfoList = foods
@@ -284,8 +321,9 @@ class MainScreenState extends State<MainScreen> {
         } while (retry < 3);
 
         if (restaurantResponse.statusCode == 200) {
-          final restaurantData = json.decode(
-              utf8.decode(restaurantResponse.bodyBytes)) as Map<String, dynamic>;
+          final restaurantData =
+              json.decode(utf8.decode(restaurantResponse.bodyBytes))
+                  as Map<String, dynamic>;
           await prefs.setString('restaurants_data',
               json.encode(restaurantData['random_restaurants']));
           return true;
@@ -320,7 +358,7 @@ class MainScreenState extends State<MainScreen> {
 
     const fallbackFoods = [
       {
-        'food_name': '추천 ?�식??준�?중이?�요',
+        'food_name': '추천 ?식??준?중이?요',
         'food_image_url': 'assets/images/food_image0.png',
       },
     ];
@@ -336,9 +374,9 @@ class MainScreenState extends State<MainScreen> {
 
     const fallbackRestaurants = [
       {
-        'name': '추천 ?�당??준�?중이?�요',
-        'road_address': '맞춤 메뉴�??�정?�면 ??많�? ?�보�?�????�어??',
-        'category_2': '?�내',
+        'name': '추천 ?당??준?중이?요',
+        'road_address': '맞춤 메뉴??정?면 ??많? ?보?????어??',
+        'category_2': '?내',
         'x': '0',
         'y': '0',
         'distance': 0,
@@ -466,10 +504,10 @@ class MainScreenState extends State<MainScreen> {
             Spacer(flex: 9),
             Center(
               child: Image.asset(
-                'assets/images/Logo-Final.png', // 濡쒓????�?�?寃쎈�?
-                width: MediaQuery.of(context).size.width *
-                    0.6, // ?붾㈃ ??�퉬??50%�???�젙
-                fit: BoxFit.contain, // ??�?�???��???�?
+                'assets/images/Logo-Final.png', // 濡쒓??????寃쎈?
+                width:
+                    MediaQuery.of(context).size.width * 0.6, // ?붾㈃ ??퉬??50%???젙
+                fit: BoxFit.contain, // ??????????
               ),
             ),
             Spacer(flex: 10),
@@ -477,7 +515,7 @@ class MainScreenState extends State<MainScreen> {
         ),
       );
     }
-    // 濡쒕�???꾨땺 ???�� ?붾㈃
+    // 濡쒕???꾨땺 ??? ?붾㈃
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
@@ -489,6 +527,3 @@ class MainScreenState extends State<MainScreen> {
     );
   }
 }
-
-
-
