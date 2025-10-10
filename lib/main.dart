@@ -234,9 +234,13 @@ class MainScreenState extends State<MainScreen> {
 
       final remoteType = await _resolveRemoteType(prefs, uuid);
 
+      final localType = (prefs.getString('user_type') ?? '').trim();
+
       if (remoteType != null && remoteType.isNotEmpty) {
         print('Type found: ' + remoteType);
         await prefs.setString('user_type', remoteType);
+      } else if (localType.isNotEmpty) {
+        print('Using cached type: ' + localType);
       } else {
         await ensureUserTypeCode(
           prefs,
@@ -247,7 +251,9 @@ class MainScreenState extends State<MainScreen> {
 
       final bool recommendationsReady = await _populateRecommendations(uuid);
       if (!recommendationsReady) {
-        await _assignFallbackType(force: remoteType == null);
+        await _assignFallbackType(
+            force: remoteType == null &&
+                (prefs.getString('user_type') ?? '').trim().isEmpty);
       }
 
       _navigateToMainScreen();
