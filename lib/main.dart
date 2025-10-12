@@ -6,7 +6,6 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:new1/utils/user_type_helper.dart';
 import 'services/user_service.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'login_screen.dart';
@@ -94,9 +93,7 @@ class MainScreenState extends State<MainScreen> {
     final prefs = await SharedPreferences.getInstance();
     await _initFirebaseMessaging();
 
-    // ????꾩튂 沅뚰??붿껌 ???쭛
-    await _getAndSaveUserLocation();
-
+    // 위치 갱신은 메인 화면 진입 후 비동기로 처리
     final storedUUID = prefs.getString(_uuidKey);
     //final storedUUID = null;
     if (storedUUID != null) {
@@ -148,39 +145,6 @@ class MainScreenState extends State<MainScreen> {
     } catch (e) {
       print('Error updating FCM token: $e');
     }
-  }
-
-  Future<void> _getAndSaveUserLocation() async {
-    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      print('Location services are disabled');
-      return;
-    }
-
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        print('Location permission denied');
-        return;
-      }
-    }
-
-    if (permission == LocationPermission.deniedForever) {
-      print('Location permission permanently denied');
-      return;
-    }
-
-    // ???꾩튂 ?몄삤?
-    Position position = await Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-    );
-
-    print('Current location: ${position.latitude}, ${position.longitude}');
-
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setDouble('user_lat', position.latitude);
-    await prefs.setDouble('user_lon', position.longitude);
   }
 
   Future<String?> _resolveRemoteType(
