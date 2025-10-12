@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'nearby_restaurants_screen.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
+import 'coupon_list_screen.dart';
 
 // URL 열기 도구
 class UrlLauncherUtil {
@@ -71,6 +72,12 @@ class _HomeContentState extends State<HomeContent> {
     } else if (recommendedRestaurants.isEmpty) {
       await _refreshRestaurantsOnly();
     }
+  }
+
+  void _openCouponList() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const CouponListScreen()),
+    );
   }
 
   Future<void> _loadRestaurantsData() async {
@@ -760,6 +767,16 @@ class _HomeContentState extends State<HomeContent> {
           'assets/images/logo1.png',
           height: 24,
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.card_giftcard_outlined,
+              color: Color(0xFF312E81),
+            ),
+            tooltip: '내 쿠폰',
+            onPressed: _openCouponList,
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _refreshFoodsAndRestaurants,

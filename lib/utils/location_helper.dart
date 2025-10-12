@@ -1,5 +1,7 @@
 // lib/utils/location_helper.dart
 
+import 'package:flutter/foundation.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LocationHelper {
@@ -24,5 +26,41 @@ class LocationHelper {
       return {'lat': lat, 'lon': lon};
     }
     return null;
+  }
+
+  // 현재 위치를 받아 SharedPreferences에 저장 (비동기로 호출)
+  static Future<void> refreshCurrentLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        debugPrint('Location services disabled; skipping refresh.');
+        return;
+      }
+
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          debugPrint('Location permission denied.');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('Location permission denied forever.');
+        return;
+      }
+
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: const Duration(seconds: 10),
+      );
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble('user_lat', position.latitude);
+      await prefs.setDouble('user_lon', position.longitude);
+    } catch (e) {
+      debugPrint('Failed to refresh current location: $e');
+    }
   }
 }

@@ -4,6 +4,7 @@ import 'package:new1/affiliate_benefits_screen.dart';
 import 'home.dart';
 import 'match.dart';
 import 'my.dart';
+import 'package:new1/utils/location_helper.dart';
 
 class MainAppScreen extends StatefulWidget {
   const MainAppScreen({super.key});
@@ -14,6 +15,14 @@ class MainAppScreen extends StatefulWidget {
 
 class _MainAppScreenState extends State<MainAppScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      LocationHelper.refreshCurrentLocation();
+    });
+  }
 
   void _onItemTapped(int index) {
     setState(() {
