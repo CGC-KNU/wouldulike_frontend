@@ -184,16 +184,6 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         uuid: userUUID,
       );
 
-      final typeCode = prefs.getString('user_type');
-      if (typeCode == null || typeCode.isEmpty) {
-        await _handleRecommendationFailure(
-          prefs,
-          append: append,
-          message: '?? ??? ???? ?? ????.',
-        );
-        return;
-      }
-
       final url =
           'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/unique-random-foods/?uuid=$userUUID';
       http.Response response;

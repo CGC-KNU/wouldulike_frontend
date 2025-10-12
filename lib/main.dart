@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:new1/utils/user_type_helper.dart';
-import 'services/api_client.dart';
+import 'services/user_service.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -185,46 +185,28 @@ class MainScreenState extends State<MainScreen> {
 
   Future<String?> _resolveRemoteType(
       SharedPreferences prefs, String uuid) async {
+    if (uuid.trim().isEmpty) {
+      return null;
+    }
+
     final bool isLoggedIn = (prefs.getBool('kakao_logged_in') ?? false) &&
         ((prefs.getString('jwt_access_token') ?? '').isNotEmpty);
 
-    if (isLoggedIn) {
-      try {
-        final response = await ApiClient.get('/api/users/me/');
-        final data = json.decode(utf8.decode(response.bodyBytes));
-        if (data is Map<String, dynamic>) {
-          final remoteType = data['type_code']?.toString().trim();
-          if (remoteType != null && remoteType.isNotEmpty) {
-            return remoteType;
-          }
+    try {
+      final remoteType = await UserService.fetchGuestType(uuid);
+      final normalizedRemote = remoteType?.trim().toUpperCase() ?? '';
+      if (normalizedRemote.isNotEmpty) {
+        await prefs.setString('user_type', normalizedRemote);
+        if (isLoggedIn) {
+          await UserService.updateUserTypeCode(normalizedRemote);
         }
-      } catch (e) {
-        print('User profile type lookup failed: ' + e.toString());
+        return normalizedRemote;
       }
+    } catch (e) {
+      print('Guest type lookup failed: ' + e.toString());
     }
 
-    final checkUrl = Uri.parse(
-        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/?uuid=' +
-            uuid);
-    final checkResponse = await http.get(checkUrl);
-
-    if (checkResponse.statusCode == 200) {
-      final data = json.decode(checkResponse.body);
-      if (data is Map<String, dynamic>) {
-        final remoteType = data['type_code']?.toString().trim();
-        if (remoteType != null && remoteType.isNotEmpty) {
-          return remoteType;
-        }
-      }
-      return null;
-    }
-
-    if (checkResponse.statusCode == 400 || checkResponse.statusCode == 404) {
-      return null;
-    }
-
-    throw Exception(
-        'Failed to check type: ' + checkResponse.statusCode.toString());
+    return null;
   }
 
   Future<void> _checkType(String uuid) async {

@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:new1/main2.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'package:new1/utils/location_helper.dart';
+import 'package:new1/utils/user_type_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
@@ -152,29 +153,19 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
       final prefs = await SharedPreferences.getInstance();
       final userUuid = prefs.getString('user_uuid') ?? '';
       if (userUuid.isEmpty) {
-        throw Exception('사용자 UUID를 찾을 수 없습니다.');
+        throw Exception('User UUID is missing.');
       }
 
-      final storedTypeCode = prefs.getString('user_type');
-      if (storedTypeCode == null || storedTypeCode.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('타입코드 미등록')),
-          );
-          setState(() {
-            displayedTypeCode = '알 수 없음';
-            typeLabel = getTypeLabel(displayedTypeCode);
-            isLoading = false;
-          });
-        }
-        return;
-      }
+      final resolvedTypeCode = await ensureUserTypeCode(
+        prefs,
+        uuid: userUuid,
+      );
 
       if (mounted) {
-        final newTypeLabel = getTypeLabel(storedTypeCode);
-        if (displayedTypeCode != storedTypeCode || typeLabel != newTypeLabel) {
+        final newTypeLabel = getTypeLabel(resolvedTypeCode);
+        if (displayedTypeCode != resolvedTypeCode || typeLabel != newTypeLabel) {
           setState(() {
-            displayedTypeCode = storedTypeCode;
+            displayedTypeCode = resolvedTypeCode;
             typeLabel = newTypeLabel;
           });
         }
@@ -197,43 +188,46 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> responseData = json.decode(response.body);
-        final List<dynamic> foods = responseData['random_foods'];
+        final List<dynamic> foods = responseData['random_foods'] ?? [];
 
         final List<String> newFoodNames =
-        foods.map((food) => food['food_name'].toString()).toList();
+            foods.map((food) => food['food_name'].toString()).toList();
         await prefs.setStringList('recommended_foods', newFoodNames);
 
         final List<Map<String, dynamic>> foodInfoList = foods
             .map((food) => {
-          'food_name': food['food_name'],
-          'food_image_url': food['food_image_url'],
-        })
+                  'food_name': food['food_name'],
+                  'food_image_url': food['food_image_url'],
+                })
             .toList();
-        await prefs.setString('recommended_foods_info', json.encode(foodInfoList));
+        await prefs.setString(
+          'recommended_foods_info',
+          json.encode(foodInfoList),
+        );
 
         if (!mounted) return;
 
         setState(() {
           recommendedFoods = foods
               .map((food) => {
-            'title': food['food_name'] ?? '이름 없음',
-            'description': food['description'] ?? '설명 없음',
-            'image': food['food_image_url'] ?? 'assets/images/food_image0.png',
-          })
+                    'title': food['food_name'] ?? '?? ??',
+                    'description': food['description'] ?? '?? ??',
+                    'image': food['food_image_url'] ?? 'assets/images/food_image0.png',
+                  })
               .toList();
           isLoading = false;
         });
       } else if (response.statusCode == 400 || response.statusCode == 404) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('타입코드 미등록')),
+            const SnackBar(content: Text('No type code available. Showing defaults.')),
           );
         }
         setState(() {
           isLoading = false;
         });
       } else {
-        throw Exception('추천 음식을 불러오지 못했습니다.');
+        throw Exception('Failed to fetch recommended foods.');
       }
     } catch (e) {
       if (!mounted) return;
@@ -241,13 +235,16 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
       setState(() {
         isLoading = false;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('음식 추천을 가져오는 데 실패했습니다: ${e.toString()}')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Failed to load food recommendations: ${e.toString()}',
+          ),
+        ),
+      );
     }
   }
+
 
   String getTypeLabel(String resultMessage) {
     if (resultMessage == 'IYFW') return '강렬한';

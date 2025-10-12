@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'services/auth_service.dart';
+import 'services/user_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -125,6 +126,9 @@ class _LoginScreenState extends State<LoginScreen> {
         'user_profile_image_url',
         data['user']['profile_image_url'] ?? '',
       );
+
+
+      await UserService.syncUserTypeFromGuest(guestUuid: guestUuid);
 
       if (!mounted) return;
       setState(() => _isLoggingIn = false);

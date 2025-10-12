@@ -114,6 +114,28 @@ class ApiClient {
     }
   }
 
+  static Future<http.Response> patch(
+      String path, {
+        Map<String, dynamic>? queryParameters,
+        Object? body,
+        bool authenticated = true,
+        Map<String, String>? headers,
+      }) async {
+    final uri = _resolve(path, queryParameters);
+    final requestHeaders =
+    await _headers(authenticated: authenticated, extra: headers);
+    final payload = body == null || body is String ? body : jsonEncode(body);
+
+    try {
+      final response =
+      await _http.patch(uri, headers: requestHeaders, body: payload);
+      _throwIfFailed(response);
+      return response;
+    } on http.ClientException catch (e) {
+      throw ApiNetworkException(e);
+    }
+  }
+
   static void _throwIfFailed(http.Response response) {
     if (response.statusCode >= 400) {
       throw ApiHttpException(response.statusCode, response.body);

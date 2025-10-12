@@ -3,6 +3,8 @@ import 'food_recommendation_screen.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'services/user_service.dart';
+
 class ResultScreen extends StatefulWidget {
   const ResultScreen({
     super.key,
@@ -152,6 +154,11 @@ class _ResultScreenState extends State<ResultScreen> {
             const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
           );
         }
+      }
+      final bool isLoggedIn = (prefs.getBool('kakao_logged_in') ?? false) &&
+          ((prefs.getString('jwt_access_token') ?? '').isNotEmpty);
+      if (isLoggedIn) {
+        await UserService.updateUserTypeCode(resultMessage);
       }
       //print('Response status: ${response.statusCode}');
       //print('Response body: ${response.body}');
