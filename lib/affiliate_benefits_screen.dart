@@ -717,7 +717,7 @@ class _AffiliateRestaurantDetailSheetState
                   TextButton.icon(
                     onPressed: _openRestaurantPage,
                     icon: const Icon(Icons.open_in_new),
-                    label: const Text('매장 페이지 열기'),
+                    label: const Text('네이버 지도로 이동'),
                   ),
                 ],
                 const SizedBox(height: 24),

@@ -8,6 +8,7 @@ import 'package:new1/wish.dart';
 
 import 'services/auth_service.dart';
 import 'services/coupon_service.dart';
+import 'services/kakao_share_service.dart';
 import 'services/api_client.dart';
 
 class MyScreen extends StatefulWidget {
@@ -32,6 +33,7 @@ class _MyScreenState extends State<MyScreen> {
   bool isKakaoLoggedIn = false;
   String? inviteCode;
   bool _isInviteLoading = false;
+  bool _isShareInProgress = false;
   bool _isKakaoLogoutInProgress = false;
   String? _inviteError;
 
@@ -156,7 +158,8 @@ class _MyScreenState extends State<MyScreen> {
 
 
 
-  Future<void> _loadInviteCode() async {
+  Future<String?> _loadInviteCode() async {
+    if (!mounted) return inviteCode;
     setState(() {
       _isInviteLoading = true;
       _inviteError = null;
@@ -166,36 +169,64 @@ class _MyScreenState extends State<MyScreen> {
       final code = result['code']?.toString() ??
           result['invite_code']?.toString() ??
           result['coupon_code']?.toString();
-      if (!mounted) return;
+      if (!mounted) {
+        inviteCode = code;
+        _isInviteLoading = false;
+        return code;
+      }
       setState(() {
         inviteCode = code;
         _isInviteLoading = false;
       });
+      return code;
     } on ApiAuthException catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        _isInviteLoading = false;
+        _inviteError = e.message;
+        return null;
+      }
       setState(() {
         _isInviteLoading = false;
         _inviteError = e.message;
       });
+      return null;
     } on ApiHttpException catch (e) {
-      if (!mounted) return;
+      final message =
+          _extractDetailMessage(e.body) ?? '추천 코드를 불러오지 못했어요.';
+      if (!mounted) {
+        _isInviteLoading = false;
+        _inviteError = message;
+        return null;
+      }
       setState(() {
         _isInviteLoading = false;
-        _inviteError =
-            _extractDetailMessage(e.body) ?? '추천 코드를 불러오지 못했어요.';
+        _inviteError = message;
       });
+      return null;
     } on ApiNetworkException catch (e) {
-      if (!mounted) return;
+      final message = '네트워크 오류: ' + e.toString();
+      if (!mounted) {
+        _isInviteLoading = false;
+        _inviteError = message;
+        return null;
+      }
       setState(() {
         _isInviteLoading = false;
-        _inviteError = '네트워크 오류: ' + e.toString();
+        _inviteError = message;
       });
+      return null;
     } catch (e) {
-      if (!mounted) return;
+      final message = e.toString();
+      if (!mounted) {
+        _isInviteLoading = false;
+        _inviteError = message;
+        return null;
+      }
       setState(() {
         _isInviteLoading = false;
-        _inviteError = e.toString();
+        _inviteError = message;
       });
+      return null;
     }
   }
 
@@ -215,8 +246,43 @@ class _MyScreenState extends State<MyScreen> {
     await Clipboard.setData(ClipboardData(text: inviteCode!));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('추천 코드가 복사되었습니다.')),
+      const SnackBar(content: Text('추천 코드가 복사되었어요!')),
     );
+  }
+
+  Future<void> _shareInvite() async {
+    if (!isKakaoLoggedIn) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카카오 로그인이 필요해요.')),
+      );
+      return;
+    }
+    if (_isShareInProgress) return;
+    if (!mounted) return;
+    setState(() {
+      _isShareInProgress = true;
+    });
+    try {
+      final code = await _loadInviteCode();
+      if (!mounted) return;
+      if (code == null || code.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('추천 코드를 불러오지 못했어요. 잠시 후 다시 시도해주세요.')),
+        );
+        return;
+      }
+      await KakaoShareService.shareInvite(context, referralCode: code);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isShareInProgress = false;
+        });
+      } else {
+        _isShareInProgress = false;
+      }
+    }
   }
 
   Widget _buildInviteCard(double screenWidth) {
@@ -308,6 +374,7 @@ class _MyScreenState extends State<MyScreen> {
     final media = MediaQuery.of(context);
     final screenWidth = media.size.width;
     final screenHeight = media.size.height;
+    final bool isShareBusy = _isShareInProgress || _isInviteLoading;
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -377,6 +444,25 @@ class _MyScreenState extends State<MyScreen> {
                 ),
               );
             },
+          ),
+          SizedBox(height: screenHeight * 0.02),
+          _buildMenuTile(
+            context: context,
+            icon: Icons.share_outlined,
+            title: '카카오톡으로 친구 초대',
+            subtitle: '추천코드와 설치 링크를 공유해요.',
+            onTap: () => _shareInvite(),
+            trailing: isShareBusy
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(
+                    Icons.share,
+                    color: Color(0xFF312E81),
+                  ),
+            enabled: !isShareBusy,
           ),
         ],
       ),
@@ -491,8 +577,11 @@ class _MyScreenState extends State<MyScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
-    required VoidCallback onTap,
+    VoidCallback? onTap,
+    Widget? trailing,
+    bool enabled = true,
   }) {
+    final VoidCallback? effectiveOnTap = enabled ? onTap : null;
     return Card(
       color: Colors.white,
       elevation: 0,
@@ -521,15 +610,16 @@ class _MyScreenState extends State<MyScreen> {
             color: Colors.black54,
           ),
         ),
-        trailing: const Icon(
-          Icons.chevron_right,
-          color: Color(0xFF312E81),
-        ),
-        onTap: onTap,
+        trailing: trailing ??
+            const Icon(
+              Icons.chevron_right,
+              color: Color(0xFF312E81),
+            ),
+        onTap: effectiveOnTap,
+        enabled: enabled,
       ),
     );
   }
-
   void _openTypeDetail(BuildContext context) {
     Navigator.of(context).push(
       MaterialPageRoute(
