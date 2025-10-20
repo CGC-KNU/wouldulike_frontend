@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'services/auth_service.dart';
-import 'services/user_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -127,9 +126,6 @@ class _LoginScreenState extends State<LoginScreen> {
         data['user']['profile_image_url'] ?? '',
       );
 
-
-      await UserService.syncUserTypeFromGuest(guestUuid: guestUuid);
-
       if (!mounted) return;
       setState(() => _isLoggingIn = false);
       Navigator.pushReplacementNamed(context, '/main');
@@ -148,26 +144,115 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const backgroundColor = Color(0xFF10163A);
+    final titleStyle = Theme.of(context).textTheme.headlineMedium?.copyWith(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ) ??
+        const TextStyle(
+          color: Colors.white,
+          fontSize: 34,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.5,
+        );
+    const subtitleStyle = TextStyle(
+      color: Color(0xCCFFFFFF),
+      fontSize: 16,
+      height: 1.5,
+    );
+
     return Scaffold(
-      body: Center(
-        child: _isLoggingIn
-            ? const CircularProgressIndicator()
-            : Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ElevatedButton(
-                    onPressed: _loginWithKakao,
-                    child: const Text('카카오로 로그인'),
+      backgroundColor: backgroundColor,
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 32),
+          child: _isLoggingIn
+              ? const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                   ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pushReplacementNamed(context, '/main');
-                    },
-                    child: const Text('로그인 없이 이용하기'),
-                  ),
-                ],
-              ),
+                )
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    const SizedBox(height: 96),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text('WouldULike', style: titleStyle),
+                        const SizedBox(height: 16),
+                        const Text(
+                          '내 주변 모든 혜택을 우주라이크와 함께',
+                          style: subtitleStyle,
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                    const Spacer(),
+                    Column(
+                      children: [
+                        SizedBox(
+                          width: double.infinity,
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _loginWithKakao,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFFFEE500),
+                              foregroundColor: Colors.black,
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  alignment: Alignment.center,
+                                  child: const Text(
+                                    '톡',
+                                    style: TextStyle(
+                                      color: Color(0xFFFEE500),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Text('카카오로 간편로그인'),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pushReplacementNamed(context, '/main');
+                          },
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xCCFFFFFF),
+                            textStyle: const TextStyle(fontSize: 14),
+                          ),
+                          child: const Text('지금은 괜찮아요'),
+                        ),
+                        const SizedBox(height: 36),
+                      ],
+                    ),
+                  ],
+                ),
+        ),
       ),
     );
   }
