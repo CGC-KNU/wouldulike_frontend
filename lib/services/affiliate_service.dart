@@ -12,9 +12,42 @@ class AffiliateRestaurantSummary {
     required this.phoneNumber,
     required this.url,
     required this.imageUrls,
+    required this.stampCurrent,
+    required this.stampTarget,
   });
 
   factory AffiliateRestaurantSummary.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is String) {
+        return int.tryParse(value) ?? 0;
+      }
+      return 0;
+    }
+
+    int parseStampCurrent() {
+      if (json['stamp_current'] != null) {
+        return parseInt(json['stamp_current']);
+      }
+      final dynamic status = json['stamp_status'];
+      if (status is Map<String, dynamic>) {
+        return parseInt(status['current']);
+      }
+      return 0;
+    }
+
+    int parseStampTarget() {
+      if (json['stamp_target'] != null) {
+        return parseInt(json['stamp_target']);
+      }
+      final dynamic status = json['stamp_status'];
+      if (status is Map<String, dynamic>) {
+        return parseInt(status['target']);
+      }
+      return 0;
+    }
+
     List<String> parseImages(dynamic value) {
       if (value is List) {
         return value
@@ -36,6 +69,8 @@ class AffiliateRestaurantSummary {
       phoneNumber: json['phone_number']?.toString() ?? '',
       url: json['url']?.toString(),
       imageUrls: parseImages(json['s3_image_urls']),
+      stampCurrent: parseStampCurrent(),
+      stampTarget: parseStampTarget(),
     );
   }
 
@@ -47,6 +82,8 @@ class AffiliateRestaurantSummary {
   final String phoneNumber;
   final String? url;
   final List<String> imageUrls;
+  final int stampCurrent;
+  final int stampTarget;
 }
 
 class AffiliateService {

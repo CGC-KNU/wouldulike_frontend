@@ -189,12 +189,14 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
     if (_isLoading) {
       return const Scaffold(
+        backgroundColor: Colors.white,
         body: Center(child: CircularProgressIndicator()),
       );
     }
 
     if (_error != null) {
       return Scaffold(
+        backgroundColor: Colors.white,
         appBar: AppBar(title: const Text('제휴 / 혜택')),
         body: Center(
           child: Padding(
@@ -222,6 +224,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     }
 
     return Scaffold(
+      backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('제휴 / 혜택'),
       ),
@@ -286,6 +289,22 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         : couponCount > 0
             ? '보유 쿠폰 $couponCount'
             : '보유 쿠폰 없음';
+    String stampLabel;
+    Color stampBackground = const Color(0xFFF5F3FF);
+    Color stampTextColor = const Color(0xFF5B21B6);
+    if (_requiresLogin) {
+      stampLabel = '스탬프 확인은 로그인 필요';
+      stampBackground = const Color(0xFFFFF1F2);
+      stampTextColor = const Color(0xFFDC2626);
+    } else if (restaurant.stampTarget > 0) {
+      stampLabel = '스탬프 ${restaurant.stampCurrent}/${restaurant.stampTarget}';
+    } else if (restaurant.stampCurrent > 0) {
+      stampLabel = '스탬프 ${restaurant.stampCurrent}개';
+    } else {
+      stampLabel = '스탬프 적립 없음';
+      stampBackground = const Color(0xFFF3F4F6);
+      stampTextColor = const Color(0xFF4B5563);
+    }
 
     return InkWell(
       onTap: () => _openRestaurantDetail(restaurant),
@@ -375,6 +394,11 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                             textColor: _requiresLogin
                                 ? const Color(0xFFEF4444)
                                 : const Color(0xFF4B5563)),
+                        _buildTag(
+                          stampLabel,
+                          background: stampBackground,
+                          textColor: stampTextColor,
+                        ),
                       ],
                     ),
                     if (restaurant.phoneNumber.isNotEmpty) ...[
@@ -453,6 +477,11 @@ class _AffiliateRestaurantDetailSheetState
   void initState() {
     super.initState();
     _coupons = List<UserCoupon>.from(widget.coupons);
+    _stampStatus = StampStatus(
+      current: widget.restaurant.stampCurrent,
+      target: widget.restaurant.stampTarget,
+      updatedAt: null,
+    );
     if (!widget.requiresLogin) {
       _loadStampStatus();
     } else {
