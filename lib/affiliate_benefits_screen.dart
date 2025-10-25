@@ -21,6 +21,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   List<AffiliateRestaurantSummary> _restaurants = [];
   List<UserCoupon> _issuedCoupons = [];
   Map<int, int> _couponCounts = {};
+  Map<int, StampStatus> _stampStatuses = {};
   bool _isLoading = false;
   String? _error;
   bool _requiresLogin = false;
@@ -55,9 +56,32 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         _restaurants = restaurants;
         _issuedCoupons = issuedCoupons;
         _couponCounts = _buildCouponCounts(issuedCoupons);
+        _stampStatuses = {};
         _categories = categories.toList();
         _selectedCategory = 'ALL';
       });
+
+      if (_requiresLogin || !mounted) return;
+
+      try {
+        final statuses = await _fetchStampStatuses(restaurants);
+        if (!mounted) return;
+        setState(() {
+          _stampStatuses = statuses;
+          _restaurants = _applyStampStatuses(_restaurants, statuses);
+        });
+      } on ApiAuthException catch (e) {
+        if (!mounted) return;
+        setState(() {
+          _requiresLogin = true;
+          _error = e.message;
+          _stampStatuses = {};
+        });
+      } on ApiNetworkException catch (_) {
+        // Silently ignore stamp sync failures caused by transient connectivity issues.
+      } on ApiHttpException catch (_) {
+        // Silently ignore stamp sync failures caused by per-restaurant API errors.
+      }
     } on ApiNetworkException catch (e) {
       if (!mounted) return;
       setState(() => _error = '네트워크 연결 오류: $e');
@@ -117,6 +141,57 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     return counts;
   }
 
+  Future<Map<int, StampStatus>> _fetchStampStatuses(
+      List<AffiliateRestaurantSummary> restaurants) async {
+    final statuses = <int, StampStatus>{};
+    for (final restaurant in restaurants) {
+      if (restaurant.id == 0) continue;
+      try {
+        final status = await CouponService.fetchStampStatus(
+          restaurantId: restaurant.id,
+        );
+        statuses[restaurant.id] = status;
+      } on ApiAuthException {
+        rethrow;
+      } catch (_) {
+        // Ignore per-restaurant failures so other entries can still load.
+      }
+    }
+    return statuses;
+  }
+
+  AffiliateRestaurantSummary _copyRestaurantWithStampStatus(
+      AffiliateRestaurantSummary restaurant, StampStatus status) {
+    return AffiliateRestaurantSummary(
+      id: restaurant.id,
+      name: restaurant.name,
+      address: restaurant.address,
+      category: restaurant.category,
+      zone: restaurant.zone,
+      phoneNumber: restaurant.phoneNumber,
+      url: restaurant.url,
+      imageUrls: restaurant.imageUrls,
+      stampCurrent: status.current,
+      stampTarget: status.target,
+    );
+  }
+
+  List<AffiliateRestaurantSummary> _applyStampStatuses(
+    List<AffiliateRestaurantSummary> restaurants,
+    Map<int, StampStatus> statuses,
+  ) {
+    if (statuses.isEmpty) return restaurants;
+    return restaurants
+        .map(
+          (restaurant) =>
+              statuses.containsKey(restaurant.id)
+                  ? _copyRestaurantWithStampStatus(
+                      restaurant, statuses[restaurant.id]!)
+                  : restaurant,
+        )
+        .toList();
+  }
+
   List<AffiliateRestaurantSummary> get _filteredRestaurants {
     if (_selectedCategory == 'ALL') return _restaurants;
     return _restaurants
@@ -161,6 +236,23 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     });
   }
 
+  void _handleStampStatusUpdated(int restaurantId, StampStatus status) {
+    setState(() {
+      _stampStatuses = Map<int, StampStatus>.from(_stampStatuses)
+        ..[restaurantId] = status;
+      final index =
+          _restaurants.indexWhere((restaurant) => restaurant.id == restaurantId);
+      if (index != -1) {
+        final updated = _copyRestaurantWithStampStatus(
+          _restaurants[index],
+          status,
+        );
+        _restaurants = List<AffiliateRestaurantSummary>.from(_restaurants)
+          ..[index] = updated;
+      }
+    });
+  }
+
   Future<void> _openRestaurantDetail(
       AffiliateRestaurantSummary restaurant) async {
     await showModalBottomSheet<void>(
@@ -174,6 +266,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
           restaurant: restaurant,
           coupons: _couponsForRestaurant(restaurant.id),
           requiresLogin: _requiresLogin,
+          initialStampStatus: _stampStatuses[restaurant.id],
+          onStampStatusUpdated: (status) =>
+              _handleStampStatusUpdated(restaurant.id, status),
           onCouponRedeemed: (code) =>
               _handleCouponRedeemed(code, restaurant.id),
           onRewardCouponIssued: (code) =>
@@ -284,6 +379,11 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   Widget _buildRestaurantCard(AffiliateRestaurantSummary restaurant) {
     final couponCount = _couponCounts[restaurant.id] ?? 0;
     final hasImage = restaurant.imageUrls.isNotEmpty;
+    final stampStatus = _stampStatuses[restaurant.id];
+    final stampCurrent =
+        stampStatus != null ? stampStatus.current : restaurant.stampCurrent;
+    final stampTarget =
+        stampStatus != null ? stampStatus.target : restaurant.stampTarget;
     final couponLabel = _requiresLogin
         ? '로그인이 필요해요'
         : couponCount > 0
@@ -296,10 +396,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       stampLabel = '스탬프 확인은 로그인 필요';
       stampBackground = const Color(0xFFFFF1F2);
       stampTextColor = const Color(0xFFDC2626);
-    } else if (restaurant.stampTarget > 0) {
-      stampLabel = '스탬프 ${restaurant.stampCurrent}/${restaurant.stampTarget}';
-    } else if (restaurant.stampCurrent > 0) {
-      stampLabel = '스탬프 ${restaurant.stampCurrent}개';
+    } else if (stampTarget > 0) {
+      stampLabel = '스탬프 ${stampCurrent}/${stampTarget}';
+    } else if (stampCurrent > 0) {
+      stampLabel = '스탬프 ${stampCurrent}개';
     } else {
       stampLabel = '스탬프 적립 없음';
       stampBackground = const Color(0xFFF3F4F6);
@@ -448,6 +548,8 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
     required this.restaurant,
     required this.coupons,
     required this.requiresLogin,
+    this.initialStampStatus,
+    required this.onStampStatusUpdated,
     required this.onCouponRedeemed,
     required this.onRewardCouponIssued,
   });
@@ -455,6 +557,8 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
   final AffiliateRestaurantSummary restaurant;
   final List<UserCoupon> coupons;
   final bool requiresLogin;
+  final StampStatus? initialStampStatus;
+  final void Function(StampStatus status) onStampStatusUpdated;
   final void Function(String couponCode) onCouponRedeemed;
   final void Function(String couponCode) onRewardCouponIssued;
 
@@ -477,24 +581,32 @@ class _AffiliateRestaurantDetailSheetState
   void initState() {
     super.initState();
     _coupons = List<UserCoupon>.from(widget.coupons);
-    _stampStatus = StampStatus(
-      current: widget.restaurant.stampCurrent,
-      target: widget.restaurant.stampTarget,
-      updatedAt: null,
-    );
+    _stampStatus = widget.initialStampStatus ??
+        StampStatus(
+          current: widget.restaurant.stampCurrent,
+          target: widget.restaurant.stampTarget,
+          updatedAt: null,
+        );
+    _isStampLoading = widget.initialStampStatus == null;
     if (!widget.requiresLogin) {
-      _loadStampStatus();
+      _loadStampStatus(showLoading: _isStampLoading);
     } else {
       _isStampLoading = false;
       _stampError = '로그인 후 스탬프 정보를 확인할 수 있어요.';
     }
   }
 
-  Future<void> _loadStampStatus() async {
-    setState(() {
-      _isStampLoading = true;
-      _stampError = null;
-    });
+  Future<void> _loadStampStatus({bool showLoading = true}) async {
+    if (showLoading) {
+      setState(() {
+        _isStampLoading = true;
+        _stampError = null;
+      });
+    } else {
+      setState(() {
+        _stampError = null;
+      });
+    }
     try {
       final status = await CouponService.fetchStampStatus(
         restaurantId: widget.restaurant.id,
@@ -503,6 +615,7 @@ class _AffiliateRestaurantDetailSheetState
       setState(() {
         _stampStatus = status;
       });
+      widget.onStampStatusUpdated(status);
     } on ApiAuthException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -548,6 +661,7 @@ class _AffiliateRestaurantDetailSheetState
       setState(() {
         _stampStatus = result.status;
       });
+      widget.onStampStatusUpdated(result.status);
       _showSnack('스탬프를 적립했어요.');
       final reward = result.rewardCouponCode;
       if (reward != null && reward.isNotEmpty) {
