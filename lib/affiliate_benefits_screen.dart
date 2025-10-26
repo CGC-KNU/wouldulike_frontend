@@ -261,11 +261,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     if (statuses.isEmpty) return restaurants;
     return restaurants
         .map(
-          (restaurant) =>
-              statuses.containsKey(restaurant.id)
-                  ? _copyRestaurantWithStampStatus(
-                      restaurant, statuses[restaurant.id]!)
-                  : restaurant,
+          (restaurant) => statuses.containsKey(restaurant.id)
+              ? _copyRestaurantWithStampStatus(
+                  restaurant, statuses[restaurant.id]!)
+              : restaurant,
         )
         .toList();
   }
@@ -304,8 +303,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
   void _handleRewardCouponsIssued(List<String> couponCodes, int restaurantId) {
     if (couponCodes.isEmpty) return;
-    final existingCodes =
-        _issuedCoupons.map((coupon) => coupon.code).toSet();
+    final existingCodes = _issuedCoupons.map((coupon) => coupon.code).toSet();
     final newCoupons = couponCodes
         .where((code) => code.isNotEmpty && !existingCodes.contains(code))
         .map(
@@ -318,8 +316,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         .toList();
     if (newCoupons.isEmpty) return;
     setState(() {
-      _issuedCoupons =
-          _sortCouponsByStatus(List<UserCoupon>.from(_issuedCoupons)..addAll(newCoupons));
+      _issuedCoupons = _sortCouponsByStatus(
+          List<UserCoupon>.from(_issuedCoupons)..addAll(newCoupons));
       _couponCounts.update(
         restaurantId,
         (value) => value + newCoupons.length,
@@ -332,8 +330,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     setState(() {
       _stampStatuses = Map<int, StampStatus>.from(_stampStatuses)
         ..[restaurantId] = status;
-      final index =
-          _restaurants.indexWhere((restaurant) => restaurant.id == restaurantId);
+      final index = _restaurants
+          .indexWhere((restaurant) => restaurant.id == restaurantId);
       if (index != -1) {
         final updated = _copyRestaurantWithStampStatus(
           _restaurants[index],
@@ -471,6 +469,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   Widget _buildRestaurantCard(AffiliateRestaurantSummary restaurant) {
     final couponCount = _couponCounts[restaurant.id] ?? 0;
     final hasImage = restaurant.imageUrls.isNotEmpty;
+    final String? thumbnailUrl = hasImage ? restaurant.imageUrls.first : null;
     final stampStatus = _stampStatuses[restaurant.id];
     final stampCurrent =
         stampStatus != null ? stampStatus.current : restaurant.stampCurrent;
@@ -525,10 +524,33 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                 color: const Color(0xFFE5E7EB),
                 width: 108,
                 height: 108,
-                child: hasImage
+                child: thumbnailUrl != null
                     ? Image.network(
-                        restaurant.imageUrls.first,
+                        thumbnailUrl,
                         fit: BoxFit.cover,
+                        loadingBuilder: (context, child, event) {
+                          if (event == null) return child;
+                          final expected = event.expectedTotalBytes;
+                          final loaded = event.cumulativeBytesLoaded;
+                          final progress = expected != null && expected > 0
+                              ? loaded / expected
+                              : null;
+                          return Center(
+                            child: CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 2,
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                Color(0xFF6366F1),
+                              ),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) =>
+                            const Icon(
+                          Icons.store_mall_directory_outlined,
+                          size: 36,
+                          color: Color(0xFF6B7280),
+                        ),
                       )
                     : const Icon(
                         Icons.store_mall_directory_outlined,
@@ -784,11 +806,9 @@ class _AffiliateRestaurantDetailSheetState
       }
       final rewardCodes = rewardCodesSet.toList();
       if (rewardCodes.isNotEmpty) {
-        final existingCodes =
-            _coupons.map((coupon) => coupon.code).toSet();
-        final newCodes = rewardCodes
-            .where((code) => !existingCodes.contains(code))
-            .toList();
+        final existingCodes = _coupons.map((coupon) => coupon.code).toSet();
+        final newCodes =
+            rewardCodes.where((code) => !existingCodes.contains(code)).toList();
         if (newCodes.isNotEmpty) {
           setState(() {
             _coupons = List<UserCoupon>.from(_coupons)
@@ -807,8 +827,7 @@ class _AffiliateRestaurantDetailSheetState
         }
         final buffer = StringBuffer();
         if (newCodes.isNotEmpty) {
-          buffer.write(
-              '새 리워드 쿠폰이 발급되었어요: ${newCodes.join(', ')}');
+          buffer.write('새 리워드 쿠폰이 발급되었어요: ${newCodes.join(', ')}');
         } else {
           buffer.write('보유 중인 리워드 쿠폰을 다시 안내해드려요.');
         }
@@ -1111,8 +1130,7 @@ class _AffiliateRestaurantDetailSheetState
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFF111439),
               side: const BorderSide(color: Color(0xFFE0E3FF)),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               textStyle: const TextStyle(fontWeight: FontWeight.w600),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1270,9 +1288,8 @@ class _AffiliateRestaurantDetailSheetState
       rewardThresholds.isNotEmpty ? rewardThresholds.last : 10,
     );
     final filled = math.min(status.current, total);
-    final milestoneSet = rewardThresholds.isNotEmpty
-        ? rewardThresholds.toSet()
-        : <int>{5, 10};
+    final milestoneSet =
+        rewardThresholds.isNotEmpty ? rewardThresholds.toSet() : <int>{5, 10};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1343,6 +1360,7 @@ class _AffiliateRestaurantDetailSheetState
       return a.code.compareTo(b.code);
     });
   }
+
   Widget _buildRewardMessage() {
     final status = _stampStatus;
     if (status == null) {
@@ -1394,8 +1412,7 @@ class _AffiliateRestaurantDetailSheetState
     if (nextMessage == null) {
       final remainingToTarget = math.max(status.target - status.current, 0);
       if (remainingToTarget > 0) {
-        nextMessage =
-            '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.';
+        nextMessage = '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.';
       }
     }
 
@@ -1479,7 +1496,8 @@ class _AffiliateRestaurantDetailSheetState
     }
   }
 
-  Widget _buildStampIcon({required bool filled, required bool showMilestoneGlow}) {
+  Widget _buildStampIcon(
+      {required bool filled, required bool showMilestoneGlow}) {
     final decoration = BoxDecoration(
       color: filled ? Colors.white : Colors.white.withOpacity(0.08),
       borderRadius: BorderRadius.circular(14),
@@ -1566,8 +1584,7 @@ class _AffiliateRestaurantDetailSheetState
   Widget _buildCouponTile(UserCoupon coupon) {
     final isProcessing = _processingCouponCode == coupon.code;
     final benefit = coupon.benefit;
-    final title =
-        benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
+    final title = benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
     final subtitle =
         benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
     final String restaurantLabel = benefit?.restaurantNameText ??
@@ -1656,8 +1673,7 @@ class _AffiliateRestaurantDetailSheetState
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF0B1033),
               foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               textStyle: const TextStyle(
                 fontWeight: FontWeight.w700,
                 fontSize: 13,
