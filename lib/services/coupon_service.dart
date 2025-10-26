@@ -63,24 +63,79 @@ class UserCoupon {
   final int? restaurantId;
 }
 
+class StampRewardCoupon {
+  const StampRewardCoupon({
+    required this.threshold,
+    required this.couponCode,
+    required this.couponType,
+  });
+
+  factory StampRewardCoupon.fromJson(Map<String, dynamic> json) {
+    return StampRewardCoupon(
+      threshold: _parseInt(json['threshold']),
+      couponCode: json['coupon_code']?.toString() ?? '',
+      couponType: json['coupon_type']?.toString() ?? '',
+    );
+  }
+
+  final int threshold;
+  final String couponCode;
+  final String couponType;
+}
+
 class StampStatus {
   const StampStatus({
     required this.current,
     required this.target,
     this.updatedAt,
+    this.rewardCoupons = const [],
   });
 
   factory StampStatus.fromJson(Map<String, dynamic> json) {
+    List<StampRewardCoupon> parseRewardCoupons() {
+      final dynamic value = json['reward_coupons'];
+      if (value is List) {
+        return value
+            .map((item) {
+              if (item is Map<String, dynamic>) {
+                return StampRewardCoupon.fromJson(item);
+              }
+              if (item is Map) {
+                return StampRewardCoupon.fromJson(
+                    Map<String, dynamic>.from(item as Map));
+              }
+              return null;
+            })
+            .whereType<StampRewardCoupon>()
+            .toList();
+      }
+      return const [];
+    }
+
     return StampStatus(
       current: _parseInt(json['current']),
       target: _parseInt(json['target']),
       updatedAt: _parseDate(json['updated_at']),
+      rewardCoupons: parseRewardCoupons(),
     );
   }
 
   final int current;
   final int target;
   final DateTime? updatedAt;
+  final List<StampRewardCoupon> rewardCoupons;
+}
+
+class StampStatusCollection {
+  const StampStatusCollection({
+    required this.statuses,
+    this.defaultTarget,
+    required this.hasResults,
+  });
+
+  final Map<int, StampStatus> statuses;
+  final int? defaultTarget;
+  final bool hasResults;
 }
 
 class StampActionResult {
@@ -89,24 +144,65 @@ class StampActionResult {
     required this.current,
     required this.target,
     this.rewardCouponCode,
+    this.rewardCouponCodes = const [],
+    this.rewardCoupons = const [],
   });
 
   factory StampActionResult.fromJson(Map<String, dynamic> json) {
+    List<String> parseRewardCouponCodes() {
+      final dynamic value = json['reward_coupon_codes'];
+      if (value is List) {
+        return value
+            .map((item) => item?.toString() ?? '')
+            .where((code) => code.isNotEmpty)
+            .toList();
+      }
+      return const [];
+    }
+
+    List<StampRewardCoupon> parseRewardCoupons() {
+      final dynamic value = json['reward_coupons'];
+      if (value is List) {
+        return value
+            .map((item) {
+              if (item is Map<String, dynamic>) {
+                return StampRewardCoupon.fromJson(item);
+              }
+              if (item is Map) {
+                return StampRewardCoupon.fromJson(
+                    Map<String, dynamic>.from(item as Map));
+              }
+              return null;
+            })
+            .whereType<StampRewardCoupon>()
+            .toList();
+      }
+      return const [];
+    }
+
     return StampActionResult(
       ok: json['ok'] is bool ? json['ok'] as bool : true,
       current: _parseInt(json['current']),
       target: _parseInt(json['target']),
       rewardCouponCode: json['reward_coupon_code']?.toString(),
+      rewardCouponCodes: parseRewardCouponCodes(),
+      rewardCoupons: parseRewardCoupons(),
     );
   }
 
-  StampStatus get status =>
-      StampStatus(current: current, target: target, updatedAt: null);
+  StampStatus get status => StampStatus(
+        current: current,
+        target: target,
+        updatedAt: null,
+        rewardCoupons: rewardCoupons,
+      );
 
   final bool ok;
   final int current;
   final int target;
   final String? rewardCouponCode;
+  final List<String> rewardCouponCodes;
+  final List<StampRewardCoupon> rewardCoupons;
 }
 
 class CouponRedeemResult {
@@ -165,6 +261,53 @@ class CouponService {
       return StampStatus.fromJson(decoded);
     }
     return const StampStatus(current: 0, target: 0);
+  }
+
+  static Future<StampStatusCollection> fetchAllStampStatuses() async {
+    final response = await ApiClient.get(
+      '/api/coupons/stamps/my/all/',
+    );
+    final decoded = _decodeResponseBody(response);
+    Map<int, StampStatus> parseStatuses(dynamic value) {
+      if (value is! List) return const <int, StampStatus>{};
+      final result = <int, StampStatus>{};
+      for (final item in value) {
+        if (item is! Map) continue;
+        final mapItem = Map<String, dynamic>.from(item as Map);
+        final restaurantId = _parseInt(mapItem['restaurant_id']);
+        if (restaurantId == 0) continue;
+        Map<String, dynamic> statusJson;
+        final statusValue = mapItem['status'];
+        if (statusValue is Map<String, dynamic>) {
+          statusJson = statusValue;
+        } else if (statusValue is Map) {
+          statusJson = Map<String, dynamic>.from(statusValue as Map);
+        } else {
+          statusJson = Map<String, dynamic>.from(mapItem)
+            ..remove('restaurant_id');
+        }
+        result[restaurantId] = StampStatus.fromJson(statusJson);
+      }
+      return result;
+    }
+
+    if (decoded is Map<String, dynamic>) {
+      final resultsRaw = decoded['results'];
+      final statuses = parseStatuses(resultsRaw);
+      final defaultTarget = _parseInt(decoded['default_target']);
+      final hasResults =
+          resultsRaw is List && resultsRaw.isNotEmpty && statuses.isNotEmpty;
+      return StampStatusCollection(
+        statuses: statuses,
+        defaultTarget: defaultTarget > 0 ? defaultTarget : null,
+        hasResults: hasResults,
+      );
+    }
+    return const StampStatusCollection(
+      statuses: <int, StampStatus>{},
+      defaultTarget: null,
+      hasResults: false,
+    );
   }
 
   static Future<StampActionResult> addStamp({

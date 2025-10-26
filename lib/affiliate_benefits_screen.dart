@@ -9,6 +9,23 @@ import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
 
+StampStatus _defaultStampStatusForRestaurant(
+  AffiliateRestaurantSummary restaurant, {
+  int? fallbackTarget,
+  bool preferZeroTarget = false,
+}) {
+  final resolvedTarget = preferZeroTarget
+      ? 0
+      : (restaurant.stampTarget > 0
+          ? restaurant.stampTarget
+          : (fallbackTarget ?? 0));
+  return StampStatus(
+    current: 0,
+    target: resolvedTarget,
+    updatedAt: null,
+  );
+}
+
 class AffiliateBenefitsScreen extends StatefulWidget {
   const AffiliateBenefitsScreen({super.key});
 
@@ -54,7 +71,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       if (!mounted) return;
       setState(() {
         _restaurants = restaurants;
-        _issuedCoupons = issuedCoupons;
+        _issuedCoupons = _sortCouponsByStatus(issuedCoupons);
         _couponCounts = _buildCouponCounts(issuedCoupons);
         _stampStatuses = {};
         _categories = categories.toList();
@@ -141,23 +158,84 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     return counts;
   }
 
+  int _couponStatusPriority(CouponStatus status) {
+    switch (status) {
+      case CouponStatus.issued:
+        return 0;
+      case CouponStatus.redeemed:
+        return 1;
+      case CouponStatus.expired:
+        return 2;
+      case CouponStatus.canceled:
+        return 3;
+      case CouponStatus.unknown:
+        return 4;
+    }
+  }
+
+  List<UserCoupon> _sortCouponsByStatus(List<UserCoupon> coupons) {
+    final sorted = List<UserCoupon>.from(coupons);
+    sorted.sort((a, b) {
+      final priorityDiff =
+          _couponStatusPriority(a.status) - _couponStatusPriority(b.status);
+      if (priorityDiff != 0) return priorityDiff;
+      return a.code.compareTo(b.code);
+    });
+    return sorted;
+  }
+
   Future<Map<int, StampStatus>> _fetchStampStatuses(
       List<AffiliateRestaurantSummary> restaurants) async {
-    final statuses = <int, StampStatus>{};
-    for (final restaurant in restaurants) {
-      if (restaurant.id == 0) continue;
-      try {
-        final status = await CouponService.fetchStampStatus(
-          restaurantId: restaurant.id,
-        );
-        statuses[restaurant.id] = status;
-      } on ApiAuthException {
-        rethrow;
-      } catch (_) {
-        // Ignore per-restaurant failures so other entries can still load.
+    try {
+      final collection = await CouponService.fetchAllStampStatuses();
+      return _mergeWithDefaultStampStatuses(
+        restaurants,
+        collection,
+      );
+    } on ApiAuthException {
+      rethrow;
+    } catch (_) {
+      // Fallback to per-restaurant fetching when the bulk endpoint fails.
+      final statuses = <int, StampStatus>{};
+      for (final restaurant in restaurants) {
+        if (restaurant.id == 0) continue;
+        try {
+          final status = await CouponService.fetchStampStatus(
+            restaurantId: restaurant.id,
+          );
+          statuses[restaurant.id] = status;
+        } on ApiAuthException {
+          rethrow;
+        } catch (_) {
+          // Ignore per-restaurant failures so other entries can still load.
+        }
       }
+      return _mergeWithDefaultStampStatuses(
+        restaurants,
+        StampStatusCollection(
+          statuses: statuses,
+          defaultTarget: null,
+          hasResults: statuses.isNotEmpty,
+        ),
+      );
     }
-    return statuses;
+  }
+
+  Map<int, StampStatus> _mergeWithDefaultStampStatuses(
+    List<AffiliateRestaurantSummary> restaurants,
+    StampStatusCollection collection,
+  ) {
+    final merged = Map<int, StampStatus>.from(collection.statuses);
+    for (final restaurant in restaurants) {
+      final restaurantId = restaurant.id;
+      if (restaurantId == 0 || merged.containsKey(restaurantId)) continue;
+      merged[restaurantId] = _defaultStampStatusForRestaurant(
+        restaurant,
+        fallbackTarget: collection.defaultTarget,
+        preferZeroTarget: !collection.hasResults,
+      );
+    }
+    return merged;
   }
 
   AffiliateRestaurantSummary _copyRestaurantWithStampStatus(
@@ -205,9 +283,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   }
 
   List<UserCoupon> _couponsForRestaurant(int restaurantId) {
-    return _issuedCoupons
+    final filtered = _issuedCoupons
         .where((coupon) => coupon.restaurantId == restaurantId)
         .toList();
+    return _sortCouponsByStatus(filtered);
   }
 
   void _handleCouponRedeemed(String couponCode, int restaurantId) {
@@ -223,16 +302,29 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     });
   }
 
-  void _handleRewardCouponIssued(String couponCode, int restaurantId) {
+  void _handleRewardCouponsIssued(List<String> couponCodes, int restaurantId) {
+    if (couponCodes.isEmpty) return;
+    final existingCodes =
+        _issuedCoupons.map((coupon) => coupon.code).toSet();
+    final newCoupons = couponCodes
+        .where((code) => code.isNotEmpty && !existingCodes.contains(code))
+        .map(
+          (code) => UserCoupon(
+            code: code,
+            status: CouponStatus.issued,
+            restaurantId: restaurantId,
+          ),
+        )
+        .toList();
+    if (newCoupons.isEmpty) return;
     setState(() {
-      _issuedCoupons = List<UserCoupon>.from(_issuedCoupons)
-        ..add(UserCoupon(
-          code: couponCode,
-          status: CouponStatus.issued,
-          restaurantId: restaurantId,
-        ));
-      _couponCounts.update(restaurantId, (value) => value + 1,
-          ifAbsent: () => 1);
+      _issuedCoupons =
+          _sortCouponsByStatus(List<UserCoupon>.from(_issuedCoupons)..addAll(newCoupons));
+      _couponCounts.update(
+        restaurantId,
+        (value) => value + newCoupons.length,
+        ifAbsent: () => newCoupons.length,
+      );
     });
   }
 
@@ -271,8 +363,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
               _handleStampStatusUpdated(restaurant.id, status),
           onCouponRedeemed: (code) =>
               _handleCouponRedeemed(code, restaurant.id),
-          onRewardCouponIssued: (code) =>
-              _handleRewardCouponIssued(code, restaurant.id),
+          onRewardCouponsIssued: (codes) =>
+              _handleRewardCouponsIssued(codes, restaurant.id),
         );
       },
     );
@@ -551,7 +643,7 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
     this.initialStampStatus,
     required this.onStampStatusUpdated,
     required this.onCouponRedeemed,
-    required this.onRewardCouponIssued,
+    required this.onRewardCouponsIssued,
   });
 
   final AffiliateRestaurantSummary restaurant;
@@ -560,7 +652,7 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
   final StampStatus? initialStampStatus;
   final void Function(StampStatus status) onStampStatusUpdated;
   final void Function(String couponCode) onCouponRedeemed;
-  final void Function(String couponCode) onRewardCouponIssued;
+  final void Function(List<String> couponCodes) onRewardCouponsIssued;
 
   @override
   State<AffiliateRestaurantDetailSheet> createState() =>
@@ -581,18 +673,22 @@ class _AffiliateRestaurantDetailSheetState
   void initState() {
     super.initState();
     _coupons = List<UserCoupon>.from(widget.coupons);
+    _sortCoupons();
     _stampStatus = widget.initialStampStatus ??
         StampStatus(
           current: widget.restaurant.stampCurrent,
           target: widget.restaurant.stampTarget,
           updatedAt: null,
         );
-    _isStampLoading = widget.initialStampStatus == null;
-    if (!widget.requiresLogin) {
-      _loadStampStatus(showLoading: _isStampLoading);
+    final hasInitialStatus = widget.initialStampStatus != null;
+    if (!widget.requiresLogin && !hasInitialStatus) {
+      _isStampLoading = true;
+      _loadStampStatus(showLoading: true);
     } else {
       _isStampLoading = false;
-      _stampError = '로그인 후 스탬프 정보를 확인할 수 있어요.';
+      if (widget.requiresLogin) {
+        _stampError = '로그인 후 스탬프 정보를 확인할 수 있어요.';
+      }
     }
   }
 
@@ -608,9 +704,7 @@ class _AffiliateRestaurantDetailSheetState
       });
     }
     try {
-      final status = await CouponService.fetchStampStatus(
-        restaurantId: widget.restaurant.id,
-      );
+      final status = await _fetchStampStatusWithFallback();
       if (!mounted) return;
       setState(() {
         _stampStatus = status;
@@ -644,6 +738,24 @@ class _AffiliateRestaurantDetailSheetState
     }
   }
 
+  Future<StampStatus> _fetchStampStatusWithFallback() async {
+    try {
+      final collection = await CouponService.fetchAllStampStatuses();
+      return collection.statuses[widget.restaurant.id] ??
+          _defaultStampStatusForRestaurant(
+            widget.restaurant,
+            fallbackTarget: collection.defaultTarget,
+            preferZeroTarget: !collection.hasResults,
+          );
+    } on ApiAuthException {
+      rethrow;
+    } catch (_) {
+      return CouponService.fetchStampStatus(
+        restaurantId: widget.restaurant.id,
+      );
+    }
+  }
+
   Future<void> _handleAddStamp() async {
     final pin = await _promptForPin(
       title: '스탬프 적립',
@@ -663,18 +775,45 @@ class _AffiliateRestaurantDetailSheetState
       });
       widget.onStampStatusUpdated(result.status);
       _showSnack('스탬프를 적립했어요.');
+      final rewardCodesSet = <String>{
+        ...result.rewardCouponCodes.where((code) => code.isNotEmpty),
+      };
       final reward = result.rewardCouponCode;
       if (reward != null && reward.isNotEmpty) {
-        final rewardCoupon = UserCoupon(
-          code: reward,
-          status: CouponStatus.issued,
-          restaurantId: widget.restaurant.id,
-        );
-        setState(() {
-          _coupons = List<UserCoupon>.from(_coupons)..add(rewardCoupon);
-        });
-        widget.onRewardCouponIssued(reward);
-        _showSnack('리워드 쿠폰이 발급되었어요: $reward');
+        rewardCodesSet.add(reward);
+      }
+      final rewardCodes = rewardCodesSet.toList();
+      if (rewardCodes.isNotEmpty) {
+        final existingCodes =
+            _coupons.map((coupon) => coupon.code).toSet();
+        final newCodes = rewardCodes
+            .where((code) => !existingCodes.contains(code))
+            .toList();
+        if (newCodes.isNotEmpty) {
+          setState(() {
+            _coupons = List<UserCoupon>.from(_coupons)
+              ..addAll(
+                newCodes.map(
+                  (code) => UserCoupon(
+                    code: code,
+                    status: CouponStatus.issued,
+                    restaurantId: widget.restaurant.id,
+                  ),
+                ),
+              );
+            _sortCoupons();
+          });
+          widget.onRewardCouponsIssued(newCodes);
+        }
+        final buffer = StringBuffer();
+        if (newCodes.isNotEmpty) {
+          buffer.write(
+              '새 리워드 쿠폰이 발급되었어요: ${newCodes.join(', ')}');
+        } else {
+          buffer.write('보유 중인 리워드 쿠폰을 다시 안내해드려요.');
+        }
+        buffer.write('\n현재 리워드 쿠폰: ${rewardCodes.join(', ')}');
+        _showSnack(buffer.toString());
       }
     } on ApiAuthException catch (e) {
       _showSnack(e.message);
@@ -1120,8 +1259,20 @@ class _AffiliateRestaurantDetailSheetState
         style: TextStyle(color: Colors.white70),
       );
     }
-    final total = math.max(10, status.target);
+    final rewardThresholds = status.rewardCoupons
+        .map((reward) => reward.threshold)
+        .where((threshold) => threshold > 0)
+        .toSet()
+        .toList()
+      ..sort();
+    final total = math.max(
+      status.target,
+      rewardThresholds.isNotEmpty ? rewardThresholds.last : 10,
+    );
     final filled = math.min(status.current, total);
+    final milestoneSet = rewardThresholds.isNotEmpty
+        ? rewardThresholds.toSet()
+        : <int>{5, 10};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1140,7 +1291,7 @@ class _AffiliateRestaurantDetailSheetState
           runSpacing: 10,
           children: List.generate(total, (index) {
             final isFilled = index < filled;
-            final isMilestone = index + 1 == 5 || index + 1 == 10;
+            final isMilestone = milestoneSet.contains(index + 1);
             return _buildStampIcon(
               filled: isFilled,
               showMilestoneGlow: isMilestone && isFilled,
@@ -1170,19 +1321,40 @@ class _AffiliateRestaurantDetailSheetState
     );
   }
 
+  void _sortCoupons() {
+    _coupons.sort((a, b) {
+      int priority(CouponStatus status) {
+        switch (status) {
+          case CouponStatus.issued:
+            return 0;
+          case CouponStatus.redeemed:
+            return 1;
+          case CouponStatus.expired:
+            return 2;
+          case CouponStatus.canceled:
+            return 3;
+          case CouponStatus.unknown:
+            return 4;
+        }
+      }
+
+      final diff = priority(a.status) - priority(b.status);
+      if (diff != 0) return diff;
+      return a.code.compareTo(b.code);
+    });
+  }
   Widget _buildRewardMessage() {
     final status = _stampStatus;
     if (status == null) {
       return const SizedBox.shrink();
     }
-    const milestones = [5, 10];
-    for (final milestone in milestones) {
-      if (status.current < milestone) {
-        final remaining = milestone - status.current;
-        final prefix =
-            milestone == milestones.first ? '첫 번째 쿠폰 지급까지' : '다음 쿠폰 지급까지';
+    final rewards = status.rewardCoupons.toList()
+      ..sort((a, b) => a.threshold.compareTo(b.threshold));
+    if (rewards.isEmpty) {
+      final remaining = math.max(status.target - status.current, 0);
+      if (remaining > 0) {
         return Text(
-          '$prefix ${remaining}개 남았어요!',
+          '스탬프 ${remaining}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.',
           style: const TextStyle(
             color: Color(0xFF9FA7FF),
             fontSize: 14,
@@ -1190,16 +1362,95 @@ class _AffiliateRestaurantDetailSheetState
           ),
         );
       }
+      return const Text(
+        '준비된 리워드 쿠폰을 모두 받았어요!',
+        style: TextStyle(
+          color: Color(0xFF9FA7FF),
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+      );
     }
 
-    return const Text(
-      '모든 쿠폰을 모두 받았어요!',
-      style: TextStyle(
-        color: Color(0xFF9FA7FF),
-        fontSize: 14,
-        fontWeight: FontWeight.w600,
-      ),
+    final items = <Widget>[];
+    bool hasPendingReward = false;
+
+    for (final reward in rewards) {
+      final reached = status.current >= reward.threshold;
+      final label = _rewardCouponLabel(reward);
+      if (reached) {
+        final code = reward.couponCode;
+        final text = code.isNotEmpty
+            ? '$label을 이미 받았어요. (코드: $code)'
+            : '$label을 이미 받았어요.';
+        items.add(
+          Text(
+            text,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      } else {
+        hasPendingReward = true;
+        final remaining = reward.threshold - status.current;
+        items.add(
+          Text(
+            '스탬프 ${remaining}개 더 적립하면 $label을 받을 수 있어요.',
+            style: const TextStyle(
+              color: Color(0xFF9FA7FF),
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      }
+    }
+
+    if (!hasPendingReward) {
+      items.add(
+        const Text(
+          '준비된 리워드 쿠폰을 모두 받았어요!',
+          style: TextStyle(
+            color: Color(0xFF9FA7FF),
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (var i = 0; i < items.length; i++) ...[
+          if (i > 0) const SizedBox(height: 6),
+          items[i],
+        ],
+      ],
     );
+  }
+
+  String _rewardCouponLabel(StampRewardCoupon reward) {
+    final type = reward.couponType.trim();
+    if (type.isNotEmpty) {
+      const prefix = 'STAMP_REWARD_';
+      final upper = type.toUpperCase();
+      if (upper.startsWith(prefix)) {
+        final suffix = type.substring(prefix.length);
+        final numeric = int.tryParse(suffix);
+        if (numeric != null) {
+          return '스탬프 ${numeric}개 리워드 쿠폰';
+        }
+        final readableSuffix = suffix.replaceAll('_', ' ');
+        return '스탬프 ${reward.threshold}개 리워드 쿠폰 (${readableSuffix.isNotEmpty ? readableSuffix : suffix})';
+      }
+      final readable = type.replaceAll('_', ' ');
+      return '스탬프 ${reward.threshold}개 리워드 쿠폰 (${readable.isNotEmpty ? readable : type})';
+    }
+    return '스탬프 ${reward.threshold}개 리워드 쿠폰';
   }
 
   Widget _buildStampIcon({required bool filled, required bool showMilestoneGlow}) {

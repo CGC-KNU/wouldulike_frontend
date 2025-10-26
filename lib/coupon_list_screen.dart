@@ -19,6 +19,31 @@ class _CouponListScreenState extends State<CouponListScreen> {
   List<UserCoupon> _coupons = const [];
   String? _processingCouponCode;
 
+  int _statusPriority(CouponStatus status) {
+    switch (status) {
+      case CouponStatus.issued:
+        return 0;
+      case CouponStatus.redeemed:
+        return 1;
+      case CouponStatus.expired:
+        return 2;
+      case CouponStatus.canceled:
+        return 3;
+      case CouponStatus.unknown:
+        return 4;
+    }
+  }
+
+  List<UserCoupon> _sortedCoupons(List<UserCoupon> coupons) {
+    final sorted = List<UserCoupon>.from(coupons);
+    sorted.sort((a, b) {
+      final priorityDiff = _statusPriority(a.status) - _statusPriority(b.status);
+      if (priorityDiff != 0) return priorityDiff;
+      return a.code.compareTo(b.code);
+    });
+    return sorted;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -35,7 +60,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
       final coupons = await CouponService.fetchMyCoupons();
       if (!mounted) return;
       setState(() {
-        _coupons = coupons;
+        _coupons = _sortedCoupons(coupons);
         _isLoading = false;
         _processingCouponCode = null;
       });
