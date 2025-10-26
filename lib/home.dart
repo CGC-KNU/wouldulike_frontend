@@ -1,12 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'nearby_restaurants_screen.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'coupon_list_screen.dart';
+import 'services/trend_service.dart';
 
 // URL 열기 도구
 class UrlLauncherUtil {
@@ -48,16 +51,18 @@ class _HomeContentState extends State<HomeContent> {
   List<Map<String, dynamic>> recommendedFoods = [];
   List<Map<String, dynamic>> recommendedRestaurants = [];
   Map<String, bool> likedRestaurants = {};
+  List<TrendItem> _trends = [];
   final PageController _bannerController = PageController();
   final ScrollController _scrollController = ScrollController();
   bool _isFetching = false;
   int _currentBannerIndex = 0;
+  bool _isTrendLoading = false;
   @override
-
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
     _initializePrefs();
+    _loadTrends();
   }
 
   Future<void> _initializePrefs() async {
@@ -74,6 +79,48 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
+  Future<void> _loadTrends() async {
+    if (_isTrendLoading) return;
+    if (!mounted) return;
+    setState(() {
+      _isTrendLoading = true;
+    });
+    try {
+      final items = await TrendService.fetchTrends();
+      if (!mounted) return;
+      setState(() {
+        _trends = items;
+        _currentBannerIndex = 0;
+      });
+      if (_bannerController.hasClients && items.isNotEmpty) {
+        _bannerController.jumpToPage(0);
+      }
+    } catch (e, stackTrace) {
+      debugPrint('Failed to load promotion banners: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      if (mounted) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+          const SnackBar(
+            content: Text('프로모션 배너를 불러오지 못했어요.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTrendLoading = false;
+        });
+      }
+    }
+  }
+
+  void _handleTrendTap(String url) {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) return;
+    _launchURL(trimmed);
+  }
+
   void _openCouponList() {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const CouponListScreen()),
@@ -84,7 +131,8 @@ class _HomeContentState extends State<HomeContent> {
     final String? savedRestaurants = prefs.getString('restaurants_data');
 
     if (savedRestaurants != null) {
-      final List<Map<String, dynamic>> decoded = List<Map<String, dynamic>>.from(
+      final List<Map<String, dynamic>> decoded =
+          List<Map<String, dynamic>>.from(
         json.decode(savedRestaurants),
       );
 
@@ -95,23 +143,28 @@ class _HomeContentState extends State<HomeContent> {
 
       // 거리 계산 추가
       for (var restaurant in decoded) {
-        final double restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
-        final double restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
-        final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+        final double restLat =
+            double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+        final double restLon =
+            double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+        final distance =
+            DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
         restaurant['distance'] = distance;
       }
 
       setState(() {
         recommendedRestaurants = decoded
-            .where((restaurant) => restaurant['distance'] != null && restaurant['distance'] <= 1.0)
+            .where((restaurant) =>
+                restaurant['distance'] != null && restaurant['distance'] <= 1.0)
             .map((restaurant) => {
-          'name': restaurant['name'] ?? '이름 없음',
-          'road_address': restaurant['road_address'] ?? '주소 없음',
-          'category_2': restaurant['category_2'] ?? '카테고리 없음',
-          'x': restaurant['x'],
-          'y': restaurant['y'],
-          'distance': restaurant['distance'],
-        }).toList();
+                  'name': restaurant['name'] ?? '이름 없음',
+                  'road_address': restaurant['road_address'] ?? '주소 없음',
+                  'category_2': restaurant['category_2'] ?? '카테고리 없음',
+                  'x': restaurant['x'],
+                  'y': restaurant['y'],
+                  'distance': restaurant['distance'],
+                })
+            .toList();
         //print('추천 음식점 로드 완료: ${recommendedRestaurants.length}개');
       });
     }
@@ -146,7 +199,6 @@ class _HomeContentState extends State<HomeContent> {
         });
 
         // 로드된 데이터 확인
-
       } catch (e) {
         //print('Error decoding food info: $e');
         setState(() {
@@ -175,13 +227,15 @@ class _HomeContentState extends State<HomeContent> {
       final List<dynamic> decodedInfo = json.decode(savedFoodInfo);
       return decodedInfo
           .map((item) =>
-      (item as Map<String, dynamic>)['food_name']?.toString().trim() ?? '')
+              (item as Map<String, dynamic>)['food_name']?.toString().trim() ??
+              '')
           .where((name) => name.isNotEmpty)
           .toList();
     } catch (_) {
       return const [];
     }
   }
+
   // 찜한 음식점 상태 로드
   Future<void> _loadLikedRestaurants() async {
     if (recommendedRestaurants.isEmpty) return;
@@ -222,8 +276,10 @@ class _HomeContentState extends State<HomeContent> {
 
     //print('전체 찜 상태: $likedRestaurants');
   }
+
   // 서버에 찜 상태 동기화
-  Future<void> _updateFavoriteRestaurant(String restaurantName, String action) async {
+  Future<void> _updateFavoriteRestaurant(
+      String restaurantName, String action) async {
     final uuid = prefs.getString('user_uuid') ?? '';
     if (uuid.isEmpty) return;
 
@@ -234,7 +290,8 @@ class _HomeContentState extends State<HomeContent> {
       await http.post(
         url,
         headers: {'Content-Type': 'application/json'},
-        body: json.encode({'uuid': uuid, 'restaurant': restaurantName, 'action': action}),
+        body: json.encode(
+            {'uuid': uuid, 'restaurant': restaurantName, 'action': action}),
       );
     } catch (e) {
       print('찜한 음식점 정보를 업데이트하는 중 오류가 발생했습니다: $e');
@@ -242,7 +299,8 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   // 찜하기 상태 저장 후 서버에 반영
-  Future<void> _saveLikedStatus(String restaurantName, String address, bool isLiked) async {
+  Future<void> _saveLikedStatus(
+      String restaurantName, String address, bool isLiked) async {
     final String key = '$restaurantName|$address';
     setState(() {
       likedRestaurants[key] = isLiked;
@@ -277,6 +335,7 @@ class _HomeContentState extends State<HomeContent> {
         return;
       }
       await _fetchRestaurants(foodNames);
+      await _loadTrends();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -346,14 +405,14 @@ class _HomeContentState extends State<HomeContent> {
 
     if (foodResponse.statusCode == 200) {
       final Map<String, dynamic> foodData =
-      jsonDecode(utf8.decode(foodResponse.bodyBytes));
+          jsonDecode(utf8.decode(foodResponse.bodyBytes));
       final List<dynamic> foods = foodData['random_foods'] ?? [];
 
       final foodInfoList = foods
           .map<Map<String, dynamic>>((f) => {
-        'food_name': f['food_name'],
-        'food_image_url': f['food_image_url'],
-      })
+                'food_name': f['food_name'],
+                'food_image_url': f['food_image_url'],
+              })
           .toList();
 
       final foodNames = foodInfoList
@@ -362,15 +421,16 @@ class _HomeContentState extends State<HomeContent> {
           .toList();
 
       await prefs.setStringList('recommended_foods', foodNames);
-      await prefs.setString('recommended_foods_info', json.encode(foodInfoList));
+      await prefs.setString(
+          'recommended_foods_info', json.encode(foodInfoList));
 
       if (mounted) {
         setState(() {
           recommendedFoods = foodInfoList
               .map<Map<String, dynamic>>((food) => {
-            'food_name': food['food_name'],
-            'food_image_url': food['food_image_url'],
-          })
+                    'food_name': food['food_name'],
+                    'food_image_url': food['food_image_url'],
+                  })
               .toList();
         });
       }
@@ -423,7 +483,7 @@ class _HomeContentState extends State<HomeContent> {
         final restLon =
             double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
         final distance =
-        DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+            DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
         restaurant['distance'] = distance;
       }
 
@@ -431,15 +491,13 @@ class _HomeContentState extends State<HomeContent> {
         setState(() {
           recommendedRestaurants = restaurants
               .map<Map<String, dynamic>>((restaurant) => {
-            'name': restaurant['name'] ?? '이름 없음',
-            'road_address':
-            restaurant['road_address'] ?? '주소 없음',
-            'category_2':
-            restaurant['category_2'] ?? '카테고리 없음',
-            'x': restaurant['x'],
-            'y': restaurant['y'],
-            'distance': restaurant['distance'],
-          })
+                    'name': restaurant['name'] ?? '이름 없음',
+                    'road_address': restaurant['road_address'] ?? '주소 없음',
+                    'category_2': restaurant['category_2'] ?? '카테고리 없음',
+                    'x': restaurant['x'],
+                    'y': restaurant['y'],
+                    'distance': restaurant['distance'],
+                  })
               .toList();
         });
       }
@@ -476,18 +534,20 @@ class _HomeContentState extends State<HomeContent> {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
-        children: recommendedFoods.map<Widget>((food) =>
-            _buildMenuCard(
-              food['food_image_url']?.toString() ?? 'assets/images/food_image0.png',
-              food['food_name']?.toString() ?? '이름 없음',
-              cardWidth,
-              onTap: () => _onFoodSelected(food),
-            ),
-        ).toList(),
+        children: recommendedFoods
+            .map<Widget>(
+              (food) => _buildMenuCard(
+                food['food_image_url']?.toString() ??
+                    'assets/images/food_image0.png',
+                food['food_name']?.toString() ?? '이름 없음',
+                cardWidth,
+                onTap: () => _onFoodSelected(food),
+              ),
+            )
+            .toList(),
       ),
     );
   }
-
 
   void _onFoodSelected(Map<String, dynamic> food) {
     final foodName = food['food_name']?.toString().trim() ?? '';
@@ -507,9 +567,8 @@ class _HomeContentState extends State<HomeContent> {
 
   Widget _buildRestaurantCard(Map<String, dynamic> restaurant) {
     final distance = restaurant['distance'];
-    final distanceText = distance is num
-        ? '거리 ${distance.toStringAsFixed(1)} km'
-        : null;
+    final distanceText =
+        distance is num ? '거리 ${distance.toStringAsFixed(1)} km' : null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16.0),
@@ -587,16 +646,18 @@ class _HomeContentState extends State<HomeContent> {
             right: 8,
             child: IconButton(
               icon: Icon(
-                _isRestaurantLiked(restaurant['name'], restaurant['road_address'])
+                _isRestaurantLiked(
+                        restaurant['name'], restaurant['road_address'])
                     ? Icons.favorite
                     : Icons.favorite_border,
-                color: _isRestaurantLiked(restaurant['name'], restaurant['road_address'])
+                color: _isRestaurantLiked(
+                        restaurant['name'], restaurant['road_address'])
                     ? Colors.red
                     : Colors.grey,
               ),
               onPressed: () async {
-                final bool currentStatus =
-                _isRestaurantLiked(restaurant['name'], restaurant['road_address']);
+                final bool currentStatus = _isRestaurantLiked(
+                    restaurant['name'], restaurant['road_address']);
                 await _saveLikedStatus(
                   restaurant['name'],
                   restaurant['road_address'],
@@ -622,27 +683,58 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
+
   Widget _buildPromotionBanner(double width) {
     final double height = width / 3.5;
+    final hasData = _trends.isNotEmpty;
+    final int total = hasData ? _trends.length : 1;
+    final int displayIndex = total <= 0 ? 0 : _currentBannerIndex % total;
     return SizedBox(
       height: height,
       child: Stack(
         children: [
-          PageView.builder(
-            controller: _bannerController,
-            onPageChanged: (index) {
-              setState(() {
-                _currentBannerIndex = index % 5;
-              });
-            },
-            itemBuilder: (context, index) {
-              return Container(
-                margin: EdgeInsets.zero,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                ),
-              );
-            },
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: PageView.builder(
+              key: ValueKey('${hasData ? 'data' : 'placeholder'}-$total'),
+              controller: _bannerController,
+              itemCount: total,
+              physics: total > 1
+                  ? const PageScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
+              onPageChanged: (index) {
+                if (_currentBannerIndex != index) {
+                  setState(() {
+                    _currentBannerIndex = index;
+                  });
+                }
+              },
+              itemBuilder: (context, index) {
+                if (!hasData) {
+                  return Container(
+                    color: const Color(0xFFE5E7EB),
+                  );
+                }
+                final banner = _trends[index];
+                final hasLink = banner.hasBlogLink;
+                return GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: hasLink && banner.blogLink != null
+                      ? () => _handleTrendTap(banner.blogLink!)
+                      : null,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      _buildTrendImage(banner.imageUrl),
+                      if (!hasLink)
+                        Container(
+                          color: Colors.black.withOpacity(0.05),
+                        ),
+                    ],
+                  ),
+                );
+              },
+            ),
           ),
           Positioned(
             right: 8,
@@ -654,18 +746,38 @@ class _HomeContentState extends State<HomeContent> {
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Text(
-                '${_currentBannerIndex + 1}/5',
+                '${displayIndex + 1}/$total',
                 style: const TextStyle(color: Colors.white, fontSize: 12),
               ),
             ),
           ),
+          if (_isTrendLoading && !hasData)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.black.withOpacity(0.05),
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
+  Widget _buildTrendImage(String imageUrl) {
+    if (imageUrl.trim().isEmpty) {
+      return Container(color: const Color(0xFFE5E7EB));
+    }
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(color: const Color(0xFFE5E7EB)),
+    );
+  }
 
-  Widget _buildMenuCard(String imagePath, String title, double width, {VoidCallback? onTap}) {
+  Widget _buildMenuCard(String imagePath, String title, double width,
+      {VoidCallback? onTap}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -687,39 +799,40 @@ class _HomeContentState extends State<HomeContent> {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             ClipRRect(
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(12)),
               child: imagePath.startsWith('http')
                   ? Image.network(
-                imagePath,
-                height: width * 0.8,
-                width: double.infinity,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Center(
-                    child: CircularProgressIndicator(
-                      value: loadingProgress.expectedTotalBytes != null
-                          ? loadingProgress.cumulativeBytesLoaded /
-                          loadingProgress.expectedTotalBytes!
-                          : null,
-                    ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return Image.asset(
-                    'assets/images/food_image0.png',
-                    height: width * 0.8,
-                    width: double.infinity,
-                    fit: BoxFit.cover,
-                  );
-                },
-              )
+                      imagePath,
+                      height: width * 0.8,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Center(
+                          child: CircularProgressIndicator(
+                            value: loadingProgress.expectedTotalBytes != null
+                                ? loadingProgress.cumulativeBytesLoaded /
+                                    loadingProgress.expectedTotalBytes!
+                                : null,
+                          ),
+                        );
+                      },
+                      errorBuilder: (context, error, stackTrace) {
+                        return Image.asset(
+                          'assets/images/food_image0.png',
+                          height: width * 0.8,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        );
+                      },
+                    )
                   : Image.asset(
-                imagePath,
-                height: width * 0.8,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
+                      imagePath,
+                      height: width * 0.8,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
             ),
             Padding(
               padding: EdgeInsets.all(width * 0.05),
@@ -848,16 +961,18 @@ class _HomeContentState extends State<HomeContent> {
                   // height 제거: 컨텐츠 크기만큼 자동으로 늘어나도록
                   child: recommendedRestaurants.isEmpty
                       ? Center(
-                    child: Text('추천할 만한 음식점을 찾지 못했어요.'),
-                  )
+                          child: Text('추천할 만한 음식점을 찾지 못했어요.'),
+                        )
                       : ListView.builder(
-                    physics: NeverScrollableScrollPhysics(), // 스크롤을 부모에게 위임
-                    shrinkWrap: true, // 컨텐츠 크기만큼만 차지하도록
-                    itemCount: recommendedRestaurants.length,
-                    itemBuilder: (context, index) {
-                      return _buildRestaurantCard(recommendedRestaurants[index]);
-                    },
-                  ),
+                          physics:
+                              NeverScrollableScrollPhysics(), // 스크롤을 부모에게 위임
+                          shrinkWrap: true, // 컨텐츠 크기만큼만 차지하도록
+                          itemCount: recommendedRestaurants.length,
+                          itemBuilder: (context, index) {
+                            return _buildRestaurantCard(
+                                recommendedRestaurants[index]);
+                          },
+                        ),
                 ),
                 SizedBox(height: padding * 0.8),
                 SizedBox(
@@ -896,15 +1011,16 @@ class _HomeContentState extends State<HomeContent> {
   }
 }
 
-
 class FoodRestaurantListScreen extends StatefulWidget {
-  const FoodRestaurantListScreen({super.key, required this.foodName, this.imageUrl});
+  const FoodRestaurantListScreen(
+      {super.key, required this.foodName, this.imageUrl});
 
   final String foodName;
   final String? imageUrl;
 
   @override
-  State<FoodRestaurantListScreen> createState() => _FoodRestaurantListScreenState();
+  State<FoodRestaurantListScreen> createState() =>
+      _FoodRestaurantListScreenState();
 }
 
 class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
@@ -926,7 +1042,8 @@ class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/'),
+        Uri.parse(
+            'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/'),
         headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
           'food_names': [widget.foodName],
@@ -934,24 +1051,31 @@ class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
       );
 
       if (response.statusCode == 200) {
-        final decoded = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        final decoded =
+            jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
         final restaurants =
-        (decoded['random_restaurants'] as List<dynamic>? ?? const [])
-            .map<Map<String, dynamic>>((item) => Map<String, dynamic>.from(item as Map))
-            .toList();
+            (decoded['random_restaurants'] as List<dynamic>? ?? const [])
+                .map<Map<String, dynamic>>(
+                    (item) => Map<String, dynamic>.from(item as Map))
+                .toList();
 
         final position = await LocationHelper.getLatLon();
         final userLat = position?['lat'] ?? 35.8714;
         final userLon = position?['lon'] ?? 128.6014;
 
         final mapped = restaurants.map<Map<String, dynamic>>((restaurant) {
-          final restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
-          final restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
-          final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+          final restLat =
+              double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+          final restLon =
+              double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+          final distance =
+              DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
           return {
             'name': restaurant['name'] ?? '이름 없음',
             'road_address': restaurant['road_address'] ?? '주소 정보 없음',
-            'category_2': restaurant['category_2'] ?? restaurant['category_1'] ?? '카테고리 정보 없음',
+            'category_2': restaurant['category_2'] ??
+                restaurant['category_1'] ??
+                '카테고리 정보 없음',
             'distance': distance,
           };
         }).toList();
@@ -1022,7 +1146,8 @@ class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
       return const Center(child: Text('추천할 만한 맛집을 찾지 못했어요.'));
     }
 
-    final hasHeaderImage = widget.imageUrl != null && widget.imageUrl!.isNotEmpty;
+    final hasHeaderImage =
+        widget.imageUrl != null && widget.imageUrl!.isNotEmpty;
     final itemCount = _restaurants.length + (hasHeaderImage ? 1 : 0);
 
     return ListView.separated(
@@ -1033,18 +1158,21 @@ class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
         int dataIndex = index;
         if (hasHeaderImage) {
           if (index == 0) {
-            return _FoodHeader(imageUrl: widget.imageUrl!, foodName: widget.foodName);
+            return _FoodHeader(
+                imageUrl: widget.imageUrl!, foodName: widget.foodName);
           }
           dataIndex -= 1;
         }
 
         final restaurant = _restaurants[dataIndex];
         final distance = restaurant['distance'];
-        final distanceText = distance is num ? '거리 ${distance.toStringAsFixed(1)} km' : null;
+        final distanceText =
+            distance is num ? '거리 ${distance.toStringAsFixed(1)} km' : null;
 
         return Card(
           elevation: 2,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           child: ListTile(
             title: Text(restaurant['name'] ?? '이름 없음'),
             subtitle: Column(
@@ -1053,19 +1181,22 @@ class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
                 const SizedBox(height: 4),
                 Text(
                   restaurant['road_address'] ?? '주소 정보 없음',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                 ),
                 if (distanceText != null) ...[
                   const SizedBox(height: 4),
                   Text(
                     distanceText,
-                    style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                    style:
+                        const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
                   ),
                 ],
                 const SizedBox(height: 4),
                 Text(
                   restaurant['category_2'] ?? '카테고리 정보 없음',
-                  style: const TextStyle(fontSize: 12, color: Color(0xFF4B5563)),
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFF4B5563)),
                 ),
               ],
             ),
@@ -1091,23 +1222,23 @@ class _FoodHeader extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           child: imageUrl.startsWith('http')
               ? Image.network(
-            imageUrl,
-            height: 180,
-            width: double.infinity,
-            fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => Image.asset(
-              'assets/images/food_image0.png',
-              height: 180,
-              width: double.infinity,
-              fit: BoxFit.cover,
-            ),
-          )
+                  imageUrl,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Image.asset(
+                    'assets/images/food_image0.png',
+                    height: 180,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                )
               : Image.asset(
-            imageUrl,
-            height: 180,
-            width: double.infinity,
-            fit: BoxFit.cover,
-          ),
+                  imageUrl,
+                  height: 180,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
         ),
         const SizedBox(height: 12),
         Text(

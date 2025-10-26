@@ -4,6 +4,9 @@ import 'package:http/http.dart' as http;
 
 import 'api_client.dart';
 
+const String kCouponBenefitFallbackTitle = '혜택 정보가 준비 중이에요';
+const String kCouponBenefitFallbackSubtitle = '쿠폰 상세 정보를 확인하려면 매장에 문의해 주세요.';
+
 enum CouponStatus { issued, redeemed, expired, canceled, unknown }
 
 extension CouponStatusName on CouponStatus {
@@ -43,24 +46,102 @@ class UserCoupon {
     required this.code,
     required this.status,
     this.restaurantId,
+    this.benefit,
   });
 
   factory UserCoupon.fromJson(Map<String, dynamic> json) {
     int? parseRestaurant(dynamic value) {
       if (value is int) return value;
-      return int.tryParse(value?.toString() ?? '');
+      if (value is double) return value.round();
+      if (value is String) {
+        final trimmed = value.trim();
+        if (trimmed.isEmpty) return null;
+        return int.tryParse(trimmed);
+      }
+      return null;
     }
+
+    final benefit = _parseCouponBenefit(json);
+    final resolvedRestaurantId =
+        parseRestaurant(json['restaurant_id']) ?? benefit?.restaurantId;
 
     return UserCoupon(
       code: json['code']?.toString() ?? '',
       status: CouponStatusName.from(json['status']?.toString()),
-      restaurantId: parseRestaurant(json['restaurant_id']),
+      restaurantId: resolvedRestaurantId,
+      benefit: benefit,
     );
   }
 
   final String code;
   final CouponStatus status;
   final int? restaurantId;
+  final CouponBenefitInfo? benefit;
+}
+
+class CouponBenefitInfo {
+  const CouponBenefitInfo({
+    this.title,
+    this.subtitle,
+    this.description,
+    this.restaurantId,
+    this.restaurantName,
+  });
+
+  factory CouponBenefitInfo.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic>? details;
+    final rawDetails = json['benefit'];
+    if (rawDetails is Map<String, dynamic>) {
+      details = rawDetails;
+    } else if (rawDetails is Map) {
+      details = Map<String, dynamic>.from(rawDetails as Map);
+    }
+
+    return CouponBenefitInfo(
+      title: _normalizeString(json['title']),
+      subtitle: _normalizeString(json['subtitle']),
+      description: details != null
+          ? _normalizeString(details['description'])
+          : _normalizeString(json['description']),
+      restaurantId: _parseOptionalInt(json['restaurant_id']),
+      restaurantName: _normalizeString(json['restaurant_name']),
+    );
+  }
+
+  final String? title;
+  final String? subtitle;
+  final String? description;
+  final int? restaurantId;
+  final String? restaurantName;
+
+  String get resolvedTitle =>
+      (title != null && title!.isNotEmpty) ? title! : kCouponBenefitFallbackTitle;
+
+  String get resolvedSubtitle =>
+      (subtitle != null && subtitle!.isNotEmpty)
+          ? subtitle!
+          : kCouponBenefitFallbackSubtitle;
+
+  String? get descriptionText =>
+      (description != null && description!.isNotEmpty) ? description : null;
+
+  String? get restaurantNameText =>
+      (restaurantName != null && restaurantName!.isNotEmpty)
+          ? restaurantName
+          : null;
+}
+
+CouponBenefitInfo? _parseCouponBenefit(Map<String, dynamic> json) {
+  final dynamic raw = json['benefit'] ?? json['benefit_snapshot'];
+  if (raw is Map<String, dynamic>) {
+    return CouponBenefitInfo.fromJson(raw);
+  }
+  if (raw is Map) {
+    return CouponBenefitInfo.fromJson(
+      Map<String, dynamic>.from(raw as Map),
+    );
+  }
+  return null;
 }
 
 class StampRewardCoupon {
@@ -378,6 +459,7 @@ class CouponService {
     }
   }
 
+
   static dynamic _decodeResponseBody(http.Response response) {
     if (response.bodyBytes.isEmpty) return null;
     try {
@@ -386,6 +468,26 @@ class CouponService {
       return null;
     }
   }
+}
+
+int? _parseOptionalInt(dynamic value) {
+  if (value is int) return value;
+  if (value is double) return value.round();
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return int.tryParse(trimmed);
+  }
+  return null;
+}
+
+String? _normalizeString(dynamic value) {
+  if (value is String) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed;
+  }
+  return null;
 }
 
 int _parseInt(dynamic value) {

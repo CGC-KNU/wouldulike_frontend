@@ -19,6 +19,9 @@ class MyScreen extends StatefulWidget {
 }
 
 class _MyScreenState extends State<MyScreen> {
+  static const int _maxReferralCoupons = 5;
+  static const String _referralCouponLimitMessage =
+      '친구 초대 쿠폰은 최대 $_maxReferralCoupons개까지 보유할 수 있어요.';
   String uuid = '';
   String typeCode = '정보 없음';
   String typeName = '정보 없음';
@@ -364,6 +367,14 @@ class _MyScreenState extends State<MyScreen> {
               )
             else
               const Text('추천 코드를 불러오지 못했어요.'),
+          const SizedBox(height: 12),
+          const Text(
+            _referralCouponLimitMessage,
+            style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF4B5563),
+            ),
+          ),
         ],
       ),
     );

@@ -358,6 +358,16 @@ class _CouponListScreenState extends State<CouponListScreen> {
   Widget _buildCouponTile(UserCoupon coupon) {
     final statusColor = _statusColor(coupon.status);
     final statusText = _statusLabel(coupon.status);
+    final bool isProcessing = _processingCouponCode == coupon.code;
+    final benefit = coupon.benefit;
+    final title =
+        benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
+    final subtitle =
+        benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
+    final String restaurantLabel = benefit?.restaurantNameText ??
+        (coupon.restaurantId != null
+            ? '사용 가능 매장 ID: ${coupon.restaurantId}'
+            : '사용 가능한 매장 정보가 없어요.');
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -396,29 +406,28 @@ class _CouponListScreenState extends State<CouponListScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  coupon.code,
+                  restaurantLabel,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF6B7280),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  title,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Colors.black,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
-                  coupon.restaurantId != null
-                      ? '식당 ID: ${coupon.restaurantId}'
-                      : '사용 가능한 매장 정보가 없어요',
+                  subtitle,
                   style: const TextStyle(
                     fontSize: 13,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '상태: $statusText',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF9CA3AF),
+                    color: Color(0xFF4B5563),
                   ),
                 ),
               ],
@@ -426,10 +435,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
           ),
           if (coupon.status == CouponStatus.issued)
             TextButton(
-              onPressed: _processingCouponCode == coupon.code
-                  ? null
-                  : () => _handleRedeem(coupon),
-              child: _processingCouponCode == coupon.code
+              onPressed: isProcessing ? null : () => _handleRedeem(coupon),
+              child: isProcessing
                   ? const SizedBox(
                       width: 16,
                       height: 16,

@@ -1350,66 +1350,69 @@ class _AffiliateRestaurantDetailSheetState
     }
     final rewards = status.rewardCoupons.toList()
       ..sort((a, b) => a.threshold.compareTo(b.threshold));
-    if (rewards.isEmpty) {
-      final remaining = math.max(status.target - status.current, 0);
-      if (remaining > 0) {
-        return Text(
-          '스탬프 ${remaining}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.',
+
+    final List<Widget> items = [];
+    final reachedRewards =
+        rewards.where((reward) => status.current >= reward.threshold).toList();
+    final pendingRewards =
+        rewards.where((reward) => status.current < reward.threshold).toList();
+    final thresholds = rewards.map((reward) => reward.threshold).toSet();
+
+    for (final reward in reachedRewards) {
+      final label = _rewardCouponLabel(reward);
+      final code = reward.couponCode.trim();
+      final buffer = StringBuffer('$label을 이미 받았어요.');
+      if (code.isNotEmpty) {
+        buffer.write(' (코드: $code)');
+      }
+      items.add(
+        Text(
+          buffer.toString(),
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+    }
+
+    String? nextMessage;
+    if (status.current < 5 &&
+        (thresholds.contains(5) || rewards.isEmpty || status.target <= 5)) {
+      nextMessage = '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.';
+    } else if (status.current < 10 &&
+        (thresholds.contains(10) || rewards.isEmpty || status.target <= 10)) {
+      nextMessage = '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.';
+    } else if (pendingRewards.isNotEmpty) {
+      final reward = pendingRewards.first;
+      final remaining = math.max(reward.threshold - status.current, 0);
+      nextMessage =
+          _pendingRewardMessage(reward.threshold, status.current, remaining);
+    }
+
+    if (nextMessage == null) {
+      final remainingToTarget = math.max(status.target - status.current, 0);
+      if (remainingToTarget > 0) {
+        nextMessage =
+            '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.';
+      }
+    }
+
+    if (nextMessage != null) {
+      items.add(
+        Text(
+          nextMessage,
           style: const TextStyle(
             color: Color(0xFF9FA7FF),
             fontSize: 14,
             fontWeight: FontWeight.w600,
           ),
-        );
-      }
-      return const Text(
-        '준비된 리워드 쿠폰을 모두 받았어요!',
-        style: TextStyle(
-          color: Color(0xFF9FA7FF),
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
         ),
       );
     }
 
-    final items = <Widget>[];
-    bool hasPendingReward = false;
-
-    for (final reward in rewards) {
-      final reached = status.current >= reward.threshold;
-      final label = _rewardCouponLabel(reward);
-      if (reached) {
-        final code = reward.couponCode;
-        final text = code.isNotEmpty
-            ? '$label을 이미 받았어요. (코드: $code)'
-            : '$label을 이미 받았어요.';
-        items.add(
-          Text(
-            text,
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        );
-      } else {
-        hasPendingReward = true;
-        final remaining = reward.threshold - status.current;
-        items.add(
-          Text(
-            '스탬프 ${remaining}개 더 적립하면 $label을 받을 수 있어요.',
-            style: const TextStyle(
-              color: Color(0xFF9FA7FF),
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        );
-      }
-    }
-
-    if (!hasPendingReward) {
+    if (items.isEmpty) {
       items.add(
         const Text(
           '준비된 리워드 쿠폰을 모두 받았어요!',
@@ -1453,6 +1456,29 @@ class _AffiliateRestaurantDetailSheetState
     return '스탬프 ${reward.threshold}개 리워드 쿠폰';
   }
 
+  String _pendingRewardMessage(int threshold, int current, int remaining) {
+    if (threshold == 5 && current < 5) {
+      return '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.';
+    }
+    if (threshold == 10 && current >= 5 && current < 10) {
+      return '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.';
+    }
+    final milestoneName = _milestoneLabel(threshold);
+    final prefix = remaining <= 0 ? '이제' : '스탬프 ${remaining}개 더 적립하면';
+    return '$prefix $milestoneName을 받을 수 있어요.';
+  }
+
+  String _milestoneLabel(int threshold) {
+    switch (threshold) {
+      case 5:
+        return '첫 번째 리워드 쿠폰';
+      case 10:
+        return '두 번째 리워드 쿠폰';
+      default:
+        return '스탬프 ${threshold}개 리워드 쿠폰';
+    }
+  }
+
   Widget _buildStampIcon({required bool filled, required bool showMilestoneGlow}) {
     final decoration = BoxDecoration(
       color: filled ? Colors.white : Colors.white.withOpacity(0.08),
@@ -1482,8 +1508,11 @@ class _AffiliateRestaurantDetailSheetState
               'assets/images/would_logo.png',
               width: 24,
               height: 24,
-              color: const Color(0xFF0B1033),
-              colorBlendMode: BlendMode.srcIn,
+              fit: BoxFit.contain,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.check_circle,
+                color: Color(0xFF0B1033),
+              ),
             )
           : Icon(
               Icons.circle_outlined,
@@ -1536,6 +1565,18 @@ class _AffiliateRestaurantDetailSheetState
 
   Widget _buildCouponTile(UserCoupon coupon) {
     final isProcessing = _processingCouponCode == coupon.code;
+    final benefit = coupon.benefit;
+    final title =
+        benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
+    final subtitle =
+        benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
+    final String restaurantLabel = benefit?.restaurantNameText ??
+        (coupon.restaurantId != null
+            ? '사용 가능 매장 ID: ${coupon.restaurantId}'
+            : '사용 가능한 매장 정보가 없어요.');
+    final statusText = _couponStatusLabel(coupon.status);
+    final statusColor = _couponStatusColor(coupon.status);
+
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
@@ -1546,25 +1587,63 @@ class _AffiliateRestaurantDetailSheetState
         border: Border.all(color: const Color(0xFFE0E3FF)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: statusColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        restaurantLabel,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF4B5563),
+                          fontWeight: FontWeight.w500,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 Text(
-                  coupon.code,
+                  title,
                   style: const TextStyle(
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     fontSize: 16,
                     color: Color(0xFF1F2937),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
                 Text(
-                  _couponStatusLabel(coupon.status),
+                  subtitle,
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 13,
                     color: Color(0xFF4C5395),
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
@@ -1723,6 +1802,21 @@ class _AffiliateRestaurantDetailSheetState
         return '취소됨';
       case CouponStatus.unknown:
         return '상태 확인 불가';
+    }
+  }
+
+  Color _couponStatusColor(CouponStatus status) {
+    switch (status) {
+      case CouponStatus.issued:
+        return const Color(0xFF10B981);
+      case CouponStatus.redeemed:
+        return const Color(0xFF6366F1);
+      case CouponStatus.expired:
+        return const Color(0xFFF97316);
+      case CouponStatus.canceled:
+        return const Color(0xFFEF4444);
+      case CouponStatus.unknown:
+        return const Color(0xFF6B7280);
     }
   }
 
