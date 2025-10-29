@@ -9,6 +9,7 @@ import 'nearby_restaurants_screen.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'coupon_list_screen.dart';
+import 'services/coupon_service.dart';
 import 'services/trend_service.dart';
 
 // URL 열기 도구
@@ -47,6 +48,17 @@ class HomeContent extends StatefulWidget {
 }
 
 class _HomeContentState extends State<HomeContent> {
+  static const String _kWelcomeCouponDismissedKey =
+      'welcome_coupon_dialog_dismissed';
+  static const List<String> _kWelcomeCouponKeywords = <String>[
+    '신규가입',
+    '회원가입',
+    '가입축하',
+    '환영',
+    'welcome',
+    'new member',
+    '가입 축하',
+  ];
   late SharedPreferences prefs;
   List<Map<String, dynamic>> recommendedFoods = [];
   List<Map<String, dynamic>> recommendedRestaurants = [];
@@ -57,6 +69,10 @@ class _HomeContentState extends State<HomeContent> {
   bool _isFetching = false;
   int _currentBannerIndex = 0;
   bool _isTrendLoading = false;
+  bool _isCheckingWelcomeCoupon = false;
+  bool _welcomeDialogVisible = false;
+  bool _welcomePromptScheduled = false;
+  bool _suppressWelcomeCoupon = false;
   @override
   void initState() {
     super.initState();
@@ -67,6 +83,8 @@ class _HomeContentState extends State<HomeContent> {
 
   Future<void> _initializePrefs() async {
     prefs = await SharedPreferences.getInstance();
+    _suppressWelcomeCoupon =
+        prefs.getBool(_kWelcomeCouponDismissedKey) ?? false;
     await _loadRecommendedFoods();
     await _loadRestaurantsData();
     await _loadLikedRestaurants();
@@ -76,6 +94,9 @@ class _HomeContentState extends State<HomeContent> {
       await _refreshFoodsAndRestaurants();
     } else if (recommendedRestaurants.isEmpty) {
       await _refreshRestaurantsOnly();
+    }
+    if (!_suppressWelcomeCoupon) {
+      await _checkWelcomeCouponStatus();
     }
   }
 
@@ -112,6 +133,170 @@ class _HomeContentState extends State<HomeContent> {
           _isTrendLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _checkWelcomeCouponStatus() async {
+    if (_suppressWelcomeCoupon || _isCheckingWelcomeCoupon) return;
+    _isCheckingWelcomeCoupon = true;
+    try {
+      final coupons =
+          await CouponService.fetchMyCoupons(status: CouponStatus.issued);
+      if (!mounted) return;
+      final hasWelcomeCoupon = coupons.any(_isWelcomeCoupon);
+      if (!hasWelcomeCoupon ||
+          _welcomeDialogVisible ||
+          _welcomePromptScheduled) {
+        return;
+      }
+      _welcomePromptScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          _welcomePromptScheduled = false;
+          return;
+        }
+        _showWelcomeCouponDialog();
+      });
+    } catch (_) {
+      // Ignore coupon fetch failures for the welcome dialog.
+    } finally {
+      _isCheckingWelcomeCoupon = false;
+    }
+  }
+
+  bool _isWelcomeCoupon(UserCoupon coupon) {
+    final benefit = coupon.benefit;
+    final candidates = <String>[
+      coupon.code,
+      benefit?.title ?? '',
+      benefit?.subtitle ?? '',
+      benefit?.descriptionText ?? '',
+    ];
+    for (final value in candidates) {
+      if (value.isEmpty) continue;
+      final lower = value.toLowerCase();
+      for (final keyword in _kWelcomeCouponKeywords) {
+        if (lower.contains(keyword.toLowerCase())) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  Future<void> _showWelcomeCouponDialog() async {
+    if (!mounted || _welcomeDialogVisible) {
+      _welcomePromptScheduled = false;
+      return;
+    }
+    _welcomeDialogVisible = true;
+    bool dontShowAgain = false;
+    final bool? shouldSuppress = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(18),
+              ),
+              title: const Text(
+                '신규가입 쿠폰이 도착했어요',
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              content: const Text(
+                '회원가입을 축하드려요! 신규가입 쿠폰이 발급되었어요.\n쿠폰함에서 확인하고 사용해 보세요.',
+                style: TextStyle(
+                  fontSize: 15,
+                  height: 1.4,
+                  color: Color(0xFF374151),
+                ),
+              ),
+              actionsPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              actions: [
+                SizedBox(
+                  width: double.infinity,
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: InkWell(
+                          onTap: () {
+                            setState(() {
+                              dontShowAgain = !dontShowAgain;
+                            });
+                          },
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 4,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Checkbox(
+                                  value: dontShowAgain,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      dontShowAgain = value ?? false;
+                                    });
+                                  },
+                                  materialTapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                const SizedBox(width: 4),
+                                const Text(
+                                  '다시 보지 않기',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    color: Color(0xFF4B5563),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF4F46E5),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 20,
+                            vertical: 10,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        onPressed: () =>
+                            Navigator.of(dialogContext).pop(dontShowAgain),
+                        child: const Text(
+                          '확인',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    _welcomeDialogVisible = false;
+    _welcomePromptScheduled = false;
+    if (shouldSuppress == true) {
+      _suppressWelcomeCoupon = true;
+      await prefs.setBool(_kWelcomeCouponDismissedKey, true);
     }
   }
 
@@ -335,7 +520,9 @@ class _HomeContentState extends State<HomeContent> {
         return;
       }
       await _fetchRestaurants(foodNames);
-      await _loadTrends();
+      if (!_suppressWelcomeCoupon) {
+        await _checkWelcomeCouponStatus();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -363,6 +550,9 @@ class _HomeContentState extends State<HomeContent> {
     _isFetching = true;
     try {
       await _fetchRestaurants(foodNames);
+      if (!_suppressWelcomeCoupon) {
+        await _checkWelcomeCouponStatus();
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
