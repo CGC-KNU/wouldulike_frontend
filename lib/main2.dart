@@ -1,8 +1,7 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 
 import 'package:new1/affiliate_benefits_screen.dart';
 import 'home.dart';
-import 'match.dart';
 import 'my.dart';
 import 'package:new1/utils/location_helper.dart';
 
@@ -37,8 +36,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
       case 1:
         return const AffiliateBenefitsScreen();
       case 2:
-        return const MatchingScreen();
-      case 3:
         return const MyScreen();
       default:
         return const HomeContent();
@@ -59,10 +56,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.card_giftcard),
             label: '제휴/혜택',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.search),
-            label: '탐색',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person),

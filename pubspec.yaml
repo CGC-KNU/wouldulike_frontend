@@ -107,6 +107,12 @@ flutter:
           weight: 800
         - asset: assets/fonts/Pretendard-Black.ttf
           weight: 900
+    - family: Alkatra
+      fonts:
+        - asset: assets/fonts/Alkatra-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Alkatra-Medium.ttf
+          weight: 500
   assets:
     - assets/images/
   # For details regarding fonts from package dependencies,

@@ -1,11 +1,11 @@
-import 'dart:async';
+﻿import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
-import 'nearby_restaurants_screen.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'coupon_list_screen.dart';
@@ -59,6 +59,9 @@ class _HomeContentState extends State<HomeContent> {
     'new member',
     '가입 축하',
   ];
+  static const String _defaultPromotionTitle = '우주라이크 사용 가이드';
+  static const String _defaultPromotionDescription = '앱 사용 가이드를 바로 만나보세요.';
+  static const String _defaultPromotionImage = 'https://placehold.co/345x220';
   late SharedPreferences prefs;
   List<Map<String, dynamic>> recommendedFoods = [];
   List<Map<String, dynamic>> recommendedRestaurants = [];
@@ -73,6 +76,11 @@ class _HomeContentState extends State<HomeContent> {
   bool _welcomeDialogVisible = false;
   bool _welcomePromptScheduled = false;
   bool _suppressWelcomeCoupon = false;
+  bool _showNearby = false;
+  bool _isNearbyLoading = false;
+  String? _nearbyError;
+  List<Map<String, dynamic>> _nearbyRestaurants = [];
+  bool _scrollFetchArmed = true;
   @override
   void initState() {
     super.initState();
@@ -87,7 +95,7 @@ class _HomeContentState extends State<HomeContent> {
         prefs.getBool(_kWelcomeCouponDismissedKey) ?? false;
     await _loadRecommendedFoods();
     await _loadRestaurantsData();
-    await _loadLikedRestaurants();
+    await _loadLikedRestaurants(recommendedRestaurants);
     final cachedFoodNames = _getCachedFoodNames();
 
     if (cachedFoodNames.isEmpty) {
@@ -422,10 +430,11 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   // 찜한 음식점 상태 로드
-  Future<void> _loadLikedRestaurants() async {
-    if (recommendedRestaurants.isEmpty) return;
+  Future<void> _loadLikedRestaurants([List<Map<String, dynamic>>? restaurants]) async {
+    final targets = restaurants ??
+        (_showNearby ? _nearbyRestaurants : recommendedRestaurants);
+    if (targets.isEmpty) return;
 
-    // 전체 찜 목록 데이터 로드
     final String? savedLikedAll = prefs.getString('liked_restaurants_all');
     Map<String, dynamic> allLikedRestaurants = {};
 
@@ -436,34 +445,26 @@ class _HomeContentState extends State<HomeContent> {
     setState(() {
       likedRestaurants.clear();
 
-      // 각 음식점에 대해 찜 상태 확인
-      for (var restaurant in recommendedRestaurants) {
-        String name = restaurant['name'] ?? '이름 없음';
-        String address = restaurant['road_address'] ?? '주소 없음';
-        String key = '$name|$address';
+      for (var restaurant in targets) {
+        final String name = restaurant['name'] ?? 'Unknown name';
+        final String address = restaurant['road_address'] ?? 'No address';
+        final String key = '$name|$address';
 
-        // 이전에 찜한 적이 있는지 확인
         if (allLikedRestaurants.containsKey(key)) {
           likedRestaurants[key] = true;
-          // 개별 상태도 업데이트
           prefs.setBool('liked_${name}_${address}', true);
         } else {
-          // 없다면 기존 개별 상태 확인
-          bool isLiked = prefs.getBool('liked_${name}_${address}') ?? false;
+          final bool isLiked =
+              prefs.getBool('liked_${name}_${address}') ?? false;
           if (isLiked) {
             likedRestaurants[key] = true;
           }
         }
-
-        //print('음식점 $name의 찜 상태: ${likedRestaurants[key] ?? false}');
       }
     });
-
-    //print('전체 찜 상태: $likedRestaurants');
   }
 
-  // 서버에 찜 상태 동기화
-  Future<void> _updateFavoriteRestaurant(
+Future<void> _updateFavoriteRestaurant(
       String restaurantName, String action) async {
     final uuid = prefs.getString('user_uuid') ?? '';
     if (uuid.isEmpty) return;
@@ -503,15 +504,23 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   void _onScroll() {
-    if (!_scrollController.hasClients || _isFetching) return;
-    final maxScroll = _scrollController.position.maxScrollExtent;
-    final currentScroll = _scrollController.position.pixels;
-    if (currentScroll > maxScroll - 100) {
-      _refreshRestaurantsOnly();
+    if (_showNearby || !_scrollController.hasClients || _isFetching) return;
+    final position = _scrollController.position;
+    final maxScroll = position.maxScrollExtent;
+    if (maxScroll <= 0) return;
+    final currentScroll = position.pixels;
+    final triggerOffset = maxScroll > 100 ? maxScroll - 100 : maxScroll;
+    final rearmOffset = math.max(0.0, triggerOffset - 200);
+    if (currentScroll >= triggerOffset) {
+      if (!_scrollFetchArmed) return;
+      _scrollFetchArmed = false;
+      _refreshRestaurantsOnly(triggeredByScroll: true);
+    } else if (currentScroll <= rearmOffset) {
+      _scrollFetchArmed = true;
     }
   }
 
-  Future<void> _refreshFoodsAndRestaurants() async {
+Future<void> _refreshFoodsAndRestaurants() async {
     if (_isFetching) return;
     _isFetching = true;
     try {
@@ -534,14 +543,17 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
-  Future<void> _refreshRestaurantsOnly() async {
+  Future<void> _refreshRestaurantsOnly({bool triggeredByScroll = false}) async {
     if (_isFetching) return;
 
     final foodNames = _getCachedFoodNames();
     if (foodNames.isEmpty) {
+      if (triggeredByScroll) {
+        _scrollFetchArmed = true;
+      }
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('먼저 음식 추천을 새로고침 해주세요.')),
+          const SnackBar(content: Text('Please refresh food recommendations first.')),
         );
       }
       return;
@@ -556,7 +568,7 @@ class _HomeContentState extends State<HomeContent> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('음식점을 불러오지 못했어요: $e')),
+          SnackBar(content: Text('Failed to load restaurants: $e')),
         );
       }
     } finally {
@@ -564,7 +576,129 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
-  Future<List<String>> _fetchFoods() async {
+Future<void> _loadNearbyRestaurants() async {
+    if (_isNearbyLoading) return;
+
+    final foodNames = _getCachedFoodNames();
+    if (foodNames.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _nearbyRestaurants = [];
+          _nearbyError = 'Please refresh food recommendations first.';
+        });
+      }
+      return;
+    }
+
+    final position = await LocationHelper.getLatLon();
+    if (position == null) {
+      if (mounted) {
+        setState(() {
+          _nearbyRestaurants = [];
+          _nearbyError = 'Unable to access your location.';
+        });
+      }
+      return;
+    }
+
+    setState(() {
+      _isNearbyLoading = true;
+      _nearbyError = null;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse(
+            'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-nearby-restaurants/'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'food_names': foodNames,
+          'latitude': position['lat'],
+          'longitude': position['lon'],
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final decoded =
+            jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        final rawRestaurants =
+            (decoded['restaurants'] as List<dynamic>? ?? const [])
+                .map<Map<String, dynamic>>(
+                    (item) => Map<String, dynamic>.from(item as Map))
+                .toList();
+
+        final double userLat =
+            (position['lat'] as num?)?.toDouble() ?? 35.8714;
+        final double userLon =
+            (position['lon'] as num?)?.toDouble() ?? 128.6014;
+
+        final mapped = rawRestaurants.map<Map<String, dynamic>>((restaurant) {
+          final restLat =
+              double.tryParse(restaurant['y']?.toString() ?? '') ?? userLat;
+          final restLon =
+              double.tryParse(restaurant['x']?.toString() ?? '') ?? userLon;
+          final distance =
+              DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
+          return {
+            'name': restaurant['name'] ?? 'Unknown name',
+            'road_address': restaurant['road_address'] ?? 'No address',
+            'category_2': restaurant['category_2'] ?? 'No category',
+            'x': restaurant['x'],
+            'y': restaurant['y'],
+            'distance': distance,
+          };
+        }).toList();
+
+        if (!mounted) return;
+        setState(() {
+          _nearbyRestaurants = mapped;
+        });
+        await _loadLikedRestaurants(_nearbyRestaurants);
+      } else if (response.statusCode == 400 || response.statusCode == 404) {
+        if (!mounted) return;
+        setState(() {
+          _nearbyRestaurants = [];
+          _nearbyError = 'No nearby recommendations available.';
+        });
+      } else {
+        throw Exception('Failed to fetch nearby restaurants.');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _nearbyRestaurants = [];
+        _nearbyError = 'Failed to load nearby restaurants: ' + e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isNearbyLoading = false;
+        });
+      }
+    }
+  }
+
+  void _onNearbyToggle() {
+    if (_showNearby) {
+      setState(() {
+        _showNearby = false;
+        _nearbyError = null;
+      });
+      _loadLikedRestaurants(recommendedRestaurants);
+    } else {
+      setState(() {
+        _showNearby = true;
+        _nearbyError = null;
+      });
+      if (_nearbyRestaurants.isEmpty) {
+        _loadNearbyRestaurants();
+      } else {
+        _loadLikedRestaurants(_nearbyRestaurants);
+      }
+    }
+  }
+
+Future<List<String>> _fetchFoods() async {
     final userUuid = prefs.getString('user_uuid') ?? '';
     if (userUuid.isEmpty) throw Exception('사용자 UUID를 찾을 수 없습니다');
     final String? typeCode = prefs.getString('user_type');
@@ -692,7 +826,7 @@ class _HomeContentState extends State<HomeContent> {
         });
       }
 
-      await _loadLikedRestaurants();
+      await _loadLikedRestaurants(recommendedRestaurants);
     } else if (restResponse.statusCode == 400 ||
         restResponse.statusCode == 404) {
       if (mounted) {
@@ -874,22 +1008,42 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
+  List<TrendItem> get _promotionItems =>
+      _trends.isNotEmpty ? _trends : _defaultPromotionItems;
+
+  List<TrendItem> get _defaultPromotionItems => const <TrendItem>[
+        TrendItem(
+          imageUrl: _defaultPromotionImage,
+          title: _defaultPromotionTitle,
+          description: _defaultPromotionDescription,
+          blogLink: 'https://example.com/guides/get-started',
+        ),
+        TrendItem(
+          imageUrl: 'https://placehold.co/345x220?text=Promo',
+          title: '제휴 매장 혜택 모음',
+          description: '주변 제휴 매장의 신규 쿠폰과 이벤트를 확인해보세요.',
+          blogLink: 'https://example.com/promotions/benefits',
+        ),
+      ];
+
   Widget _buildPromotionBanner(double width) {
-    final double height = width / 3.5;
-    final hasData = _trends.isNotEmpty;
-    final int total = hasData ? _trends.length : 1;
-    final int displayIndex = total <= 0 ? 0 : _currentBannerIndex % total;
+    final List<TrendItem> items = _promotionItems;
+    final int itemCount = items.isNotEmpty ? items.length : 1;
+    final bool hasRemoteData = _trends.isNotEmpty;
+    final double bannerHeight =
+        width <= 0 ? 0 : width * (219.53 / 345.0);
+
     return SizedBox(
-      height: height,
+      height: bannerHeight,
       child: Stack(
         children: [
           ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(15),
             child: PageView.builder(
-              key: ValueKey('${hasData ? 'data' : 'placeholder'}-$total'),
+              key: ValueKey('${hasRemoteData ? 'remote' : 'fallback'}-$itemCount'),
               controller: _bannerController,
-              itemCount: total,
-              physics: total > 1
+              itemCount: itemCount,
+              physics: itemCount > 1
                   ? const PageScrollPhysics()
                   : const NeverScrollableScrollPhysics(),
               onPageChanged: (index) {
@@ -900,52 +1054,23 @@ class _HomeContentState extends State<HomeContent> {
                 }
               },
               itemBuilder: (context, index) {
-                if (!hasData) {
-                  return Container(
-                    color: const Color(0xFFE5E7EB),
-                  );
-                }
-                final banner = _trends[index];
-                final hasLink = banner.hasBlogLink;
-                return GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: hasLink && banner.blogLink != null
-                      ? () => _handleTrendTap(banner.blogLink!)
-                      : null,
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      _buildTrendImage(banner.imageUrl),
-                      if (!hasLink)
-                        Container(
-                          color: Colors.black.withOpacity(0.05),
-                        ),
-                    ],
-                  ),
-                );
+                final TrendItem item = items[index];
+                return _buildPromotionSlide(item);
               },
             ),
           ),
-          Positioned(
-            right: 8,
-            bottom: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.black54,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                '${displayIndex + 1}/$total',
-                style: const TextStyle(color: Colors.white, fontSize: 12),
-              ),
+          if (itemCount > 1)
+            Positioned(
+              bottom: 12,
+              left: 0,
+              right: 0,
+              child: _buildBannerIndicators(itemCount),
             ),
-          ),
-          if (_isTrendLoading && !hasData)
+          if (_isTrendLoading && !hasRemoteData)
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(15),
                   color: Colors.black.withOpacity(0.05),
                 ),
               ),
@@ -955,14 +1080,174 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
-  Widget _buildTrendImage(String imageUrl) {
-    if (imageUrl.trim().isEmpty) {
-      return Container(color: const Color(0xFFE5E7EB));
+  Widget _buildPromotionSlide(TrendItem item) {
+    final bool hasLink = item.hasBlogLink;
+    final String title =
+        (item.title != null && item.title!.trim().isNotEmpty)
+            ? item.title!.trim()
+            : _defaultPromotionTitle;
+    final String description =
+        (item.description != null && item.description!.trim().isNotEmpty)
+            ? item.description!.trim()
+            : _defaultPromotionDescription;
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(15),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: hasLink ? () => _handleTrendTap(item.blogLink!) : null,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              _buildTrendImage(item.imageUrl),
+              Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  width: double.infinity,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment(0.5, 0.0),
+                      end: Alignment(0.5, 1.0),
+                      colors: [
+                        Color(0xFFEEEFF1),
+                        Color(0xFFEDEEF0),
+                        Color(0xFFEBECEE),
+                        Color(0xFFEEEFF1),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.only(
+                      bottomLeft: Radius.circular(15),
+                      bottomRight: Radius.circular(15),
+                    ),
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                color: Colors.black,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              description,
+                              style: const TextStyle(
+                                color: Color(0xFF374151),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      _buildTrendArrowButton(
+                        hasLink ? () => _handleTrendTap(item.blogLink!) : null,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrendArrowButton(VoidCallback? onPressed) {
+    final bool isEnabled = onPressed != null;
+    return SizedBox(
+      width: 39.7,
+      height: 40.99,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        elevation: 0,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onPressed,
+          child: Stack(
+            alignment: Alignment.center,
+            children: [
+              Positioned(
+                right: 6,
+                child: Text(
+                  '->',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isEnabled ? Colors.black : Colors.black26,
+                    fontSize: 26,
+                    fontFamily: 'Pretendard Variable',
+                    fontWeight: FontWeight.w600,
+                    height: 2.31,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBannerIndicators(int itemCount) {
+    if (itemCount <= 1) {
+      return const SizedBox.shrink();
     }
+
+    final int activeIndex = _currentBannerIndex % itemCount;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(itemCount, (index) {
+        final bool isActive = index == activeIndex;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 12 : 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: isActive
+                ? const Color(0xFF312E81)
+                : const Color(0xFFD1D5DB),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildTrendImage(String imageUrl) {
+    final String resolvedUrl =
+        imageUrl.trim().isNotEmpty ? imageUrl : _defaultPromotionImage;
     return Image.network(
-      imageUrl,
+      resolvedUrl,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Container(color: const Color(0xFFE5E7EB)),
+      alignment: Alignment.center,
+      errorBuilder: (_, __, ___) => Image.network(
+        _defaultPromotionImage,
+        fit: BoxFit.cover,
+        alignment: Alignment.center,
+        errorBuilder: (_, __, ___) => Container(
+          color: const Color(0xFFE5E7EB),
+        ),
+      ),
     );
   }
 
@@ -1058,31 +1343,89 @@ class _HomeContentState extends State<HomeContent> {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final double padding = screenWidth * 0.04;
-    final double cardWidth = screenWidth * 0.35;
 
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        centerTitle: true,
-        title: Image.asset(
-          'assets/images/logo1.png',
-          height: 24,
+        centerTitle: false,
+        titleSpacing: padding,
+        toolbarHeight: 56,
+        title: SizedBox(
+          width: 130,
+          height: 47,
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: 'Would',
+                    style: TextStyle(
+                      color: Colors.black.withOpacity(0.87),
+                      fontSize: 23,
+                      fontFamily: 'Alkatra',
+                      fontWeight: FontWeight.w400,
+                      height: 2.61,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'U',
+                    style: TextStyle(
+                      color: Colors.black.withOpacity(0.87),
+                      fontSize: 27,
+                      fontFamily: 'Alkatra',
+                      fontWeight: FontWeight.w500,
+                      height: 2.22,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  TextSpan(
+                    text: 'Like',
+                    style: TextStyle(
+                      color: Colors.black.withOpacity(0.87),
+                      fontSize: 23,
+                      fontFamily: 'Alkatra',
+                      fontWeight: FontWeight.w500,
+                      height: 2.61,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.left,
+            ),
+          ),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(
-              Icons.card_giftcard_outlined,
-              color: Color(0xFF312E81),
+          Padding(
+            padding: EdgeInsets.only(right: padding),
+            child: Tooltip(
+              message: 'My coupons',
+              child: InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: _openCouponList,
+                child: Container(
+                  width: 29,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    image: DecorationImage(
+                      image: NetworkImage('https://placehold.co/29x32'),
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ),
+              ),
             ),
-            tooltip: '내 쿠폰',
-            onPressed: _openCouponList,
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _refreshFoodsAndRestaurants,
+        onRefresh: _showNearby
+            ? _loadNearbyRestaurants
+            : _refreshFoodsAndRestaurants,
         child: SingleChildScrollView(
           controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
@@ -1094,104 +1437,6 @@ class _HomeContentState extends State<HomeContent> {
                 SizedBox(height: padding * 0.8),
                 _buildPromotionBanner(screenWidth),
                 SizedBox(height: padding * 0.8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '이번 주 인기 있는 메뉴를 확인해보세요!',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.04,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: _refreshFoodsAndRestaurants,
-                    ),
-                  ],
-                ),
-                SizedBox(height: padding * 0.7),
-                _buildRecommendedFoodsSection(cardWidth),
-                SizedBox(height: padding * 0.8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        '입맛에 꼭 맞는 음식점을 추천해드릴게요.',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.04,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      onPressed: _refreshRestaurantsOnly,
-                    ),
-                  ],
-                ),
-                SizedBox(height: padding * 0.4),
-                /*
-              Container(
-                height: screenHeight * 0.6,
-                child: recommendedRestaurants.isEmpty
-                    ? Center(
-                  child: Text('추천 음식점이 없습니다.'),
-                )
-                    : ListView.builder(
-                  itemCount: recommendedRestaurants.length,
-                  itemBuilder: (context, index) {
-                    return _buildRestaurantCard(recommendedRestaurants[index]);
-                  },
-                ),
-              ),
-              */
-                Container(
-                  // height 제거: 컨텐츠 크기만큼 자동으로 늘어나도록
-                  child: recommendedRestaurants.isEmpty
-                      ? Center(
-                          child: Text('추천할 만한 음식점을 찾지 못했어요.'),
-                        )
-                      : ListView.builder(
-                          physics:
-                              NeverScrollableScrollPhysics(), // 스크롤을 부모에게 위임
-                          shrinkWrap: true, // 컨텐츠 크기만큼만 차지하도록
-                          itemCount: recommendedRestaurants.length,
-                          itemBuilder: (context, index) {
-                            return _buildRestaurantCard(
-                                recommendedRestaurants[index]);
-                          },
-                        ),
-                ),
-                SizedBox(height: padding * 0.8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => NearbyRestaurantsScreen(),
-                        ),
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF312E81),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: Text(
-                      '내 주변 음식점 보기',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontFamily: 'Pretendard',
-                        fontSize: screenWidth * 0.045,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -1199,6 +1444,7 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
+
 }
 
 class FoodRestaurantListScreen extends StatefulWidget {
@@ -1439,3 +1685,4 @@ class _FoodHeader extends StatelessWidget {
     );
   }
 }
+

@@ -1168,8 +1168,8 @@ class _AffiliateRestaurantDetailSheetState
                 ),
                 child: const Icon(
                   Icons.card_giftcard,
-                  color: Colors.white,
-                  size: 18,
+                  color: Color(0xFFFFB800),
+                  size: 26,
                 ),
               ),
               const SizedBox(width: 12),
