@@ -243,6 +243,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     return AffiliateRestaurantSummary(
       id: restaurant.id,
       name: restaurant.name,
+      description: restaurant.description,
       address: restaurant.address,
       category: restaurant.category,
       zone: restaurant.zone,

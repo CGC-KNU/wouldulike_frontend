@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:new1/affiliate_benefits_screen.dart';
 import 'home.dart';
@@ -42,31 +43,67 @@ class _MainAppScreenState extends State<MainAppScreen> {
     }
   }
 
+  Widget _navIcon(String assetPath, Color color) {
+    return SvgPicture.asset(
+      assetPath,
+      width: 24,
+      height: 24,
+      colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    const Color selectedColor = Color(0xFF312E81);
+    const Color unselectedColor = Color(0xFF9CA3AF);
+
     return Scaffold(
       body: _buildCurrentScreen(),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: '홈',
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: BottomNavigationBar(
+          elevation: 4,
+          backgroundColor: Colors.white,
+          type: BottomNavigationBarType.fixed,
+          iconSize: 26,
+          selectedIconTheme: const IconThemeData(size: 26),
+          unselectedIconTheme: const IconThemeData(size: 26),
+          selectedFontSize: 12,
+          unselectedFontSize: 12,
+          selectedLabelStyle: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w600,
+            height: 1.5,
+            letterSpacing: -0.2,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.card_giftcard),
-            label: '제휴/혜택',
+          unselectedLabelStyle: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w500,
+            height: 1.5,
+            letterSpacing: -0.2,
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.person),
-            label: '마이',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: const Color(0xFF312E81),
-        unselectedItemColor: Colors.grey,
-        backgroundColor: Colors.white,
-        onTap: _onItemTapped,
+          items: <BottomNavigationBarItem>[
+            BottomNavigationBarItem(
+              icon: _navIcon('assets/images/home.svg', unselectedColor),
+              activeIcon: _navIcon('assets/images/home.svg', selectedColor),
+              label: '홈',
+            ),
+            BottomNavigationBarItem(
+              icon: _navIcon('assets/images/fork.svg', unselectedColor),
+              activeIcon: _navIcon('assets/images/fork.svg', selectedColor),
+              label: '제휴 / 혜택',
+            ),
+            BottomNavigationBarItem(
+              icon: _navIcon('assets/images/my.svg', unselectedColor),
+              activeIcon: _navIcon('assets/images/my.svg', selectedColor),
+              label: '마이페이지',
+            ),
+          ],
+          currentIndex: _selectedIndex,
+          selectedItemColor: selectedColor,
+          unselectedItemColor: unselectedColor,
+          onTap: _onItemTapped,
+        ),
       ),
     );
   }

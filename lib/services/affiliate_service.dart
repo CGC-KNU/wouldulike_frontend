@@ -6,6 +6,7 @@ class AffiliateRestaurantSummary {
   const AffiliateRestaurantSummary({
     required this.id,
     required this.name,
+    required this.description,
     required this.address,
     required this.category,
     required this.zone,
@@ -63,6 +64,7 @@ class AffiliateRestaurantSummary {
           ? json['restaurant_id'] as int
           : int.tryParse(json['restaurant_id']?.toString() ?? '') ?? 0,
       name: json['name']?.toString() ?? '',
+      description: json['description']?.toString() ?? '',
       address: json['address']?.toString() ?? '',
       category: json['category']?.toString() ?? '',
       zone: json['zone']?.toString() ?? '',
@@ -76,6 +78,7 @@ class AffiliateRestaurantSummary {
 
   final int id;
   final String name;
+  final String description;
   final String address;
   final String category;
   final String zone;

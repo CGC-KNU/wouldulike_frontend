@@ -38,6 +38,7 @@ dependencies:
   video_player: ^2.9.2
   kakao_flutter_sdk_user: ^1.9.7
   kakao_flutter_sdk_share: ^1.9.7
+  flutter_svg: ^2.0.9
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -47,6 +48,7 @@ dependencies:
   firebase_core: ^2.28.0
   firebase_messaging: ^14.7.2
   app_links: ^3.5.0
+  app_settings: ^5.1.1
 
 dev_dependencies:
   flutter_test:

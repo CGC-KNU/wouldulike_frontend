@@ -8,9 +8,15 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
+import 'affiliate_benefits_screen.dart';
 import 'coupon_list_screen.dart';
+import 'services/affiliate_service.dart';
 import 'services/coupon_service.dart';
+import 'services/api_client.dart';
 import 'services/trend_service.dart';
+
+const String _kAffiliatePlaceholderImage =
+    'https://placehold.co/128x121?text=No+Image';
 
 // URL 열기 도구
 class UrlLauncherUtil {
@@ -69,6 +75,17 @@ class _HomeContentState extends State<HomeContent> {
   List<TrendItem> _trends = [];
   final PageController _bannerController = PageController();
   final ScrollController _scrollController = ScrollController();
+  List<AffiliateRestaurantSummary> _affiliateRestaurants = [];
+  bool _isAffiliateLoading = false;
+  String? _affiliateError;
+  List<UserCoupon> _affiliateCoupons = [];
+  Map<int, StampStatus> _affiliateStampStatuses = {};
+  bool _affiliateRequiresLogin = false;
+  Future<void>? _affiliateUserDataFuture;
+  bool get _hasAffiliateContent =>
+      _isAffiliateLoading ||
+      _affiliateError != null ||
+      _affiliateRestaurants.isNotEmpty;
   bool _isFetching = false;
   int _currentBannerIndex = 0;
   bool _isTrendLoading = false;
@@ -87,6 +104,7 @@ class _HomeContentState extends State<HomeContent> {
     _scrollController.addListener(_onScroll);
     _initializePrefs();
     _loadTrends();
+    _loadAffiliateRestaurants();
   }
 
   Future<void> _initializePrefs() async {
@@ -142,6 +160,176 @@ class _HomeContentState extends State<HomeContent> {
         });
       }
     }
+  }
+
+  Future<void> _loadAffiliateRestaurants() async {
+    if (_isAffiliateLoading) return;
+    if (!mounted) return;
+    setState(() {
+      _isAffiliateLoading = true;
+      _affiliateError = null;
+    });
+    try {
+      final restaurants = await AffiliateService.fetchRestaurants();
+      if (!mounted) return;
+      setState(() {
+        _affiliateRestaurants = restaurants;
+      });
+    } on ApiNetworkException catch (e) {
+      debugPrint('Failed to load affiliate restaurants: $e');
+      if (!mounted) return;
+      setState(() {
+        _affiliateError = '제휴 식당을 불러오지 못했어요. 네트워크 상태를 확인해주세요.';
+      });
+    } on ApiHttpException catch (e) {
+      debugPrint('HTTP error while loading affiliate restaurants: $e');
+      if (!mounted) return;
+      setState(() {
+        _affiliateError = '제휴 식당을 불러오지 못했어요. (HTTP ${e.statusCode})';
+      });
+    } catch (e, stackTrace) {
+      debugPrint('Unexpected error while loading affiliate restaurants: $e');
+      debugPrintStack(stackTrace: stackTrace);
+      if (!mounted) return;
+      setState(() {
+        _affiliateError = '제휴 식당을 불러오지 못했어요. 잠시 후 다시 시도해주세요.';
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isAffiliateLoading = false;
+      });
+    }
+  }
+
+  Future<void> _ensureAffiliateUserData() async {
+    if (_affiliateRequiresLogin) return;
+    if (_affiliateCoupons.isNotEmpty) return;
+    final existing = _affiliateUserDataFuture;
+    if (existing != null) {
+      try {
+        await existing;
+      } catch (_) {}
+      return;
+    }
+    final future = _loadAffiliateCoupons();
+    _affiliateUserDataFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_affiliateUserDataFuture, future)) {
+        _affiliateUserDataFuture = null;
+      }
+    }
+  }
+
+  Future<void> _loadAffiliateCoupons() async {
+    try {
+      final coupons =
+          await CouponService.fetchMyCoupons(status: CouponStatus.issued);
+      if (!mounted) return;
+      setState(() {
+        _affiliateCoupons = coupons;
+        _affiliateRequiresLogin = false;
+      });
+    } on ApiAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _affiliateRequiresLogin = true;
+        _affiliateCoupons = const <UserCoupon>[];
+      });
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } on ApiNetworkException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('네트워크 연결을 확인해주세요. (${e.cause})')),
+      );
+    } on ApiHttpException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text('쿠폰 정보를 불러오지 못했어요. (HTTP ${e.statusCode})')),
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Failed to load affiliate coupons: $e');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  List<UserCoupon> _couponsForAffiliate(int restaurantId) {
+    if (_affiliateCoupons.isEmpty) return const <UserCoupon>[];
+    return _affiliateCoupons
+        .where((coupon) => coupon.restaurantId == restaurantId)
+        .toList();
+  }
+
+  void _handleAffiliateCouponRedeemed(String couponCode, int restaurantId) {
+    if (!mounted) return;
+    setState(() {
+      _affiliateCoupons = _affiliateCoupons
+          .where((coupon) => coupon.code != couponCode)
+          .toList();
+    });
+  }
+
+  void _handleAffiliateRewardCouponsIssued(
+      List<String> couponCodes, int restaurantId) {
+    if (couponCodes.isEmpty) return;
+    final existingCodes = _affiliateCoupons.map((coupon) => coupon.code).toSet();
+    final newCoupons = couponCodes
+        .where((code) => !existingCodes.contains(code))
+        .map(
+          (code) => UserCoupon(
+            code: code,
+            status: CouponStatus.issued,
+            restaurantId: restaurantId,
+          ),
+        )
+        .toList();
+    if (newCoupons.isEmpty) return;
+    if (!mounted) return;
+    setState(() {
+      _affiliateCoupons =
+          List<UserCoupon>.from(_affiliateCoupons)..addAll(newCoupons);
+    });
+  }
+
+  void _handleAffiliateStampStatusUpdated(
+      int restaurantId, StampStatus status) {
+    if (!mounted) return;
+    setState(() {
+      _affiliateStampStatuses =
+          Map<int, StampStatus>.from(_affiliateStampStatuses)
+            ..[restaurantId] = status;
+    });
+  }
+
+  Future<void> _openAffiliateRestaurantDetail(
+      AffiliateRestaurantSummary restaurant) async {
+    await _ensureAffiliateUserData();
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return AffiliateRestaurantDetailSheet(
+          restaurant: restaurant,
+          coupons: _couponsForAffiliate(restaurant.id),
+          requiresLogin: _affiliateRequiresLogin,
+          initialStampStatus: _affiliateStampStatuses[restaurant.id],
+          onStampStatusUpdated: (status) =>
+              _handleAffiliateStampStatusUpdated(restaurant.id, status),
+          onCouponRedeemed: (code) =>
+              _handleAffiliateCouponRedeemed(code, restaurant.id),
+          onRewardCouponsIssued: (codes) =>
+              _handleAffiliateRewardCouponsIssued(codes, restaurant.id),
+        );
+      },
+    );
   }
 
   Future<void> _checkWelcomeCouponStatus() async {
@@ -1182,25 +1370,16 @@ Future<List<String>> _fetchFoods() async {
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
           onTap: onPressed,
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              Positioned(
-                right: 6,
-                child: Text(
-                  '->',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: isEnabled ? Colors.black : Colors.black26,
-                    fontSize: 26,
-                    fontFamily: 'Pretendard Variable',
-                    fontWeight: FontWeight.w600,
-                    height: 2.31,
-                    letterSpacing: -0.5,
-                  ),
-                ),
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: Icon(
+                Icons.arrow_forward,
+                size: 24,
+                color: isEnabled ? Colors.black : Colors.black26,
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -1339,6 +1518,91 @@ Future<List<String>> _fetchFoods() async {
     super.dispose();
   }
 
+  Widget _buildAffiliateRestaurantsSection() {
+    const header = Text(
+      '내 주변에서 즐기는 우주라이크 혜택',
+      style: TextStyle(
+        color: Color(0xFF111827),
+        fontSize: 18,
+        fontFamily: 'Pretendard',
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.5,
+      ),
+    );
+
+    if (_isAffiliateLoading) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header,
+          const SizedBox(height: 12),
+          const SizedBox(
+            height: 227,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
+    }
+
+    if (_affiliateError != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header,
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _affiliateError!,
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 13,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_affiliateRestaurants.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        header,
+        const SizedBox(height: 12),
+        Container(
+          height: 227,
+          width: double.infinity,
+          color: Colors.white,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            physics: const BouncingScrollPhysics(),
+            itemCount: _affiliateRestaurants.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final restaurant = _affiliateRestaurants[index];
+              return _AffiliateRestaurantCard(
+                restaurant: restaurant,
+                onTap: () => _openAffiliateRestaurantDetail(restaurant),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1407,15 +1671,11 @@ Future<List<String>> _fetchFoods() async {
               child: InkWell(
                 borderRadius: BorderRadius.circular(8),
                 onTap: _openCouponList,
-                child: Container(
+                child: Image.asset(
+                  'assets/images/coupon.png',
                   width: 29,
                   height: 32,
-                  decoration: BoxDecoration(
-                    image: DecorationImage(
-                      image: NetworkImage('https://placehold.co/29x32'),
-                      fit: BoxFit.contain,
-                    ),
-                  ),
+                  fit: BoxFit.contain,
                 ),
               ),
             ),
@@ -1437,6 +1697,10 @@ Future<List<String>> _fetchFoods() async {
                 SizedBox(height: padding * 0.8),
                 _buildPromotionBanner(screenWidth),
                 SizedBox(height: padding * 0.8),
+                if (_hasAffiliateContent) ...[
+                  _buildAffiliateRestaurantsSection(),
+                  SizedBox(height: padding * 0.8),
+                ],
               ],
             ),
           ),
@@ -1445,6 +1709,160 @@ Future<List<String>> _fetchFoods() async {
     );
   }
 
+}
+
+class _AffiliateRestaurantCard extends StatelessWidget {
+  const _AffiliateRestaurantCard({
+    required this.restaurant,
+    required this.onTap,
+  });
+
+  final AffiliateRestaurantSummary restaurant;
+  final VoidCallback onTap;
+
+  String get _description {
+    final raw = restaurant.description.trim();
+    if (raw.isNotEmpty) {
+      return raw;
+    }
+    return '상세 설명이 준비 중입니다.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl =
+        restaurant.imageUrls.isNotEmpty ? restaurant.imageUrls.first : null;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          width: 140,
+          height: 227,
+          decoration: ShapeDecoration(
+            color: const Color(0xFFECEDEF),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 128,
+                height: 121,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: _buildImage(imageUrl),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: 104,
+                child: Text(
+                  restaurant.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 12.6,
+                    fontFamily: 'Pretendard Variable',
+                    fontWeight: FontWeight.w700,
+                    height: 1.3,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.topLeft,
+                  child: SizedBox(
+                    width: 128,
+                    child: Text(
+                      _description,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Color(0xFF585555),
+                        fontSize: 11.5,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w400,
+                        height: 1.3,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                height: 22,
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    backgroundColor: const Color(0xFF312E81),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  onPressed: onTap,
+                  child: const Text(
+                    '자세히 보기 >',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 10.3,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
+                      height: 1.46,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImage(String? imageUrl) {
+    final fallback = Image.asset(
+      'assets/images/food_image0.png',
+      width: 128,
+      height: 121,
+      fit: BoxFit.cover,
+    );
+
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return Image.network(
+        _kAffiliatePlaceholderImage,
+        width: 128,
+        height: 121,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => fallback,
+      );
+    }
+
+    return Image.network(
+      imageUrl,
+      width: 128,
+      height: 121,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Image.network(
+        _kAffiliatePlaceholderImage,
+        width: 128,
+        height: 121,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => fallback,
+      ),
+    );
+  }
 }
 
 class FoodRestaurantListScreen extends StatefulWidget {
