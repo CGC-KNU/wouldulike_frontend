@@ -46,6 +46,7 @@ dependencies:
   firebase_core: ^2.28.0
   firebase_messaging: ^14.7.2
   app_links: ^3.5.0
+  flutter_svg: ^2.0.10+1
 
 dev_dependencies:
   flutter_test:
@@ -106,8 +107,19 @@ flutter:
           weight: 800
         - asset: assets/fonts/Pretendard-Black.ttf
           weight: 900
+    - family: Alkatra
+      fonts:
+        - asset: assets/fonts/Alkatra-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Alkatra-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Alkatra-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Alkatra-Bold.ttf
+          weight: 700
   assets:
     - assets/images/
+    - assets/icons/
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
