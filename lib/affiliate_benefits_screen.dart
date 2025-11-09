@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'services/affiliate_service.dart';
@@ -84,10 +85,20 @@ const List<String> _kCategoryOrder = [
   'OTHER',
 ];
 
+class _CouponCounts {
+  final int issued;
+  final int redeemed;
+
+  const _CouponCounts({required this.issued, required this.redeemed});
+
+  int get total => issued + redeemed;
+}
+
 class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   List<AffiliateRestaurantSummary> _restaurants = [];
   List<UserCoupon> _issuedCoupons = [];
   Map<int, int> _couponCounts = {};
+  Map<int, _CouponCounts> _couponCountsDetailed = {};
   Map<int, StampStatus> _stampStatuses = {};
   bool _isLoading = false;
   String? _error;
@@ -110,6 +121,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     try {
       final restaurants = await AffiliateService.fetchRestaurants();
       final issuedCoupons = await _fetchIssuedCoupons();
+      final allCoupons = await _fetchAllCoupons();
 
       final categories = <String>{'ALL'};
       for (final restaurant in restaurants) {
@@ -123,6 +135,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         _restaurants = restaurants;
         _issuedCoupons = _sortCouponsByStatus(issuedCoupons);
         _couponCounts = _buildCouponCounts(issuedCoupons);
+        _couponCountsDetailed = _buildDetailedCouponCounts(allCoupons);
         _stampStatuses = {};
         _categories = categories.toList();
         _selectedCategory = 'ALL';
@@ -198,12 +211,43 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     }
   }
 
+  Future<List<UserCoupon>> _fetchAllCoupons() async {
+    try {
+      final coupons = await CouponService.fetchMyCoupons();
+      return coupons;
+    } catch (e) {
+      return const [];
+    }
+  }
+
   Map<int, int> _buildCouponCounts(List<UserCoupon> coupons) {
     final counts = <int, int>{};
     for (final coupon in coupons) {
       final restaurantId = coupon.restaurantId;
       if (restaurantId == null) continue;
       counts.update(restaurantId, (value) => value + 1, ifAbsent: () => 1);
+    }
+    return counts;
+  }
+
+  Map<int, _CouponCounts> _buildDetailedCouponCounts(List<UserCoupon> coupons) {
+    final counts = <int, _CouponCounts>{};
+    for (final coupon in coupons) {
+      final restaurantId = coupon.restaurantId;
+      if (restaurantId == null) continue;
+      
+      final current = counts[restaurantId] ?? const _CouponCounts(issued: 0, redeemed: 0);
+      if (coupon.status == CouponStatus.issued) {
+        counts[restaurantId] = _CouponCounts(
+          issued: current.issued + 1,
+          redeemed: current.redeemed,
+        );
+      } else if (coupon.status == CouponStatus.redeemed) {
+        counts[restaurantId] = _CouponCounts(
+          issued: current.issued,
+          redeemed: current.redeemed + 1,
+        );
+      }
     }
     return counts;
   }
@@ -384,6 +428,19 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       } else {
         _couponCounts[restaurantId] = current - 1;
       }
+      // Update detailed coupon counts: move one from issued to redeemed
+      final currentDetailed = _couponCountsDetailed[restaurantId];
+      if (currentDetailed != null && currentDetailed.issued > 0) {
+        _couponCountsDetailed[restaurantId] = _CouponCounts(
+          issued: currentDetailed.issued - 1,
+          redeemed: currentDetailed.redeemed + 1,
+        );
+      } else if (currentDetailed == null) {
+        _couponCountsDetailed[restaurantId] = const _CouponCounts(
+          issued: 0,
+          redeemed: 1,
+        );
+      }
     });
   }
 
@@ -409,6 +466,19 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         (value) => value + newCoupons.length,
         ifAbsent: () => newCoupons.length,
       );
+      // Update detailed coupon counts: add new issued coupons
+      final currentDetailed = _couponCountsDetailed[restaurantId];
+      if (currentDetailed != null) {
+        _couponCountsDetailed[restaurantId] = _CouponCounts(
+          issued: currentDetailed.issued + newCoupons.length,
+          redeemed: currentDetailed.redeemed,
+        );
+      } else {
+        _couponCountsDetailed[restaurantId] = _CouponCounts(
+          issued: newCoupons.length,
+          redeemed: 0,
+        );
+      }
     });
   }
 
@@ -613,7 +683,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   }
 
   Widget _buildRestaurantCard(AffiliateRestaurantSummary restaurant) {
-    final couponCount = _couponCounts[restaurant.id] ?? 0;
+    final couponCounts = _couponCountsDetailed[restaurant.id];
     final hasImage = restaurant.imageUrls.isNotEmpty;
     final String? thumbnailUrl = hasImage ? restaurant.imageUrls.first : null;
     final stampStatus = _stampStatuses[restaurant.id];
@@ -621,55 +691,46 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         stampStatus != null ? stampStatus.current : restaurant.stampCurrent;
     final stampTarget =
         stampStatus != null ? stampStatus.target : restaurant.stampTarget;
-    final couponLabel = _requiresLogin
-        ? '로그인이 필요해요'
-        : couponCount > 0
-            ? '보유 쿠폰 $couponCount'
-            : '보유 쿠폰 없음';
+    
     String stampLabel;
-    Color stampBackground = const Color(0xFFF5F3FF);
-    Color stampTextColor = const Color(0xFF5B21B6);
     if (_requiresLogin) {
       stampLabel = '스탬프 확인은 로그인 필요';
-      stampBackground = const Color(0xFFFFF1F2);
-      stampTextColor = const Color(0xFFDC2626);
     } else if (stampTarget > 0) {
       stampLabel = '스탬프 ${stampCurrent}/${stampTarget}';
     } else if (stampCurrent > 0) {
       stampLabel = '스탬프 ${stampCurrent}개';
     } else {
       stampLabel = '스탬프 적립 없음';
-      stampBackground = const Color(0xFFF3F4F6);
-      stampTextColor = const Color(0xFF4B5563);
     }
 
     return InkWell(
       onTap: () => _openRestaurantDetail(restaurant),
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
-        decoration: BoxDecoration(
+        width: 372,
+        height: 142.48,
+        decoration: ShapeDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 12,
-              offset: const Offset(0, 6),
+          shape: RoundedRectangleBorder(
+            side: const BorderSide(
+              width: 1,
+              color: Color(0xFFDDDDDD),
             ),
-          ],
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ClipRRect(
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                bottomLeft: Radius.circular(16),
+                topLeft: Radius.circular(10),
+                bottomLeft: Radius.circular(10),
               ),
               child: Container(
                 color: const Color(0xFFE5E7EB),
                 width: 108,
-                height: 108,
+                height: 142.48,
                 child: thumbnailUrl != null
                     ? Image.network(
                         thumbnailUrl,
@@ -740,37 +801,14 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                           fontSize: 13, color: Color(0xFF6B7280)),
                     ),
                     const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildTag(restaurant.category.isNotEmpty
-                            ? restaurant.category
-                            : '카테고리 정보 없음'),
-                        if (restaurant.zone.isNotEmpty)
-                          _buildTag(restaurant.zone),
-                        _buildTag(couponLabel,
-                            background: const Color(0xFFF3F4F6),
-                            textColor: _requiresLogin
-                                ? const Color(0xFFEF4444)
-                                : const Color(0xFF4B5563)),
-                        _buildTag(
-                          stampLabel,
-                          background: stampBackground,
-                          textColor: stampTextColor,
-                        ),
+                        _buildStampTag(stampLabel, _requiresLogin),
+                        const SizedBox(height: 4),
+                        _buildCouponTag(couponCounts),
                       ],
                     ),
-                    if (restaurant.phoneNumber.isNotEmpty) ...[
-                      const SizedBox(height: 8),
-                      Text(
-                        '전화: ${restaurant.phoneNumber}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF9CA3AF),
-                        ),
-                      ),
-                    ],
                   ],
                 ),
               ),
@@ -797,6 +835,86 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
           fontWeight: FontWeight.w600,
           fontSize: 12,
         ),
+      ),
+    );
+  }
+
+  Widget _buildCouponTag(_CouponCounts? couponCounts) {
+    String couponText;
+    if (_requiresLogin) {
+      couponText = '로그인이 필요해요';
+    } else if (couponCounts == null || couponCounts.total == 0) {
+      couponText = '보유 쿠폰 없음';
+    } else {
+      final issued = couponCounts.issued;
+      final total = couponCounts.total;
+      couponText = '사용 가능 쿠폰 $issued/$total';
+    }
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 130),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+      decoration: ShapeDecoration(
+        color: const Color(0xFFEEF4FF),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Image.asset(
+            'assets/images/coupon_status.png',
+            width: 12,
+            height: 12,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            couponText,
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStampTag(String stampLabel, bool requiresLogin) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+      decoration: ShapeDecoration(
+        color: const Color(0xFFFFF8E1),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(15),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SvgPicture.asset(
+            'assets/images/medal.svg',
+            width: 12,
+            height: 12,
+            fit: BoxFit.contain,
+          ),
+          const SizedBox(width: 4),
+          Text(
+            stampLabel,
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: requiresLogin
+                  ? const Color(0xFFDC2626)
+                  : const Color(0xFF1F2937),
+            ),
+          ),
+        ],
       ),
     );
   }
