@@ -504,6 +504,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1231,17 +1232,19 @@ class _AffiliateRestaurantDetailSheetState
     final restaurant = widget.restaurant;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
 
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: EdgeInsets.only(bottom: bottomInset),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+    return Container(
+      color: Colors.white,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.only(bottom: bottomInset),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                 Center(
                   child: Container(
                     width: 48,
@@ -1275,6 +1278,7 @@ class _AffiliateRestaurantDetailSheetState
               ],
             ),
           ),
+        ),
         ),
       ),
     );
@@ -1555,6 +1559,16 @@ class _AffiliateRestaurantDetailSheetState
     final milestoneSet =
         rewardThresholds.isNotEmpty ? rewardThresholds.toSet() : <int>{5, 10};
 
+    // 5x2 그리드로 스탬프 배치
+    final rows = <List<int>>[];
+    for (int i = 0; i < total; i += 5) {
+      final row = <int>[];
+      for (int j = i; j < math.min(i + 5, total); j++) {
+        row.add(j);
+      }
+      rows.add(row);
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1567,17 +1581,46 @@ class _AffiliateRestaurantDetailSheetState
           ),
         ),
         const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: List.generate(total, (index) {
-            final isFilled = index < filled;
-            final isMilestone = milestoneSet.contains(index + 1);
-            return _buildStampIcon(
-              filled: isFilled,
-              showMilestoneGlow: isMilestone && isFilled,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            const columns = 5;
+            const stampSpacing = 6.0;
+            const rowSpacing = 8.0;
+            final stampSize =
+                (constraints.maxWidth - stampSpacing * (columns - 1)) /
+                    columns;
+
+            return Column(
+              children: rows.asMap().entries.map((entry) {
+                final rowIndex = entry.key;
+                final row = entry.value;
+                final isLastRow = rowIndex == rows.length - 1;
+                return Padding(
+                  padding: EdgeInsets.only(bottom: isLastRow ? 0 : rowSpacing),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    children: row.asMap().entries.map((colEntry) {
+                      final colIndex = colEntry.key;
+                      final stampIndex = colEntry.value;
+                      final isLastCol = colIndex == row.length - 1;
+                      final isFilled = stampIndex < filled;
+                      final isMilestone = milestoneSet.contains(stampIndex + 1);
+                      return Padding(
+                        padding: EdgeInsets.only(
+                          right: isLastCol ? 0 : stampSpacing,
+                        ),
+                        child: _buildStampIcon(
+                          filled: isFilled,
+                          showMilestoneGlow: isMilestone && isFilled,
+                          size: stampSize,
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                );
+              }).toList(),
             );
-          }),
+          },
         ),
         const SizedBox(height: 16),
         Text(
@@ -1760,20 +1803,25 @@ class _AffiliateRestaurantDetailSheetState
     }
   }
 
-  Widget _buildStampIcon(
-      {required bool filled, required bool showMilestoneGlow}) {
-    final decoration = BoxDecoration(
-      color: filled ? Colors.white : Colors.white.withOpacity(0.08),
-      borderRadius: BorderRadius.circular(14),
-      border: Border.all(
-        color: filled ? Colors.white : Colors.white.withOpacity(0.18),
-        width: 1.2,
+  Widget _buildStampIcon({
+    required bool filled,
+    required bool showMilestoneGlow,
+    double size = 50,
+  }) {
+    final decoration = ShapeDecoration(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(15),
+        side: BorderSide(
+          color: filled ? const Color(0xFF0B1033) : const Color(0xFFCBD5F5),
+          width: 1.4,
+        ),
       ),
-      boxShadow: showMilestoneGlow
+      shadows: showMilestoneGlow
           ? [
               BoxShadow(
                 color: const Color(0xFF8B92FF).withOpacity(0.45),
-                blurRadius: 16,
+                blurRadius: 14,
                 spreadRadius: 1,
               ),
             ]
@@ -1781,26 +1829,26 @@ class _AffiliateRestaurantDetailSheetState
     );
 
     return Container(
-      width: 44,
-      height: 44,
+      width: size,
+      height: size,
       decoration: decoration,
       alignment: Alignment.center,
       child: filled
-          ? Image.asset(
-              'assets/images/would_logo.png',
-              width: 24,
-              height: 24,
-              fit: BoxFit.contain,
-              errorBuilder: (_, __, ___) => const Icon(
-                Icons.check_circle,
-                color: Color(0xFF0B1033),
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: Image.asset(
+                'assets/images/would_logo.png',
+                width: size * 0.72,
+                height: size * 0.72,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => Icon(
+                  Icons.restaurant,
+                  color: const Color(0xFF0B1033),
+                  size: size * 0.6,
+                ),
               ),
             )
-          : Icon(
-              Icons.circle_outlined,
-              color: Colors.white.withOpacity(0.35),
-              size: 16,
-            ),
+          : const SizedBox.shrink(),
     );
   }
 
