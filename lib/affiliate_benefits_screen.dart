@@ -34,6 +34,56 @@ class AffiliateBenefitsScreen extends StatefulWidget {
       _AffiliateBenefitsScreenState();
 }
 
+class _CategoryMeta {
+  const _CategoryMeta(this.label, this.assetPath);
+
+  final String label;
+  final String assetPath;
+}
+
+const Map<String, _CategoryMeta> _kCategoryMeta = {
+  'ALL': _CategoryMeta('전체', 'assets/images/total.png'),
+  'KOREAN': _CategoryMeta('한식', 'assets/images/korean.png'),
+  'CHINESE': _CategoryMeta('중식', 'assets/images/chinese.png'),
+  'JAPANESE': _CategoryMeta('일식', 'assets/images/japanese.png'),
+  'WESTERN': _CategoryMeta('양식', 'assets/images/western.png'),
+  'SNACK': _CategoryMeta('분식', 'assets/images/snack.png'),
+  'PUB': _CategoryMeta('술집', 'assets/images/pub.png'),
+  'OTHER': _CategoryMeta('기타', 'assets/images/other.png'),
+};
+
+const Map<String, String> _kCategoryAlias = {
+  'ALL': 'ALL',
+  '전체': 'ALL',
+  'KOREAN': 'KOREAN',
+  '한식': 'KOREAN',
+  'CHINESE': 'CHINESE',
+  '중식': 'CHINESE',
+  'JAPANESE': 'JAPANESE',
+  '일식': 'JAPANESE',
+  'WESTERN': 'WESTERN',
+  '양식': 'WESTERN',
+  'SNACK': 'SNACK',
+  '분식': 'SNACK',
+  'PUB': 'PUB',
+  'BAR': 'PUB',
+  '술집': 'PUB',
+  'OTHER': 'OTHER',
+  '기타': 'OTHER',
+  'ETC': 'OTHER',
+};
+
+const List<String> _kCategoryOrder = [
+  'ALL',
+  'KOREAN',
+  'CHINESE',
+  'JAPANESE',
+  'WESTERN',
+  'SNACK',
+  'PUB',
+  'OTHER',
+];
+
 class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   List<AffiliateRestaurantSummary> _restaurants = [];
   List<UserCoupon> _issuedCoupons = [];
@@ -282,6 +332,41 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     setState(() => _selectedCategory = category);
   }
 
+  List<String> _sortCategories(Iterable<String> source) {
+    final list = source.toSet().toList();
+    list.sort((a, b) {
+      final orderA = _categoryOrderIndex(a);
+      final orderB = _categoryOrderIndex(b);
+      if (orderA != orderB) {
+        return orderA.compareTo(orderB);
+      }
+      return a.compareTo(b);
+    });
+    return list;
+  }
+
+  int _categoryOrderIndex(String category) {
+    final normalized = _normalizeCategoryKey(category);
+    final index = _kCategoryOrder.indexOf(normalized);
+    return index == -1 ? _kCategoryOrder.length : index;
+  }
+
+  String _normalizeCategoryKey(String category) {
+    final normalized = category.trim().toUpperCase();
+    return _kCategoryAlias[normalized] ?? _kCategoryAlias[category.trim()] ?? 'OTHER';
+  }
+
+  _CategoryMeta _resolveCategoryMeta(String category) {
+    final key = _normalizeCategoryKey(category);
+    final meta = _kCategoryMeta[key];
+    if (meta != null) {
+      return meta;
+    }
+    final trimmed = category.trim();
+    final label = trimmed.isEmpty ? '기타' : (category == 'ALL' ? '전체' : trimmed);
+    return _CategoryMeta(label, _kCategoryMeta['OTHER']!.assetPath);
+  }
+
   List<UserCoupon> _couponsForRestaurant(int restaurantId) {
     final filtered = _issuedCoupons
         .where((coupon) => coupon.restaurantId == restaurantId)
@@ -380,10 +465,33 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       );
     }
 
+    final appBar = AppBar(
+      backgroundColor: const Color(0xFF172133),
+      elevation: 0,
+      centerTitle: true,
+      foregroundColor: Colors.white,
+      title: const Text(
+        '제휴 / 혜택',
+        style: TextStyle(
+          fontSize: 17,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+      ),
+      bottom: const PreferredSize(
+        preferredSize: Size.fromHeight(1),
+        child: Divider(
+          height: 1,
+          thickness: 1,
+          color: Color(0x33FFFFFF),
+        ),
+      ),
+    );
+
     if (_error != null) {
       return Scaffold(
         backgroundColor: Colors.white,
-        appBar: AppBar(title: const Text('제휴 / 혜택')),
+        appBar: appBar,
         body: Center(
           child: Padding(
             padding: const EdgeInsets.all(24),
@@ -411,9 +519,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('제휴 / 혜택'),
-      ),
+      appBar: appBar,
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
@@ -441,28 +547,67 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   }
 
   Widget _buildCategoryFilter() {
+    if (_categories.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    const double scale = 1.125;
     return SizedBox(
-      height: 44,
+      height: 90 * scale,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: _categories.length,
+        separatorBuilder: (_, __) => SizedBox(width: 12 * scale),
         itemBuilder: (context, index) {
           final category = _categories[index];
           final selected = category == _selectedCategory;
-          return ChoiceChip(
-            label: Text(category == 'ALL' ? '전체' : category),
-            selected: selected,
-            onSelected: (_) => _selectCategory(category),
-            selectedColor: const Color(0xFFEEF2FF),
-            labelStyle: TextStyle(
-              color:
-                  selected ? const Color(0xFF312E81) : const Color(0xFF4B5563),
-              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+          final meta = _resolveCategoryMeta(category);
+          final textStyle = TextStyle(
+            color: selected ? const Color(0xFF172133) : const Color(0xFF797979),
+            fontSize: 12 * scale,
+            fontFamily: 'Pretendard',
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            height: 1.92,
+          );
+
+          return InkWell(
+            onTap: () => _selectCategory(category),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 52 * scale,
+              height: 66 * scale,
+              decoration: ShapeDecoration(
+                color: selected
+                    ? const Color(0x99C7CDD1)
+                    : const Color(0xFFF9FAFB),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              padding: EdgeInsets.symmetric(
+                horizontal: 6 * scale,
+                vertical: 8 * scale,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Image.asset(
+                      meta.assetPath,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                  SizedBox(height: 4 * scale),
+                  Text(
+                    meta.label,
+                    style: textStyle,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
             ),
           );
         },
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemCount: _categories.length,
       ),
     );
   }

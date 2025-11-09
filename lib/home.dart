@@ -1,7 +1,5 @@
 ﻿import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -69,12 +67,8 @@ class _HomeContentState extends State<HomeContent> {
   static const String _defaultPromotionDescription = '앱 사용 가이드를 바로 만나보세요.';
   static const String _defaultPromotionImage = 'https://placehold.co/345x220';
   late SharedPreferences prefs;
-  List<Map<String, dynamic>> recommendedFoods = [];
-  List<Map<String, dynamic>> recommendedRestaurants = [];
-  Map<String, bool> likedRestaurants = {};
   List<TrendItem> _trends = [];
   final PageController _bannerController = PageController();
-  final ScrollController _scrollController = ScrollController();
   List<AffiliateRestaurantSummary> _affiliateRestaurants = [];
   bool _isAffiliateLoading = false;
   String? _affiliateError;
@@ -86,22 +80,15 @@ class _HomeContentState extends State<HomeContent> {
       _isAffiliateLoading ||
       _affiliateError != null ||
       _affiliateRestaurants.isNotEmpty;
-  bool _isFetching = false;
   int _currentBannerIndex = 0;
   bool _isTrendLoading = false;
   bool _isCheckingWelcomeCoupon = false;
   bool _welcomeDialogVisible = false;
   bool _welcomePromptScheduled = false;
   bool _suppressWelcomeCoupon = false;
-  bool _showNearby = false;
-  bool _isNearbyLoading = false;
-  String? _nearbyError;
-  List<Map<String, dynamic>> _nearbyRestaurants = [];
-  bool _scrollFetchArmed = true;
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     _initializePrefs();
     _loadTrends();
     _loadAffiliateRestaurants();
@@ -111,16 +98,6 @@ class _HomeContentState extends State<HomeContent> {
     prefs = await SharedPreferences.getInstance();
     _suppressWelcomeCoupon =
         prefs.getBool(_kWelcomeCouponDismissedKey) ?? false;
-    await _loadRecommendedFoods();
-    await _loadRestaurantsData();
-    await _loadLikedRestaurants(recommendedRestaurants);
-    final cachedFoodNames = _getCachedFoodNames();
-
-    if (cachedFoodNames.isEmpty) {
-      await _refreshFoodsAndRestaurants();
-    } else if (recommendedRestaurants.isEmpty) {
-      await _refreshRestaurantsOnly();
-    }
     if (!_suppressWelcomeCoupon) {
       await _checkWelcomeCouponStatus();
     }
@@ -508,49 +485,6 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
-  Future<void> _loadRestaurantsData() async {
-    final String? savedRestaurants = prefs.getString('restaurants_data');
-
-    if (savedRestaurants != null) {
-      final List<Map<String, dynamic>> decoded =
-          List<Map<String, dynamic>>.from(
-        json.decode(savedRestaurants),
-      );
-
-      // 사용자 위치 가져오기
-      final position = await LocationHelper.getLatLon();
-      final userLat = position?['lat'] ?? 35.8714;
-      final userLon = position?['lon'] ?? 128.6014;
-
-      // 거리 계산 추가
-      for (var restaurant in decoded) {
-        final double restLat =
-            double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
-        final double restLon =
-            double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
-        final distance =
-            DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
-        restaurant['distance'] = distance;
-      }
-
-      setState(() {
-        recommendedRestaurants = decoded
-            .where((restaurant) =>
-                restaurant['distance'] != null && restaurant['distance'] <= 1.0)
-            .map((restaurant) => {
-                  'name': restaurant['name'] ?? '이름 없음',
-                  'road_address': restaurant['road_address'] ?? '주소 없음',
-                  'category_2': restaurant['category_2'] ?? '카테고리 없음',
-                  'x': restaurant['x'],
-                  'y': restaurant['y'],
-                  'distance': restaurant['distance'],
-                })
-            .toList();
-        //print('추천 음식점 로드 완료: ${recommendedRestaurants.length}개');
-      });
-    }
-  }
-
   // URL 열기 함수
   Future<void> _launchURL(String url) async {
     try {
@@ -565,635 +499,14 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
-  // 추천 음식 로드
-  Future<void> _loadRecommendedFoods() async {
-    final String? savedFoodInfo = prefs.getString('recommended_foods_info');
-    //print('Raw saved food info: $savedFoodInfo');
-
-    if (savedFoodInfo != null) {
-      try {
-        final List<dynamic> decodedInfo = json.decode(savedFoodInfo);
-        //print('Decoded food info: $decodedInfo');
-
-        setState(() {
-          recommendedFoods = List<Map<String, dynamic>>.from(decodedInfo);
-        });
-
-        // 로드된 데이터 확인
-      } catch (e) {
-        //print('Error decoding food info: $e');
-        setState(() {
-          recommendedFoods = [];
-        });
-      }
+  Future<void> _refreshFoodsAndRestaurants() async {
+    await Future.wait(<Future<void>>[
+      _loadTrends(),
+      _loadAffiliateRestaurants(),
+    ]);
+    if (!_suppressWelcomeCoupon) {
+      await _checkWelcomeCouponStatus();
     }
-  }
-
-  List<String> _getCachedFoodNames() {
-    final fromState = recommendedFoods
-        .map((food) => food['food_name']?.toString().trim() ?? '')
-        .where((name) => name.isNotEmpty)
-        .toList();
-
-    if (fromState.isNotEmpty) {
-      return fromState;
-    }
-
-    final String? savedFoodInfo = prefs.getString('recommended_foods_info');
-    if (savedFoodInfo == null) {
-      return const [];
-    }
-
-    try {
-      final List<dynamic> decodedInfo = json.decode(savedFoodInfo);
-      return decodedInfo
-          .map((item) =>
-              (item as Map<String, dynamic>)['food_name']?.toString().trim() ??
-              '')
-          .where((name) => name.isNotEmpty)
-          .toList();
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  // 찜한 음식점 상태 로드
-  Future<void> _loadLikedRestaurants([List<Map<String, dynamic>>? restaurants]) async {
-    final targets = restaurants ??
-        (_showNearby ? _nearbyRestaurants : recommendedRestaurants);
-    if (targets.isEmpty) return;
-
-    final String? savedLikedAll = prefs.getString('liked_restaurants_all');
-    Map<String, dynamic> allLikedRestaurants = {};
-
-    if (savedLikedAll != null) {
-      allLikedRestaurants = json.decode(savedLikedAll);
-    }
-
-    setState(() {
-      likedRestaurants.clear();
-
-      for (var restaurant in targets) {
-        final String name = restaurant['name'] ?? 'Unknown name';
-        final String address = restaurant['road_address'] ?? 'No address';
-        final String key = '$name|$address';
-
-        if (allLikedRestaurants.containsKey(key)) {
-          likedRestaurants[key] = true;
-          prefs.setBool('liked_${name}_${address}', true);
-        } else {
-          final bool isLiked =
-              prefs.getBool('liked_${name}_${address}') ?? false;
-          if (isLiked) {
-            likedRestaurants[key] = true;
-          }
-        }
-      }
-    });
-  }
-
-Future<void> _updateFavoriteRestaurant(
-      String restaurantName, String action) async {
-    final uuid = prefs.getString('user_uuid') ?? '';
-    if (uuid.isEmpty) return;
-
-    final url = Uri.parse(
-        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/update/favorite_restaurants/');
-
-    try {
-      await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode(
-            {'uuid': uuid, 'restaurant': restaurantName, 'action': action}),
-      );
-    } catch (e) {
-      print('찜한 음식점 정보를 업데이트하는 중 오류가 발생했습니다: $e');
-    }
-  }
-
-  // 찜하기 상태 저장 후 서버에 반영
-  Future<void> _saveLikedStatus(
-      String restaurantName, String address, bool isLiked) async {
-    final String key = '$restaurantName|$address';
-    setState(() {
-      likedRestaurants[key] = isLiked;
-    });
-    // 개별 음식점의 찜 상태 저장
-    await prefs.setBool('liked_${restaurantName}_${address}', isLiked);
-    final action = isLiked ? 'add' : 'remove';
-    await _updateFavoriteRestaurant(restaurantName, action);
-  }
-
-  // 음식점의 찜 상태 확인
-  bool _isRestaurantLiked(String restaurantName, String address) {
-    final String key = '$restaurantName|$address';
-    return likedRestaurants[key] ?? false;
-  }
-
-  void _onScroll() {
-    if (_showNearby || !_scrollController.hasClients || _isFetching) return;
-    final position = _scrollController.position;
-    final maxScroll = position.maxScrollExtent;
-    if (maxScroll <= 0) return;
-    final currentScroll = position.pixels;
-    final triggerOffset = maxScroll > 100 ? maxScroll - 100 : maxScroll;
-    final rearmOffset = math.max(0.0, triggerOffset - 200);
-    if (currentScroll >= triggerOffset) {
-      if (!_scrollFetchArmed) return;
-      _scrollFetchArmed = false;
-      _refreshRestaurantsOnly(triggeredByScroll: true);
-    } else if (currentScroll <= rearmOffset) {
-      _scrollFetchArmed = true;
-    }
-  }
-
-Future<void> _refreshFoodsAndRestaurants() async {
-    if (_isFetching) return;
-    _isFetching = true;
-    try {
-      final foodNames = await _fetchFoods();
-      if (foodNames.isEmpty) {
-        return;
-      }
-      await _fetchRestaurants(foodNames);
-      if (!_suppressWelcomeCoupon) {
-        await _checkWelcomeCouponStatus();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('데이터를 불러오지 못했어요: $e')),
-        );
-      }
-    } finally {
-      _isFetching = false;
-    }
-  }
-
-  Future<void> _refreshRestaurantsOnly({bool triggeredByScroll = false}) async {
-    if (_isFetching) return;
-
-    final foodNames = _getCachedFoodNames();
-    if (foodNames.isEmpty) {
-      if (triggeredByScroll) {
-        _scrollFetchArmed = true;
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Please refresh food recommendations first.')),
-        );
-      }
-      return;
-    }
-
-    _isFetching = true;
-    try {
-      await _fetchRestaurants(foodNames);
-      if (!_suppressWelcomeCoupon) {
-        await _checkWelcomeCouponStatus();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load restaurants: $e')),
-        );
-      }
-    } finally {
-      _isFetching = false;
-    }
-  }
-
-Future<void> _loadNearbyRestaurants() async {
-    if (_isNearbyLoading) return;
-
-    final foodNames = _getCachedFoodNames();
-    if (foodNames.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _nearbyRestaurants = [];
-          _nearbyError = 'Please refresh food recommendations first.';
-        });
-      }
-      return;
-    }
-
-    final position = await LocationHelper.getLatLon();
-    if (position == null) {
-      if (mounted) {
-        setState(() {
-          _nearbyRestaurants = [];
-          _nearbyError = 'Unable to access your location.';
-        });
-      }
-      return;
-    }
-
-    setState(() {
-      _isNearbyLoading = true;
-      _nearbyError = null;
-    });
-
-    try {
-      final response = await http.post(
-        Uri.parse(
-            'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-nearby-restaurants/'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'food_names': foodNames,
-          'latitude': position['lat'],
-          'longitude': position['lon'],
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final decoded =
-            jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-        final rawRestaurants =
-            (decoded['restaurants'] as List<dynamic>? ?? const [])
-                .map<Map<String, dynamic>>(
-                    (item) => Map<String, dynamic>.from(item as Map))
-                .toList();
-
-        final double userLat =
-            (position['lat'] as num?)?.toDouble() ?? 35.8714;
-        final double userLon =
-            (position['lon'] as num?)?.toDouble() ?? 128.6014;
-
-        final mapped = rawRestaurants.map<Map<String, dynamic>>((restaurant) {
-          final restLat =
-              double.tryParse(restaurant['y']?.toString() ?? '') ?? userLat;
-          final restLon =
-              double.tryParse(restaurant['x']?.toString() ?? '') ?? userLon;
-          final distance =
-              DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
-          return {
-            'name': restaurant['name'] ?? 'Unknown name',
-            'road_address': restaurant['road_address'] ?? 'No address',
-            'category_2': restaurant['category_2'] ?? 'No category',
-            'x': restaurant['x'],
-            'y': restaurant['y'],
-            'distance': distance,
-          };
-        }).toList();
-
-        if (!mounted) return;
-        setState(() {
-          _nearbyRestaurants = mapped;
-        });
-        await _loadLikedRestaurants(_nearbyRestaurants);
-      } else if (response.statusCode == 400 || response.statusCode == 404) {
-        if (!mounted) return;
-        setState(() {
-          _nearbyRestaurants = [];
-          _nearbyError = 'No nearby recommendations available.';
-        });
-      } else {
-        throw Exception('Failed to fetch nearby restaurants.');
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _nearbyRestaurants = [];
-        _nearbyError = 'Failed to load nearby restaurants: ' + e.toString();
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isNearbyLoading = false;
-        });
-      }
-    }
-  }
-
-  void _onNearbyToggle() {
-    if (_showNearby) {
-      setState(() {
-        _showNearby = false;
-        _nearbyError = null;
-      });
-      _loadLikedRestaurants(recommendedRestaurants);
-    } else {
-      setState(() {
-        _showNearby = true;
-        _nearbyError = null;
-      });
-      if (_nearbyRestaurants.isEmpty) {
-        _loadNearbyRestaurants();
-      } else {
-        _loadLikedRestaurants(_nearbyRestaurants);
-      }
-    }
-  }
-
-Future<List<String>> _fetchFoods() async {
-    final userUuid = prefs.getString('user_uuid') ?? '';
-    if (userUuid.isEmpty) throw Exception('사용자 UUID를 찾을 수 없습니다');
-    final String? typeCode = prefs.getString('user_type');
-
-    if (typeCode == null || typeCode.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
-        );
-      }
-      return const [];
-    }
-
-    final foodUrl =
-        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$userUuid';
-    http.Response foodResponse;
-    int retry = 0;
-    int delay = 1;
-    do {
-      foodResponse = await http.get(Uri.parse(foodUrl));
-      if (foodResponse.statusCode == 200 ||
-          foodResponse.statusCode == 400 ||
-          foodResponse.statusCode == 404) break;
-      await Future.delayed(Duration(seconds: delay));
-      delay *= 2;
-      retry++;
-    } while (retry < 3);
-
-    if (foodResponse.statusCode == 200) {
-      final Map<String, dynamic> foodData =
-          jsonDecode(utf8.decode(foodResponse.bodyBytes));
-      final List<dynamic> foods = foodData['random_foods'] ?? [];
-
-      final foodInfoList = foods
-          .map<Map<String, dynamic>>((f) => {
-                'food_name': f['food_name'],
-                'food_image_url': f['food_image_url'],
-              })
-          .toList();
-
-      final foodNames = foodInfoList
-          .map((food) => food['food_name']?.toString().trim() ?? '')
-          .where((name) => name.isNotEmpty)
-          .toList();
-
-      await prefs.setStringList('recommended_foods', foodNames);
-      await prefs.setString(
-          'recommended_foods_info', json.encode(foodInfoList));
-
-      if (mounted) {
-        setState(() {
-          recommendedFoods = foodInfoList
-              .map<Map<String, dynamic>>((food) => {
-                    'food_name': food['food_name'],
-                    'food_image_url': food['food_image_url'],
-                  })
-              .toList();
-        });
-      }
-
-      return foodNames;
-    } else if (foodResponse.statusCode == 400 ||
-        foodResponse.statusCode == 404) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
-        );
-      }
-      return const [];
-    } else {
-      throw Exception('음식을 불러오지 못했습니다');
-    }
-  }
-
-  Future<void> _fetchRestaurants(List<String> foodNames) async {
-    final restaurantUrl =
-        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
-    http.Response restResponse;
-    int retry = 0;
-    int delay = 1;
-    do {
-      restResponse = await http.post(
-        Uri.parse(restaurantUrl),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'food_names': foodNames}),
-      );
-      if (restResponse.statusCode == 200 ||
-          restResponse.statusCode == 400 ||
-          restResponse.statusCode == 404) break;
-      await Future.delayed(Duration(seconds: delay));
-      delay *= 2;
-      retry++;
-    } while (retry < 3);
-
-    if (restResponse.statusCode == 200) {
-      final restData = jsonDecode(utf8.decode(restResponse.bodyBytes));
-      final List<dynamic> restaurants = restData['random_restaurants'] ?? [];
-      await prefs.setString('restaurants_data', json.encode(restaurants));
-
-      final position = await LocationHelper.getLatLon();
-      final userLat = position?['lat'] ?? 35.8714;
-      final userLon = position?['lon'] ?? 128.6014;
-      for (var restaurant in restaurants) {
-        final restLat =
-            double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
-        final restLon =
-            double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
-        final distance =
-            DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
-        restaurant['distance'] = distance;
-      }
-
-      if (mounted) {
-        setState(() {
-          recommendedRestaurants = restaurants
-              .map<Map<String, dynamic>>((restaurant) => {
-                    'name': restaurant['name'] ?? '이름 없음',
-                    'road_address': restaurant['road_address'] ?? '주소 없음',
-                    'category_2': restaurant['category_2'] ?? '카테고리 없음',
-                    'x': restaurant['x'],
-                    'y': restaurant['y'],
-                    'distance': restaurant['distance'],
-                  })
-              .toList();
-        });
-      }
-
-      await _loadLikedRestaurants(recommendedRestaurants);
-    } else if (restResponse.statusCode == 400 ||
-        restResponse.statusCode == 404) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('취향 코드가 등록되어 있지 않습니다.')),
-        );
-      }
-    } else {
-      throw Exception('음식점을 불러오지 못했습니다');
-    }
-  }
-
-  Widget _buildRecommendedFoodsSection(double cardWidth) {
-    if (recommendedFoods.isEmpty) {
-      return SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            _buildMenuCard(
-              'assets/images/food_image0.png',
-              '추천 음식이 아직 준비되지 않았어요',
-              cardWidth,
-            ),
-          ],
-        ),
-      );
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: recommendedFoods
-            .map<Widget>(
-              (food) => _buildMenuCard(
-                food['food_image_url']?.toString() ??
-                    'assets/images/food_image0.png',
-                food['food_name']?.toString() ?? '이름 없음',
-                cardWidth,
-                onTap: () => _onFoodSelected(food),
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-
-  void _onFoodSelected(Map<String, dynamic> food) {
-    final foodName = food['food_name']?.toString().trim() ?? '';
-    if (foodName.isEmpty) {
-      return;
-    }
-
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => FoodRestaurantListScreen(
-          foodName: foodName,
-          imageUrl: food['food_image_url']?.toString(),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRestaurantCard(Map<String, dynamic> restaurant) {
-    final distance = restaurant['distance'];
-    final distanceText =
-        distance is num ? '거리 ${distance.toStringAsFixed(1)} km' : null;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16.0),
-      padding: const EdgeInsets.all(8.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.0),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.2),
-            spreadRadius: 1,
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12.0),
-                child: Container(
-                  height: 60,
-                  width: 60,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(width: 16.0),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      restaurant['name'] ?? '이름 없음',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      restaurant['road_address'] ?? '주소 없음',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF6B7280),
-                      ),
-                    ),
-                    if (distanceText != null) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        distanceText,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF6B7280),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 4),
-                    Text(
-                      restaurant['category_2'] ?? '카테고리 없음',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Color(0xFF4B5563),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          Positioned(
-            top: 8,
-            right: 8,
-            child: IconButton(
-              icon: Icon(
-                _isRestaurantLiked(
-                        restaurant['name'], restaurant['road_address'])
-                    ? Icons.favorite
-                    : Icons.favorite_border,
-                color: _isRestaurantLiked(
-                        restaurant['name'], restaurant['road_address'])
-                    ? Colors.red
-                    : Colors.grey,
-              ),
-              onPressed: () async {
-                final bool currentStatus = _isRestaurantLiked(
-                    restaurant['name'], restaurant['road_address']);
-                await _saveLikedStatus(
-                  restaurant['name'],
-                  restaurant['road_address'],
-                  !currentStatus,
-                );
-
-                if (!mounted) {
-                  return;
-                }
-
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      !currentStatus ? '찜 목록에 추가했어요' : '찜 목록에서 제거했습니다',
-                    ),
-                    duration: const Duration(seconds: 1),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
   }
 
   List<TrendItem> get _promotionItems =>
@@ -1514,7 +827,6 @@ Future<List<String>> _fetchFoods() async {
   @override
   void dispose() {
     _bannerController.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
@@ -1537,7 +849,7 @@ Future<List<String>> _fetchFoods() async {
           header,
           const SizedBox(height: 12),
           const SizedBox(
-            height: 227,
+            height: 256,
             child: Center(child: CircularProgressIndicator()),
           ),
         ],
@@ -1581,7 +893,7 @@ Future<List<String>> _fetchFoods() async {
         header,
         const SizedBox(height: 12),
         Container(
-          height: 227,
+          height: 256,
           width: double.infinity,
           color: Colors.white,
           child: ListView.separated(
@@ -1683,11 +995,8 @@ Future<List<String>> _fetchFoods() async {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _showNearby
-            ? _loadNearbyRestaurants
-            : _refreshFoodsAndRestaurants,
+        onRefresh: _refreshFoodsAndRestaurants,
         child: SingleChildScrollView(
-          controller: _scrollController,
           physics: const AlwaysScrollableScrollPhysics(),
           child: Padding(
             padding: EdgeInsets.symmetric(horizontal: padding),
@@ -1739,7 +1048,7 @@ class _AffiliateRestaurantCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(10),
         child: Container(
           width: 140,
-          height: 227,
+          height: 256,
           decoration: ShapeDecoration(
             color: const Color(0xFFECEDEF),
             shape: RoundedRectangleBorder(
@@ -1781,10 +1090,10 @@ class _AffiliateRestaurantCard extends StatelessWidget {
                   alignment: Alignment.topLeft,
                   child: SizedBox(
                     width: 128,
-                    child: Text(
-                      _description,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                child: Text(
+                  _description,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Color(0xFF585555),
                         fontSize: 11.5,
@@ -2103,4 +1412,3 @@ class _FoodHeader extends StatelessWidget {
     );
   }
 }
-

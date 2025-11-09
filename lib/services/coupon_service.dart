@@ -303,6 +303,23 @@ class CouponRedeemResult {
   final String couponCode;
 }
 
+class ReferralAcceptResponse {
+  const ReferralAcceptResponse({
+    required this.ok,
+    this.referralId,
+  });
+
+  factory ReferralAcceptResponse.fromJson(Map<String, dynamic> json) {
+    return ReferralAcceptResponse(
+      ok: json['ok'] is bool ? json['ok'] as bool : true,
+      referralId: _parseOptionalInt(json['referral_id']),
+    );
+  }
+
+  final bool ok;
+  final int? referralId;
+}
+
 class CouponService {
   static Future<List<UserCoupon>> fetchMyCoupons({CouponStatus? status}) async {
     final Map<String, dynamic>? params;
@@ -459,6 +476,19 @@ class CouponService {
     }
   }
 
+  static Future<ReferralAcceptResponse> acceptReferralCode({
+    required String refCode,
+  }) async {
+    final response = await ApiClient.post(
+      '/api/coupons/referrals/accept/',
+      body: {'ref_code': refCode},
+    );
+    final decoded = _decodeResponseBody(response);
+    if (decoded is Map<String, dynamic>) {
+      return ReferralAcceptResponse.fromJson(decoded);
+    }
+    return const ReferralAcceptResponse(ok: true);
+  }
 
   static dynamic _decodeResponseBody(http.Response response) {
     if (response.bodyBytes.isEmpty) return null;
