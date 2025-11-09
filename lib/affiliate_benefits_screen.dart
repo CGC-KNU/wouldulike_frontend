@@ -1348,7 +1348,9 @@ class _AffiliateRestaurantDetailSheetState
                     color: Color(0xFF1F2937),
                   ),
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
+                _buildImageCarousel(restaurant.imageUrls),
+                const SizedBox(height: 24),
                 _buildTabSwitcher(),
                 const SizedBox(height: 24),
                 AnimatedSwitcher(
@@ -1434,8 +1436,6 @@ class _AffiliateRestaurantDetailSheetState
       key: const ValueKey('info'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildImageCarousel(restaurant.imageUrls),
-        const SizedBox(height: 24),
         const Text(
           '기본 정보',
           style: TextStyle(
