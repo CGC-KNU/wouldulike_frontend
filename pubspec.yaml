@@ -38,7 +38,7 @@ dependencies:
   video_player: ^2.9.2
   kakao_flutter_sdk_user: ^1.9.7
   kakao_flutter_sdk_share: ^1.9.7
-  flutter_svg: ^2.0.9
+  flutter_svg: ^2.0.10+1
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
@@ -115,8 +115,13 @@ flutter:
           weight: 400
         - asset: assets/fonts/Alkatra-Medium.ttf
           weight: 500
+        - asset: assets/fonts/Alkatra-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Alkatra-Bold.ttf
+          weight: 700
   assets:
     - assets/images/
+    - assets/icons/
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
