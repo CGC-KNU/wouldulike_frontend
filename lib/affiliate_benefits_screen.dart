@@ -1765,19 +1765,52 @@ class _AffiliateRestaurantDetailSheetState
         rewards.where((reward) => status.current < reward.threshold).toList();
     final thresholds = rewards.map((reward) => reward.threshold).toSet();
 
+    const baseStyle = TextStyle(
+      color: Colors.white70,
+      fontSize: 13,
+      fontWeight: FontWeight.w600,
+    );
+    const upcomingStyle = TextStyle(
+      color: Color(0xFF9FA7FF),
+      fontSize: 14,
+      fontWeight: FontWeight.w600,
+    );
+    const highlightColor = Color(0xFFFFB800);
+    final highlightStyle = baseStyle.copyWith(
+      color: highlightColor,
+      fontWeight: FontWeight.w700,
+    );
+
+    RichText buildRichText(List<TextSpan> spans, TextStyle style) {
+      return RichText(
+        text: TextSpan(
+          style: style,
+          children: spans,
+        ),
+      );
+    }
+
+    Widget buildUpcomingMessage(int threshold, String benefit) {
+      return buildRichText([
+        const TextSpan(text: '스탬프 '),
+        TextSpan(text: '${threshold}개', style: highlightStyle),
+        const TextSpan(text: '까지 적립하면 '),
+        TextSpan(text: benefit, style: highlightStyle),
+        const TextSpan(text: ' 혜택을 받을 수 있어요.'),
+      ], upcomingStyle);
+    }
+
+    Widget buildReachedMessage(String benefit) {
+      return buildRichText([
+        TextSpan(text: benefit, style: highlightStyle),
+        const TextSpan(text: ' 혜택을 이미 받았어요.'),
+      ], baseStyle);
+    }
+
     for (final reward in reachedRewards) {
       final benefit = _stampBenefitFor(reward.threshold);
       if (benefit != null) {
-        items.add(
-          Text(
-            '$benefit 혜택을 이미 받았어요.',
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        );
+        items.add(buildReachedMessage(benefit));
       } else {
         final label = _rewardCouponLabel(reward);
         final code = reward.couponCode.trim();
@@ -1788,68 +1821,82 @@ class _AffiliateRestaurantDetailSheetState
         items.add(
           Text(
             buffer.toString(),
-            style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
+            style: baseStyle,
           ),
         );
       }
     }
 
-    String? nextMessage;
+    Widget? nextMessageWidget;
     if (status.current < 5 &&
         (thresholds.contains(5) || rewards.isEmpty || status.target <= 5)) {
       final benefit = _stampBenefitFor(5);
-      nextMessage = benefit != null
-          ? '스탬프 5개까지 적립하면 $benefit 혜택을 받을 수 있어요.'
-          : '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.';
+      nextMessageWidget = benefit != null
+          ? buildUpcomingMessage(5, benefit)
+          : Text(
+              '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.',
+              style: upcomingStyle,
+            );
     } else if (status.current < 10 &&
         (thresholds.contains(10) || rewards.isEmpty || status.target <= 10)) {
       final benefit = _stampBenefitFor(10);
-      nextMessage = benefit != null
-          ? '스탬프 10개까지 적립하면 $benefit 혜택을 받을 수 있어요.'
-          : '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.';
+      nextMessageWidget = benefit != null
+          ? buildUpcomingMessage(10, benefit)
+          : Text(
+              '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.',
+              style: upcomingStyle,
+            );
     } else if (pendingRewards.isNotEmpty) {
       final reward = pendingRewards.first;
-      final remaining = math.max(reward.threshold - status.current, 0);
-      nextMessage =
-          _pendingRewardMessage(reward.threshold, status.current, remaining);
-    }
-
-    if (nextMessage == null) {
-      final remainingToTarget = math.max(status.target - status.current, 0);
-      if (remainingToTarget > 0) {
-        final benefit = _stampBenefitFor(status.target);
-        nextMessage = benefit != null
-            ? '스탬프 ${status.target}개까지 적립하면 $benefit 혜택을 받을 수 있어요.'
-            : '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.';
+      final benefit = _stampBenefitFor(reward.threshold);
+      if (benefit != null) {
+        final remaining = math.max(reward.threshold - status.current, 0);
+        final prefix = remaining <= 0
+            ? '이제 '
+            : '스탬프 ${remaining}개 더 적립하면 ';
+        nextMessageWidget = buildRichText([
+          TextSpan(text: prefix),
+          TextSpan(text: benefit, style: highlightStyle),
+          const TextSpan(text: ' 혜택을 받을 수 있어요.'),
+        ], upcomingStyle);
+      } else {
+        final remaining = math.max(reward.threshold - status.current, 0);
+        final text = _pendingRewardMessage(
+          reward.threshold,
+          status.current,
+          remaining,
+        );
+        nextMessageWidget = Text(
+          text,
+          style: upcomingStyle,
+        );
       }
     }
 
-    if (nextMessage != null) {
-      items.add(
-        Text(
-          nextMessage,
-          style: const TextStyle(
-            color: Color(0xFF9FA7FF),
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
+    if (nextMessageWidget == null) {
+      final remainingToTarget = math.max(status.target - status.current, 0);
+      if (remainingToTarget > 0) {
+        final benefit = _stampBenefitFor(status.target);
+        if (benefit != null) {
+          nextMessageWidget = buildUpcomingMessage(status.target, benefit);
+        } else {
+          nextMessageWidget = Text(
+            '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.',
+            style: upcomingStyle,
+          );
+        }
+      }
+    }
+
+    if (nextMessageWidget != null) {
+      items.add(nextMessageWidget);
     }
 
     if (items.isEmpty) {
       items.add(
         const Text(
           '준비된 리워드 혜택을 모두 받았어요!',
-          style: TextStyle(
-            color: Color(0xFF9FA7FF),
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-          ),
+          style: upcomingStyle,
         ),
       );
     }
@@ -2009,21 +2056,18 @@ class _AffiliateRestaurantDetailSheetState
     final title = benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
     final subtitle =
         benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
-    final String restaurantLabel = benefit?.restaurantNameText ??
-        (coupon.restaurantId != null
-            ? '사용 가능 매장 ID: ${coupon.restaurantId}'
-            : '사용 가능한 매장 정보가 없어요.');
     final statusText = _couponStatusLabel(coupon.status);
-    final statusColor = _couponStatusColor(coupon.status);
-
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F7FF),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE0E3FF)),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0B1033), Color(0xFF1C2470)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2032,48 +2076,14 @@ class _AffiliateRestaurantDetailSheetState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.12),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        statusText,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: statusColor,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Flexible(
-                      child: Text(
-                        restaurantLabel,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFF4B5563),
-                          fontWeight: FontWeight.w500,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ],
-                ),
+                _buildCouponStatusBadge(coupon.status, statusText),
                 const SizedBox(height: 12),
                 Text(
                   title,
                   style: const TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
-                    color: Color(0xFF1F2937),
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -2081,7 +2091,7 @@ class _AffiliateRestaurantDetailSheetState
                   subtitle,
                   style: const TextStyle(
                     fontSize: 13,
-                    color: Color(0xFF4C5395),
+                    color: Color(0xFFD1D6FF),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -2093,8 +2103,8 @@ class _AffiliateRestaurantDetailSheetState
                 ? null
                 : () => _handleRedeem(coupon),
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0B1033),
-              foregroundColor: Colors.white,
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF0B1033),
               padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
               textStyle: const TextStyle(
                 fontWeight: FontWeight.w700,
@@ -2110,7 +2120,7 @@ class _AffiliateRestaurantDetailSheetState
                     height: 16,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Colors.white,
+                      color: Color(0xFF0B1033),
                     ),
                   )
                 : const Text('사용'),
@@ -2256,6 +2266,41 @@ class _AffiliateRestaurantDetailSheetState
       case CouponStatus.unknown:
         return const Color(0xFF6B7280);
     }
+  }
+
+  Widget _buildCouponStatusBadge(CouponStatus status, String text) {
+    Color background;
+    Color foreground;
+    switch (status) {
+      case CouponStatus.issued:
+        background = const Color(0xFFCAE4FF);
+        foreground = const Color(0xFF0B4E8A);
+        break;
+      case CouponStatus.redeemed:
+        background = const Color(0xFFFFD5E6);
+        foreground = const Color(0xFF8A1D4F);
+        break;
+      default:
+        background = Colors.white.withOpacity(0.15);
+        foreground = Colors.white;
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: foreground,
+        ),
+      ),
+    );
   }
 
   String _formatDate(DateTime value) {
