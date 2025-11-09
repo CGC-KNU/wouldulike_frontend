@@ -948,6 +948,81 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
 
 class _AffiliateRestaurantDetailSheetState
     extends State<AffiliateRestaurantDetailSheet> {
+  static const Map<String, Map<int, String>> _kStampBenefitMessages = {
+    '정든밤': {
+      5: '감자튀김 서비스',
+      10: '메인메뉴 택 1',
+    },
+    '깨꼬닭': {
+      5: '닭껍질 튀김',
+      10: '후라이드 똥집',
+    },
+    '깨꼬닭 본점': {
+      5: '닭껍질 튀김',
+      10: '후라이드 똥집',
+    },
+    '한끼갈비': {
+      5: '납작만두',
+      10: '납작만두',
+    },
+    '고니식탁': {
+      5: '계란말이 서비스',
+      10: '찌개 1인분 서비스',
+    },
+    '테이크어바이트': {
+      5: '음료 또는 5% 할인 쿠폰',
+      10: '파스타 중 1개 무료',
+    },
+    '스톡홀롬샐러드정문점': {
+      5: '아메리카노 교환권',
+      10: '샐러드 50% 할인(최대 5,000원)',
+    },
+    '스톡홀름샐러드 정문점': {
+      5: '아메리카노 교환권',
+      10: '샐러드 50% 할인(최대 5,000원)',
+    },
+    '마름모식당': {
+      5: '미니우동 또는 미니 냉우동',
+      10: '들기름우동 서비스',
+    },
+    '벨로': {
+      5: '현금 결제 시 20% 할인 쿠폰',
+      10: '현금 결제 시 20% 할인 쿠폰',
+    },
+    '팀스쿠치나': {
+      5: '안티파스토 샐러드 서비스',
+      10: '새우 오로라 크림파스타 또는 트러플 새우 카펠리니',
+    },
+    '팀스 쿠치나': {
+      5: '안티파스토 샐러드 서비스',
+      10: '새우 오로라 크림파스타 또는 트러플 새우 카펠리니',
+    },
+    '대부': {
+      5: '교자만두 서비스',
+      10: '새우튀김 샐러드 서비스',
+    },
+    '대부 대왕유부초밥 경대점': {
+      5: '교자만두 서비스',
+      10: '새우튀김 샐러드 서비스',
+    },
+    '부리또': {
+      5: '치즈스틱 서비스',
+      10: '치킨부리또 1개 서비스',
+    },
+    '부리또익스프레스': {
+      5: '치즈스틱 서비스',
+      10: '치킨부리또 1개 서비스',
+    },
+    '다이와스시': {
+      5: '타코야끼 10개 서비스',
+      10: '모듬초밥 5pcs 서비스',
+    },
+    '라보': {
+      5: '탕수육 M 서비스',
+      10: '탕수육 L 서비스',
+    },
+  };
+
   late List<UserCoupon> _coupons;
   StampStatus? _stampStatus;
   bool _isStampLoading = true;
@@ -955,6 +1030,13 @@ class _AffiliateRestaurantDetailSheetState
   String? _stampError;
   String? _processingCouponCode;
   int _selectedTabIndex = 0;
+
+  String? _stampBenefitFor(int threshold) {
+    final restaurantName = widget.restaurant.name.trim();
+    if (restaurantName.isEmpty) return null;
+    final benefits = _kStampBenefitMessages[restaurantName];
+    return benefits?[threshold];
+  }
 
   @override
   void initState() {
@@ -1684,31 +1766,51 @@ class _AffiliateRestaurantDetailSheetState
     final thresholds = rewards.map((reward) => reward.threshold).toSet();
 
     for (final reward in reachedRewards) {
-      final label = _rewardCouponLabel(reward);
-      final code = reward.couponCode.trim();
-      final buffer = StringBuffer('$label을 이미 받았어요.');
-      if (code.isNotEmpty) {
-        buffer.write(' (코드: $code)');
-      }
-      items.add(
-        Text(
-          buffer.toString(),
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+      final benefit = _stampBenefitFor(reward.threshold);
+      if (benefit != null) {
+        items.add(
+          Text(
+            '$benefit 혜택을 이미 받았어요.',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-      );
+        );
+      } else {
+        final label = _rewardCouponLabel(reward);
+        final code = reward.couponCode.trim();
+        final buffer = StringBuffer('$label을 이미 받았어요.');
+        if (code.isNotEmpty) {
+          buffer.write(' (코드: $code)');
+        }
+        items.add(
+          Text(
+            buffer.toString(),
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        );
+      }
     }
 
     String? nextMessage;
     if (status.current < 5 &&
         (thresholds.contains(5) || rewards.isEmpty || status.target <= 5)) {
-      nextMessage = '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.';
+      final benefit = _stampBenefitFor(5);
+      nextMessage = benefit != null
+          ? '스탬프 5개까지 적립하면 $benefit 혜택을 받을 수 있어요.'
+          : '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.';
     } else if (status.current < 10 &&
         (thresholds.contains(10) || rewards.isEmpty || status.target <= 10)) {
-      nextMessage = '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.';
+      final benefit = _stampBenefitFor(10);
+      nextMessage = benefit != null
+          ? '스탬프 10개까지 적립하면 $benefit 혜택을 받을 수 있어요.'
+          : '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.';
     } else if (pendingRewards.isNotEmpty) {
       final reward = pendingRewards.first;
       final remaining = math.max(reward.threshold - status.current, 0);
@@ -1719,7 +1821,10 @@ class _AffiliateRestaurantDetailSheetState
     if (nextMessage == null) {
       final remainingToTarget = math.max(status.target - status.current, 0);
       if (remainingToTarget > 0) {
-        nextMessage = '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.';
+        final benefit = _stampBenefitFor(status.target);
+        nextMessage = benefit != null
+            ? '스탬프 ${status.target}개까지 적립하면 $benefit 혜택을 받을 수 있어요.'
+            : '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.';
       }
     }
 
@@ -1739,7 +1844,7 @@ class _AffiliateRestaurantDetailSheetState
     if (items.isEmpty) {
       items.add(
         const Text(
-          '준비된 리워드 쿠폰을 모두 받았어요!',
+          '준비된 리워드 혜택을 모두 받았어요!',
           style: TextStyle(
             color: Color(0xFF9FA7FF),
             fontSize: 14,
@@ -1781,6 +1886,11 @@ class _AffiliateRestaurantDetailSheetState
   }
 
   String _pendingRewardMessage(int threshold, int current, int remaining) {
+    final benefit = _stampBenefitFor(threshold);
+    if (benefit != null) {
+      final prefix = remaining <= 0 ? '이제' : '스탬프 ${remaining}개 더 적립하면';
+      return '$prefix $benefit 혜택을 받을 수 있어요.';
+    }
     if (threshold == 5 && current < 5) {
       return '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.';
     }
