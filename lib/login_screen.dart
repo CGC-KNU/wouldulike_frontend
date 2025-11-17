@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'services/auth_service.dart';
+import 'services/api_client.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -128,6 +129,18 @@ class _LoginScreenState extends State<LoginScreen> {
         'user_profile_image_url',
         data['user']['profile_image_url'] ?? '',
       );
+      // 카카오 ID 저장 (BigInteger이므로 String으로 저장)
+      if (data['user']['kakao_id'] != null) {
+        await prefs.setString('user_kakao_id', data['user']['kakao_id'].toString());
+      }
+
+      // 로그인 후 토큰 갱신 타이머 설정
+      try {
+        await ApiClient.scheduleTokenRefresh();
+      } catch (e) {
+        // 타이머 설정 실패는 조용히 처리
+        debugPrint('[LoginScreen] Failed to schedule token refresh: $e');
+      }
 
       if (!mounted) return;
       setState(() => _isLoggingIn = false);
