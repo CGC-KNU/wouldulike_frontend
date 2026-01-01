@@ -5,3 +5,14 @@
 	required = true
 [credential "https://huggingface.co"]
 	provider = generic
+[user]
+	email = tjdndud73@knu.ac.kr
+	name = woo-yeong
+[core]
+	autocrlf = true
+[difftool "sourcetree"]
+	cmd = "'' "
+[mergetool "sourcetree"]
+	cmd = "'' "
+	trustExitCode = false
+	keepBackup = false
