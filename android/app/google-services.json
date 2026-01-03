@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1029789294160",
+    "project_id": "wouldulike-efe19",
+    "storage_bucket": "wouldulike-efe19.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1029789294160:android:1aa4def9960b2a36bd3b55",
+        "android_client_info": {
+          "package_name": "com.coggiri.new1"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDJNsZoNlA9r70Qc-c6g9gCbREhpBUnIoQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
