@@ -33,26 +33,24 @@ dependencies:
   http: ^1.2.2
   uuid: ^4.5.1
   flutter_native_splash: ^2.0.5
-  smooth_page_indicator: ^1.0.0
+  smooth_page_indicator: ^2.0.1
   url_launcher: ^6.1.14
   video_player: ^2.9.2
   kakao_flutter_sdk_user: ^1.9.7
   kakao_flutter_sdk_share: ^1.9.7
-  flutter_svg: ^2.0.9
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   shared_preferences: ^2.5.2
-  geolocator: ^10.1.1
-  firebase_core: ^2.28.0
-  firebase_messaging: ^14.7.2
-  app_links: ^3.5.0
-<<<<<<< HEAD
-  app_settings: ^5.1.1
-=======
+  geolocator: ^14.0.2
+  firebase_core: ^4.3.0
+  firebase_messaging: ^16.1.0
+  app_links: ^7.0.0
+
+  app_settings: ^7.0.0
   flutter_svg: ^2.0.10+1
->>>>>>> b9dffe8ab503eebcc1a2a71c4e688b4fcb434fe5
+
 
 dev_dependencies:
   flutter_test:
@@ -63,7 +61,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^4.0.0
+  flutter_lints: ^6.0.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -119,13 +117,11 @@ flutter:
           weight: 400
         - asset: assets/fonts/Alkatra-Medium.ttf
           weight: 500
-<<<<<<< HEAD
-=======
         - asset: assets/fonts/Alkatra-SemiBold.ttf
           weight: 600
         - asset: assets/fonts/Alkatra-Bold.ttf
           weight: 700
->>>>>>> b9dffe8ab503eebcc1a2a71c4e688b4fcb434fe5
+
   assets:
     - assets/images/
     - assets/icons/
