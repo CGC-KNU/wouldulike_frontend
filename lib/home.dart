@@ -87,12 +87,16 @@ class _HomeContentState extends State<HomeContent> {
   bool _welcomePromptScheduled = false;
   bool _suppressWelcomeCoupon = false;
   bool _isOpeningAffiliateDetail = false;
+  Timer? _bannerAutoScrollTimer;
+  static const Duration _bannerAutoScrollDuration = Duration(seconds: 3);
+
   @override
   void initState() {
     super.initState();
     _initializePrefs();
     _loadTrends();
     _loadAffiliateRestaurants();
+    _startBannerAutoScroll();
   }
 
   Future<void> _initializePrefs() async {
@@ -566,6 +570,8 @@ class _HomeContentState extends State<HomeContent> {
                   setState(() {
                     _currentBannerIndex = index;
                   });
+                  // 사용자가 수동으로 넘기면 타이머 재시작
+                  _startBannerAutoScroll();
                 }
               },
               itemBuilder: (context, index) {
@@ -838,8 +844,36 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
+  void _startBannerAutoScroll() {
+    _bannerAutoScrollTimer?.cancel();
+
+    _bannerAutoScrollTimer = Timer.periodic(_bannerAutoScrollDuration, (timer) {
+      if (!mounted || !_bannerController.hasClients) {
+        timer.cancel();
+        return;
+      }
+
+      final itemCount = _promotionItems.length;
+      if (itemCount <= 1) return;
+
+      final nextPage = (_currentBannerIndex + 1) % itemCount;
+
+      _bannerController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _stopBannerAutoScroll() {
+    _bannerAutoScrollTimer?.cancel();
+    _bannerAutoScrollTimer = null;
+  }
+
   @override
   void dispose() {
+    _stopBannerAutoScroll();
     _bannerController.dispose();
     super.dispose();
   }
