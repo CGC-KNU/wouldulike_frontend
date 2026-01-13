@@ -47,6 +47,7 @@ class UserCoupon {
     required this.status,
     this.restaurantId,
     this.benefit,
+    this.expiresAt,
   });
 
   factory UserCoupon.fromJson(Map<String, dynamic> json) {
@@ -70,6 +71,7 @@ class UserCoupon {
       status: CouponStatusName.from(json['status']?.toString()),
       restaurantId: resolvedRestaurantId,
       benefit: benefit,
+      expiresAt: _parseDate(json['expires_at']),
     );
   }
 
@@ -77,6 +79,7 @@ class UserCoupon {
   final CouponStatus status;
   final int? restaurantId;
   final CouponBenefitInfo? benefit;
+  final DateTime? expiresAt;
 }
 
 class CouponBenefitInfo {

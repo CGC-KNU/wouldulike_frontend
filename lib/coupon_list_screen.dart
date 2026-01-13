@@ -270,6 +270,37 @@ class _CouponListScreenState extends State<CouponListScreen> {
     return null;
   }
 
+  String? _formatExpiryDate(DateTime? expiresAt) {
+    if (expiresAt == null) return null;
+
+    final now = DateTime.now();
+    final difference = expiresAt.difference(now);
+
+    // Already expired
+    if (difference.isNegative) {
+      return '만료됨';
+    }
+
+    // Less than 24 hours
+    if (difference.inHours < 24) {
+      if (difference.inHours > 0) {
+        return '${difference.inHours}시간 남음';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}분 남음';
+      } else {
+        return '곧 만료';
+      }
+    }
+
+    // Less than 7 days
+    if (difference.inDays < 7) {
+      return '${difference.inDays}일 남음';
+    }
+
+    // 7 days or more - show date
+    return '${expiresAt.year}.${expiresAt.month.toString().padLeft(2, '0')}.${expiresAt.day.toString().padLeft(2, '0')}까지';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -430,6 +461,27 @@ class _CouponListScreenState extends State<CouponListScreen> {
                     color: Color(0xFF4B5563),
                   ),
                 ),
+                if (_formatExpiryDate(coupon.expiresAt) != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time,
+                        size: 14,
+                        color: Color(0xFFEF4444),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _formatExpiryDate(coupon.expiresAt)!,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFFEF4444),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
