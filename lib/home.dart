@@ -86,6 +86,7 @@ class _HomeContentState extends State<HomeContent> {
   bool _welcomeDialogVisible = false;
   bool _welcomePromptScheduled = false;
   bool _suppressWelcomeCoupon = false;
+  bool _isOpeningAffiliateDetail = false;
   @override
   void initState() {
     super.initState();
@@ -284,29 +285,42 @@ class _HomeContentState extends State<HomeContent> {
 
   Future<void> _openAffiliateRestaurantDetail(
       AffiliateRestaurantSummary restaurant) async {
-    await _ensureAffiliateUserData();
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return AffiliateRestaurantDetailSheet(
-          restaurant: restaurant,
-          coupons: _couponsForAffiliate(restaurant.id),
-          requiresLogin: _affiliateRequiresLogin,
-          initialStampStatus: _affiliateStampStatuses[restaurant.id],
-          onStampStatusUpdated: (status) =>
-              _handleAffiliateStampStatusUpdated(restaurant.id, status),
-          onCouponRedeemed: (code) =>
-              _handleAffiliateCouponRedeemed(code, restaurant.id),
-          onRewardCouponsIssued: (codes) =>
-              _handleAffiliateRewardCouponsIssued(codes, restaurant.id),
-        );
-      },
-    );
+    // Prevent multiple rapid clicks
+    if (_isOpeningAffiliateDetail) return;
+
+    setState(() => _isOpeningAffiliateDetail = true);
+
+    try {
+      await _ensureAffiliateUserData();
+      if (!mounted) return;
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (context) {
+          return AffiliateRestaurantDetailSheet(
+            restaurant: restaurant,
+            coupons: _couponsForAffiliate(restaurant.id),
+            requiresLogin: _affiliateRequiresLogin,
+            initialStampStatus: _affiliateStampStatuses[restaurant.id],
+            onStampStatusUpdated: (status) =>
+                _handleAffiliateStampStatusUpdated(restaurant.id, status),
+            onCouponRedeemed: (code) =>
+                _handleAffiliateCouponRedeemed(code, restaurant.id),
+            onRewardCouponsIssued: (codes) =>
+                _handleAffiliateRewardCouponsIssued(codes, restaurant.id),
+          );
+        },
+      );
+    } finally {
+      // Reset flag after bottom sheet is closed
+      if (mounted) {
+        setState(() => _isOpeningAffiliateDetail = false);
+      }
+    }
   }
 
   Future<void> _checkWelcomeCouponStatus() async {

@@ -94,6 +94,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   bool _requiresLogin = false;
   String _selectedCategory = 'ALL';
   List<String> _categories = const ['ALL'];
+  bool _isOpeningDetail = false;
 
   @override
   void initState() {
@@ -431,27 +432,39 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
   Future<void> _openRestaurantDetail(
       AffiliateRestaurantSummary restaurant) async {
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return AffiliateRestaurantDetailSheet(
-          restaurant: restaurant,
-          coupons: _couponsForRestaurant(restaurant.id),
-          requiresLogin: _requiresLogin,
-          initialStampStatus: _stampStatuses[restaurant.id],
-          onStampStatusUpdated: (status) =>
-              _handleStampStatusUpdated(restaurant.id, status),
-          onCouponRedeemed: (code) =>
-              _handleCouponRedeemed(code, restaurant.id),
-          onRewardCouponsIssued: (codes) =>
-              _handleRewardCouponsIssued(codes, restaurant.id),
-        );
-      },
-    );
+    // Prevent multiple rapid clicks
+    if (_isOpeningDetail) return;
+
+    setState(() => _isOpeningDetail = true);
+
+    try {
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (context) {
+          return AffiliateRestaurantDetailSheet(
+            restaurant: restaurant,
+            coupons: _couponsForRestaurant(restaurant.id),
+            requiresLogin: _requiresLogin,
+            initialStampStatus: _stampStatuses[restaurant.id],
+            onStampStatusUpdated: (status) =>
+                _handleStampStatusUpdated(restaurant.id, status),
+            onCouponRedeemed: (code) =>
+                _handleCouponRedeemed(code, restaurant.id),
+            onRewardCouponsIssued: (codes) =>
+                _handleRewardCouponsIssued(codes, restaurant.id),
+          );
+        },
+      );
+    } finally {
+      // Reset flag after bottom sheet is closed
+      if (mounted) {
+        setState(() => _isOpeningDetail = false);
+      }
+    }
   }
 
   @override
