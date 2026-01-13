@@ -171,7 +171,7 @@ class _ResultScreenState extends State<ResultScreen> {
   Future<String> fetchDescription(String resultMessage) async {
     //print('Trying to fetch description for type: $resultMessage');
     final url = Uri.parse(
-        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/type-descriptions/type-descriptions/${resultMessage}/');
+        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/type-descriptions/type-descriptions/$resultMessage/');
     //print('Request URL: $url');
     final prefs = await SharedPreferences.getInstance();
     try {
@@ -195,7 +195,7 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 
   Future<void> fetchAllData(String resultMessage) async{
-    final url = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/type-descriptions/type-descriptions/all/${resultMessage}/');
+    final url = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/type-descriptions/type-descriptions/all/$resultMessage/');
     final prefs = await SharedPreferences.getInstance();
     try{
       final response = await http.get(url);
@@ -203,17 +203,17 @@ class _ResultScreenState extends State<ResultScreen> {
         final responseData = jsonDecode(response.body);
         print('Response body: ${response.body}');
         final summary = responseData['type_summary'];
-        final menu_mbti = responseData['menu_and_mbti'];
-        final meal_ex = responseData['meal_example'];
-        final matching_type = responseData['matching_type'];
-        final non_matching = responseData['non_matching_type'];
-        final type_name = responseData['type_name'];
+        final menuMbti = responseData['menu_and_mbti'];
+        final mealEx = responseData['meal_example'];
+        final matchingType = responseData['matching_type'];
+        final nonMatching = responseData['non_matching_type'];
+        final typeName = responseData['type_name'];
         await prefs.setString('type_summary', summary);
-        await prefs.setString('menu_and_mbti', menu_mbti);
-        await prefs.setString('meal_example', meal_ex);
-        await prefs.setString('matching_type', matching_type);
-        await prefs.setString('non_matching', non_matching);
-        await prefs.setString('type_name', type_name);
+        await prefs.setString('menu_and_mbti', menuMbti);
+        await prefs.setString('meal_example', mealEx);
+        await prefs.setString('matching_type', matchingType);
+        await prefs.setString('non_matching', nonMatching);
+        await prefs.setString('type_name', typeName);
         print('Description saved to SharedPreferences');
         setState(() {
           _typeName = responseData['type_name'];

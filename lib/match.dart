@@ -193,7 +193,9 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         response = await http.get(Uri.parse(url));
         if (response.statusCode == 200 ||
             response.statusCode == 400 ||
-            response.statusCode == 404) break;
+            response.statusCode == 404) {
+          break;
+        }
         await Future.delayed(Duration(seconds: delay));
         delay *= 2;
         retry++;
@@ -308,7 +310,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
           final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
           final name = restaurant['name'] ?? '이름 없음';
           final address = restaurant['road_address'] ?? '주소 없음';
-          final isLiked = prefs.getBool('liked_${name}_${address}') ?? false;
+          final isLiked = prefs.getBool('liked_${name}_$address') ?? false;
 
           final mapped = {
             'name': name,
@@ -365,7 +367,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       restaurants[restaurantIndex]['isLiked'] = newLiked;
     });
 
-    await prefs.setBool('liked_${name}_${address}', newLiked);
+    await prefs.setBool('liked_${name}_$address', newLiked);
 
     Map<String, dynamic> allLiked = {};
     final savedLikedAll = prefs.getString('liked_restaurants_all');

@@ -6,6 +6,8 @@ import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 
 class WishlistScreen extends StatefulWidget {
+  const WishlistScreen({super.key});
+
   @override
   _WishlistScreenState createState() => _WishlistScreenState();
 }
@@ -66,7 +68,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       for (var restaurant in currentRestaurants) {
         final name = restaurant['name'] ?? '이름 없음';
         final address = restaurant['road_address'] ?? '주소 없음';
-        final isLiked = prefs.getBool('liked_${name}_${address}') ?? false;
+        final isLiked = prefs.getBool('liked_${name}_$address') ?? false;
 
         if (isLiked) {
           // 거리 계산
@@ -190,7 +192,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
   }
 
   Future<void> _removeFavorite(String name, String address) async {
-    await prefs.setBool('liked_${name}_${address}', false);
+    await prefs.setBool('liked_${name}_$address', false);
 
     final String? savedLikedAll = prefs.getString('liked_restaurants_all');
     if (savedLikedAll != null) {
@@ -368,7 +370,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
                                 },
                               ),
                             );
-                          }).toList(),
+                          }),
                         ],
                       );
                     },

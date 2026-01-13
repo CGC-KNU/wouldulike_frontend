@@ -180,7 +180,9 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
         response = await http.get(Uri.parse(url));
         if (response.statusCode == 200 ||
             response.statusCode == 400 ||
-            response.statusCode == 404) break;
+            response.statusCode == 404) {
+          break;
+        }
         await Future.delayed(Duration(seconds: delay));
         delay *= 2;
         retry++;

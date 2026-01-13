@@ -539,7 +539,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                             horizontal: 16, vertical: 8),
                         child: _buildRestaurantCard(restaurant),
                       ))
-                  .toList(),
+                  ,
           ],
         ),
       ),
@@ -634,9 +634,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       stampBackground = const Color(0xFFFFF1F2);
       stampTextColor = const Color(0xFFDC2626);
     } else if (stampTarget > 0) {
-      stampLabel = '스탬프 ${stampCurrent}/${stampTarget}';
+      stampLabel = '스탬프 $stampCurrent/$stampTarget';
     } else if (stampCurrent > 0) {
-      stampLabel = '스탬프 ${stampCurrent}개';
+      stampLabel = '스탬프 $stampCurrent개';
     } else {
       stampLabel = '스탬프 적립 없음';
       stampBackground = const Color(0xFFF3F4F6);
@@ -1558,7 +1558,7 @@ class _AffiliateRestaurantDetailSheetState
     if (nextMessage == null) {
       final remainingToTarget = math.max(status.target - status.current, 0);
       if (remainingToTarget > 0) {
-        nextMessage = '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.';
+        nextMessage = '스탬프 $remainingToTarget개 더 적립하면 리워드 쿠폰을 받을 수 있어요.';
       }
     }
 
@@ -1608,7 +1608,7 @@ class _AffiliateRestaurantDetailSheetState
         final suffix = type.substring(prefix.length);
         final numeric = int.tryParse(suffix);
         if (numeric != null) {
-          return '스탬프 ${numeric}개 리워드 쿠폰';
+          return '스탬프 $numeric개 리워드 쿠폰';
         }
         final readableSuffix = suffix.replaceAll('_', ' ');
         return '스탬프 ${reward.threshold}개 리워드 쿠폰 (${readableSuffix.isNotEmpty ? readableSuffix : suffix})';
@@ -1627,7 +1627,7 @@ class _AffiliateRestaurantDetailSheetState
       return '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.';
     }
     final milestoneName = _milestoneLabel(threshold);
-    final prefix = remaining <= 0 ? '이제' : '스탬프 ${remaining}개 더 적립하면';
+    final prefix = remaining <= 0 ? '이제' : '스탬프 $remaining개 더 적립하면';
     return '$prefix $milestoneName을 받을 수 있어요.';
   }
 
@@ -1638,7 +1638,7 @@ class _AffiliateRestaurantDetailSheetState
       case 10:
         return '두 번째 리워드 쿠폰';
       default:
-        return '스탬프 ${threshold}개 리워드 쿠폰';
+        return '스탬프 $threshold개 리워드 쿠폰';
     }
   }
 

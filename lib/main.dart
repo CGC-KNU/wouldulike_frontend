@@ -21,19 +21,19 @@ Future<void> main() async {
   KakaoSdk.init(nativeAppKey: kakaoNativeAppKey, loggingEnabled: true);
   try {
     final origin = await KakaoSdk.origin;
-    debugPrint('[Kakao] origin (key hash): ' + origin);
+    debugPrint('[Kakao] origin (key hash): $origin');
   } catch (_) {}
   final appLinks = AppLinks();
   // Listen for deep links such as the Kakao login redirect.
   appLinks.uriLinkStream.listen((Uri? uri) {
     if (uri != null) {
-      debugPrint('Deep link received: ' + uri.toString());
+      debugPrint('Deep link received: $uri');
     }
   });
   try {
     final initialUri = await appLinks.getInitialAppLink();
     if (initialUri != null) {
-      debugPrint('Initial deep link: ' + initialUri.toString());
+      debugPrint('Initial deep link: $initialUri');
     }
   } on PlatformException {
     // Ignored: platform not ready for deep links.
@@ -167,7 +167,7 @@ class MainScreenState extends State<MainScreen> {
         return normalizedRemote;
       }
     } catch (e) {
-      print('Guest type lookup failed: ' + e.toString());
+      print('Guest type lookup failed: $e');
     }
 
     return null;
@@ -176,17 +176,17 @@ class MainScreenState extends State<MainScreen> {
   Future<void> _checkType(String uuid) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      print('Checking type for UUID: ' + uuid);
+      print('Checking type for UUID: $uuid');
 
       final remoteType = await _resolveRemoteType(prefs, uuid);
 
       final localType = (prefs.getString('user_type') ?? '').trim();
 
       if (remoteType != null && remoteType.isNotEmpty) {
-        print('Type found: ' + remoteType);
+        print('Type found: $remoteType');
         await prefs.setString('user_type', remoteType);
       } else if (localType.isNotEmpty) {
-        print('Using cached type: ' + localType);
+        print('Using cached type: $localType');
       } else {
         await ensureUserTypeCode(
           prefs,
@@ -204,7 +204,7 @@ class MainScreenState extends State<MainScreen> {
 
       _navigateToMainScreen();
     } catch (e) {
-      print('Error checking type: ' + e.toString());
+      print('Error checking type: $e');
       _showErrorDialog();
     }
   }
@@ -214,8 +214,7 @@ class MainScreenState extends State<MainScreen> {
       final prefs = await SharedPreferences.getInstance();
 
       final foodUrl =
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=' +
-              uuid;
+          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$uuid';
       http.Response foodResponse;
       int retry = 0;
       int delay = 1;
@@ -294,7 +293,7 @@ class MainScreenState extends State<MainScreen> {
         throw Exception('Failed to fetch foods');
       }
     } catch (e) {
-      print('Error preparing recommendations: ' + e.toString());
+      print('Error preparing recommendations: $e');
       return false;
     }
   }
@@ -374,7 +373,7 @@ class MainScreenState extends State<MainScreen> {
         throw Exception('Failed to check UUID');
       }
     } catch (e) {
-      print('Error checking UUID: ' + e.toString());
+      print('Error checking UUID: $e');
       _showErrorDialog();
     }
   }
@@ -397,7 +396,7 @@ class MainScreenState extends State<MainScreen> {
           final prefs = await SharedPreferences.getInstance();
           final String newUuid = data['uuid'];
           await prefs.setString(_uuidKey, newUuid);
-          print('New UUID created and saved: ' + newUuid);
+          print('New UUID created and saved: $newUuid');
 
           await _assignFallbackType(force: true);
           await _checkType(newUuid);
@@ -409,7 +408,7 @@ class MainScreenState extends State<MainScreen> {
         throw Exception('Failed to create UUID');
       }
     } catch (e) {
-      print('Error creating UUID: ' + e.toString());
+      print('Error creating UUID: $e');
       _showErrorDialog();
     }
   }
