@@ -20,7 +20,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _openStore(String packageName) async {
     final market = Uri.parse('market://details?id=$packageName');
-    final web = Uri.parse('https://play.google.com/store/apps/details?id=$packageName');
+    final web =
+        Uri.parse('https://play.google.com/store/apps/details?id=$packageName');
     try {
       if (await canLaunchUrl(market)) {
         await launchUrl(market, mode: LaunchMode.externalApplication);
@@ -97,7 +98,8 @@ class _LoginScreenState extends State<LoginScreen> {
       } else {
         try {
           token = await UserApi.instance.loginWithKakaoAccount();
-          debugPrint('[Kakao] loginWithKakaoAccount success (talk not installed)');
+          debugPrint(
+              '[Kakao] loginWithKakaoAccount success (talk not installed)');
         } on PlatformException catch (e) {
           if (e.code == 'CANCELED') {
             if (!mounted) return;
@@ -165,7 +167,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     right: 0,
                     bottom: screenHeight * 0.3,
                     child: Padding(
-                      padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -175,7 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 TextSpan(
                                   text: 'Would',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.87),
+                                    color: Colors.white.withOpacity(0.87),
                                     fontSize: 50,
                                     fontFamily: 'Alkatra',
                                     fontWeight: FontWeight.w400,
@@ -186,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 TextSpan(
                                   text: 'U',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.87),
+                                    color: Colors.white.withOpacity(0.87),
                                     fontSize: 60,
                                     fontFamily: 'Alkatra',
                                     fontWeight: FontWeight.w500,
@@ -197,7 +200,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 TextSpan(
                                   text: 'Like',
                                   style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.87),
+                                    color: Colors.white.withOpacity(0.87),
                                     fontSize: 50,
                                     fontFamily: 'Alkatra',
                                     fontWeight: FontWeight.w500,
@@ -244,7 +247,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                       ),
                       child: Padding(
-                        padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
+                        padding: EdgeInsets.symmetric(
+                            horizontal: screenWidth * 0.08),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.start,
                           children: [
@@ -307,7 +311,8 @@ class _LoginScreenState extends State<LoginScreen> {
                             SizedBox(height: 17 * (screenHeight / 844)),
                             GestureDetector(
                               onTap: () {
-                                Navigator.pushReplacementNamed(context, '/main');
+                                Navigator.pushReplacementNamed(
+                                    context, '/main');
                               },
                               child: SizedBox(
                                 width: 168,
