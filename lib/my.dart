@@ -777,7 +777,6 @@ enum _ReferralSheetMode { input, success, locked }
 
 class _ReferralCodeSheet extends StatefulWidget {
   const _ReferralCodeSheet({
-    super.key,
     this.initialStatus,
     this.initialMessage,
   });

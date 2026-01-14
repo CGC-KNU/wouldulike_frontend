@@ -353,7 +353,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
   String _normalizeCategoryKey(String category) {
     final normalized = category.trim().toUpperCase();
-    return _kCategoryAlias[normalized] ?? _kCategoryAlias[category.trim()] ?? 'OTHER';
+    return _kCategoryAlias[normalized] ??
+        _kCategoryAlias[category.trim()] ??
+        'OTHER';
   }
 
   _CategoryMeta _resolveCategoryMeta(String category) {
@@ -1149,16 +1151,19 @@ class _AffiliateRestaurantDetailSheetState
                       _buildImageCarousel(restaurant.imageUrls),
                       const SizedBox(height: 24),
                       _buildTabSwitcher(),
-                const SizedBox(height: 24),
-                AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 200),
-                  child: _selectedTabIndex == 0
-                      ? _buildBenefitsTab()
-                      : _buildStoreInfoTab(restaurant),
+                      const SizedBox(height: 24),
+                      AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 200),
+                        child: _selectedTabIndex == 0
+                            ? _buildBenefitsTab()
+                            : _buildStoreInfoTab(restaurant),
+                      ),
+                    ],
+                  ),
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
