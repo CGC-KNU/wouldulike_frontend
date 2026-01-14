@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'coupon_list_screen.dart';
 import 'services/api_client.dart';
@@ -189,8 +190,7 @@ class _MyScreenState extends State<MyScreen> {
       });
       return null;
     } on ApiHttpException catch (e) {
-      final message =
-          _extractDetailMessage(e.body) ?? '추천 코드를 불러오지 못했어요.';
+      final message = _extractDetailMessage(e.body) ?? '추천 코드를 불러오지 못했어요.';
       if (!mounted) {
         _isInviteLoading = false;
         _inviteError = message;
@@ -291,10 +291,8 @@ class _MyScreenState extends State<MyScreen> {
   }
 
   Future<void> _showReferralCodeSheet() async {
-    final initialStatus =
-        _referralInputLocked ? _lastReferralStatus : null;
-    final initialMessage =
-        _referralInputLocked ? _lastReferralMessage : null;
+    final initialStatus = _referralInputLocked ? _lastReferralStatus : null;
+    final initialMessage = _referralInputLocked ? _lastReferralMessage : null;
     final result = await showModalBottomSheet<ReferralSheetResult>(
       context: context,
       isScrollControlled: true,
@@ -315,8 +313,7 @@ class _MyScreenState extends State<MyScreen> {
         setState(() {
           _referralInputLocked = true;
           _lastReferralStatus = ReferralSheetStatus.alreadyAccepted;
-          _lastReferralMessage = result.noticeMessage ??
-              '이미 추천 코드를 입력했어요.';
+          _lastReferralMessage = result.noticeMessage ?? '이미 추천 코드를 입력했어요.';
         });
         if (result.openCoupons) {
           _openCouponList();
@@ -326,8 +323,7 @@ class _MyScreenState extends State<MyScreen> {
         setState(() {
           _referralInputLocked = true;
           _lastReferralStatus = result.status;
-          _lastReferralMessage = result.noticeMessage ??
-              '이미 추천 코드를 입력한 계정이에요.';
+          _lastReferralMessage = result.noticeMessage ?? '이미 추천 코드를 입력한 계정이에요.';
         });
         break;
       case ReferralSheetStatus.dismissed:
@@ -358,6 +354,67 @@ class _MyScreenState extends State<MyScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('알림 설정을 열 수 없어요. $e')),
+      );
+    }
+  }
+
+  Future<void> _openKakaoTalkInquiry() async {
+    const url = 'https://open.kakao.com/o/s09ikE1h';
+    final uri = Uri.parse(url);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('카카오톡 오픈채팅을 열 수 없어요.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('링크를 열 수 없어요: $e')),
+      );
+    }
+  }
+
+  Future<void> _openHomepage() async {
+    try {
+      final response = await ApiClient.get('/api/url/', authenticated: false);
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final url = data['url']?.toString() ?? '';
+
+      if (url.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('홈페이지 URL이 설정되지 않았어요.')),
+        );
+        return;
+      }
+
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('홈페이지를 열 수 없어요.')),
+        );
+      }
+    } on ApiHttpException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('홈페이지 URL을 불러오지 못했어요.')),
+      );
+    } on ApiNetworkException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('네트워크 오류: $e')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('홈페이지를 열 수 없어요: $e')),
       );
     }
   }
@@ -394,9 +451,7 @@ class _MyScreenState extends State<MyScreen> {
         _buildMenuRow(
           leading: Text(
             '내 추천코드',
-            style: isKakaoLoggedIn
-                ? _kItemTitleStyle
-                : _kPlaceholderItemStyle,
+            style: isKakaoLoggedIn ? _kItemTitleStyle : _kPlaceholderItemStyle,
           ),
           trailing: const SizedBox.shrink(),
           onTap: null,
@@ -545,7 +600,8 @@ class _MyScreenState extends State<MyScreen> {
       ),
     );
 
-    final child = enabled ? rowContent : Opacity(opacity: 0.6, child: rowContent);
+    final child =
+        enabled ? rowContent : Opacity(opacity: 0.6, child: rowContent);
     return Padding(
       padding: EdgeInsets.only(left: indent),
       child: Material(
@@ -654,16 +710,14 @@ class _MyScreenState extends State<MyScreen> {
           const SizedBox(height: 40),
           _buildSectionHeader('환경 설정'),
           _buildMenuRow(
-            leading:
-                const Text('이벤트/프로모션 알림', style: _kItemTitleStyle),
+            leading: const Text('이벤트/프로모션 알림', style: _kItemTitleStyle),
             onTap: _openNotificationSettings,
             indent: _kItemIndent,
           ),
           const SizedBox(height: 40),
           _buildSectionHeader('친구 초대'),
           _buildMenuRow(
-            leading:
-                const Text('카카오톡 친구 초대하기', style: _kItemTitleStyle),
+            leading: const Text('카카오톡 친구 초대하기', style: _kItemTitleStyle),
             trailing: _isShareInProgress
                 ? const SizedBox(
                     width: 20,
@@ -690,13 +744,13 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading:
-                const Text('카카오톡 1대1 문의', style: _kItemTitleStyle),
+            leading: const Text('카카오톡 1대1 문의', style: _kItemTitleStyle),
+            trailing: _buildChevron(),
+            onTap: _openKakaoTalkInquiry,
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading:
-                const Text('앱 버전: v2.0.0', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.0.0', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],
@@ -791,8 +845,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         _successMessage = '이미 추천 코드를 입력했어요.';
       });
     } on ApiHttpException catch (e) {
-      final message =
-          _parseApiError(e.body) ?? '추천 코드를 확인해 주세요.';
+      final message = _parseApiError(e.body) ?? '추천 코드를 확인해 주세요.';
       if (!mounted) return;
       if (e.statusCode == 409) {
         setState(() {
@@ -832,8 +885,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
     Navigator.of(context).pop(
       ReferralSheetResult(
         status: ReferralSheetStatus.success,
-        noticeMessage:
-            _successMessage ?? '이미 추천 코드를 입력했어요.',
+        noticeMessage: _successMessage ?? '이미 추천 코드를 입력했어요.',
         openCoupons: openCoupons,
       ),
     );
@@ -844,8 +896,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
     Navigator.of(context).pop(
       ReferralSheetResult(
         status: ReferralSheetStatus.alreadyAccepted,
-        noticeMessage:
-            _lockedMessage ?? '이미 추천 코드를 입력한 계정이에요.',
+        noticeMessage: _lockedMessage ?? '이미 추천 코드를 입력한 계정이에요.',
       ),
     );
   }
@@ -855,10 +906,12 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
     try {
       final decoded = jsonDecode(body);
       if (decoded is Map<String, dynamic>) {
-        if (decoded['detail'] is String && decoded['detail'].toString().isNotEmpty) {
+        if (decoded['detail'] is String &&
+            decoded['detail'].toString().isNotEmpty) {
           return decoded['detail'].toString();
         }
-        if (decoded['message'] is String && decoded['message'].toString().isNotEmpty) {
+        if (decoded['message'] is String &&
+            decoded['message'].toString().isNotEmpty) {
           return decoded['message'].toString();
         }
         for (final entry in decoded.entries) {
@@ -896,8 +949,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
   }
 
   Widget _buildInputBody() {
-    final canSubmit =
-        !_isSubmitting && _controller.text.trim().isNotEmpty;
+    final canSubmit = !_isSubmitting && _controller.text.trim().isNotEmpty;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -914,7 +966,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         ),
         const SizedBox(height: 8),
         const Text(
-          '친구가 공유한 추천 코드를 입력하면 신규 가입 쿠폰을 바로 받을 수 있어요.',
+          '추천 코드를 입력하면 쿠폰 보상을 바로 받을 수 있어요!',
           style: TextStyle(
             fontSize: 14,
             color: Color(0xFF6B7280),
@@ -1012,6 +1064,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
   }
 
   Widget _buildSuccessBody() {
+    final message = _successMessage ?? '친구 추천 쿠폰이 발급되었어요!';
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1025,10 +1078,62 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
             borderRadius: BorderRadius.circular(36),
           ),
           child: const Icon(
-            Icons.lock_outline,
-            color: Color(0xFFB91C1C),
+            Icons.check_circle,
+            color: Color(0xFF10B981),
             size: 32,
           ),
+        ),
+        const SizedBox(height: 20),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '친구 추천 쿠폰이 발급되었어요',
+              style: TextStyle(
+                color: Color(0xFF39393E),
+                fontSize: 19,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w800,
+                height: 1.21,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text.rich(
+              TextSpan(
+                style: const TextStyle(
+                  color: Color(0xFF39393E),
+                  fontSize: 14,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w500,
+                  height: 1.29,
+                ),
+                children: [
+                  const TextSpan(
+                    text: '친구의 추천 코드 입력이 완료되었어요.\n쿠폰함에서 ',
+                  ),
+                  const TextSpan(
+                    text: '새로 발급된 쿠폰',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const TextSpan(
+                    text: '을 바로 확인해 보세요.',
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: const TextStyle(
+                color: Color(0xFF4B5563),
+                fontSize: 13,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 20),
         const Text(

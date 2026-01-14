@@ -434,6 +434,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      isDismissible: false,
+      enableDrag: false,
+      useSafeArea: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -550,7 +554,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     if (_categories.isEmpty) {
       return const SizedBox.shrink();
     }
-    const double scale = 1.125;
+    const double scale = 0.81; // 기존 1.125의 0.72배
     return SizedBox(
       height: 90 * scale,
       child: ListView.separated(
@@ -1112,41 +1116,39 @@ class _AffiliateRestaurantDetailSheetState
   Widget build(BuildContext context) {
     final restaurant = widget.restaurant;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final topPadding = MediaQuery.of(context).padding.top;
+    // 아이폰 다이나믹 아일랜드를 고려한 최소 상단 패딩 (최소 50px 보장)
+    final safeTopPadding = math.max(topPadding, 50.0);
 
-    return SafeArea(
-      top: false,
+    return Container(
+      color: Colors.white,
       child: Padding(
-        padding: EdgeInsets.only(bottom: bottomInset),
-        child: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 48,
-                    height: 4,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE5E7EB),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                Text(
-                  restaurant.name.isNotEmpty
-                      ? restaurant.name
-                      : '매장 정보를 찾을 수 없어요',
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1F2937),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                _buildTabSwitcher(),
+        padding: EdgeInsets.only(top: safeTopPadding),
+        child: Stack(
+          children: [
+            Padding(
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        restaurant.name.isNotEmpty
+                            ? restaurant.name
+                            : '매장 정보를 찾을 수 없어요',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1F2937),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _buildImageCarousel(restaurant.imageUrls),
+                      const SizedBox(height: 24),
+                      _buildTabSwitcher(),
                 const SizedBox(height: 24),
                 AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
