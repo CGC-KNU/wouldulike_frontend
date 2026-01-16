@@ -37,7 +37,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
   List<UserCoupon> _sortedCoupons(List<UserCoupon> coupons) {
     final sorted = List<UserCoupon>.from(coupons);
     sorted.sort((a, b) {
-      final priorityDiff = _statusPriority(a.status) - _statusPriority(b.status);
+      final priorityDiff =
+          _statusPriority(a.status) - _statusPriority(b.status);
       if (priorityDiff != 0) return priorityDiff;
       return a.code.compareTo(b.code);
     });
@@ -199,47 +200,24 @@ class _CouponListScreenState extends State<CouponListScreen> {
                       height: 1.21,
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 22),
                   SizedBox(
                     width: 330,
                     child: Text.rich(
-                      TextSpan(
-                        children: [
-                          const TextSpan(
-                            text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
-                            style: TextStyle(
-                              color: Color(0xFF39393E),
-                              fontSize: 15,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w500,
-                              height: 1.20,
-                            ),
-                          ),
-                          const TextSpan(
-                            text: ' 즉시 사용처리',
-                            style: TextStyle(
-                              color: Color(0xFF39393E),
-                              fontSize: 15,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w700,
-                              height: 1.20,
-                            ),
-                          ),
-                          const TextSpan(
-                            text: ' 됩니다.',
-                            style: TextStyle(
-                              color: Color(0xFF39393E),
-                              fontSize: 15,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w500,
-                              height: 1.20,
-                            ),
-                          ),
-                        ],
+                      const TextSpan(
+                        text:
+                            '해당 쿠폰을 사용처리 하시겠습니까?\n\n관리자 비밀번호를 입력하시면\n\n즉시 사용처리 됩니다.',
+                        style: TextStyle(
+                          color: Color(0xFF39393E),
+                          fontSize: 15,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w500,
+                          height: 0.70,
+                        ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 26),
                   const SizedBox(
                     width: 55,
                     height: 26,
@@ -447,7 +425,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                  const Icon(Icons.error_outline,
+                      size: 48, color: Colors.redAccent),
                   const SizedBox(height: 12),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -502,8 +481,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
     final statusText = _statusLabel(coupon.status);
     final bool isProcessing = _processingCouponCode == coupon.code;
     final benefit = coupon.benefit;
-    final title =
-        benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
+    final title = benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
     final subtitle =
         benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
     final String restaurantLabel = benefit?.restaurantNameText ??
@@ -591,4 +569,3 @@ class _CouponListScreenState extends State<CouponListScreen> {
     );
   }
 }
-
