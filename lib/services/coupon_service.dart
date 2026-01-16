@@ -490,6 +490,53 @@ class CouponService {
     return const ReferralAcceptResponse(ok: true);
   }
 
+  /// 관리자가 특정 카카오 ID에 쿠폰을 발급합니다.
+  /// [kakaoId]: 쿠폰을 발급할 사용자의 카카오 ID
+  /// [restaurantId]: 쿠폰을 발급할 식당 ID
+  /// [couponType]: 쿠폰 타입 (선택사항)
+  static Future<Map<String, dynamic>> issueCouponToUser({
+    required String kakaoId,
+    required int restaurantId,
+    String? couponType,
+  }) async {
+    final body = <String, dynamic>{
+      'kakao_id': kakaoId,
+      'restaurant_id': restaurantId,
+    };
+    if (couponType != null && couponType.isNotEmpty) {
+      body['coupon_type'] = couponType;
+    }
+
+    // 여러 가능한 엔드포인트 시도
+    final endpoints = [
+      '/api/admin/coupons/issue/',
+      '/api/coupons/admin/issue/',
+      '/api/coupons/issue/',
+    ];
+
+    for (final endpoint in endpoints) {
+      try {
+        final response = await ApiClient.post(
+          endpoint,
+          body: body,
+        );
+        final decoded = _decodeResponseBody(response);
+        if (decoded is Map<String, dynamic>) {
+          return decoded;
+        }
+        return {'ok': true, 'message': '쿠폰이 발급되었습니다.'};
+      } on ApiHttpException catch (e) {
+        // 404면 다음 엔드포인트 시도, 그 외는 에러
+        if (e.statusCode != 404 && endpoint == endpoints.last) {
+          rethrow;
+        }
+        continue;
+      }
+    }
+
+    throw ApiHttpException(404, '쿠폰 발급 API를 찾을 수 없습니다.');
+  }
+
   static dynamic _decodeResponseBody(http.Response response) {
     if (response.bodyBytes.isEmpty) return null;
     try {

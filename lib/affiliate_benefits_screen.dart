@@ -542,6 +542,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       isScrollControlled: true,
       isDismissible: false,
       enableDrag: false,
+      useSafeArea: true,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -662,7 +663,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     if (_categories.isEmpty) {
       return const SizedBox.shrink();
     }
-    const double scale = 1.125;
+    const double scale = 0.81; // 기존 1.125의 0.72배
     return SizedBox(
       height: 90 * scale,
       child: ListView.separated(
@@ -1569,11 +1570,14 @@ class _AffiliateRestaurantDetailSheetState
   Widget build(BuildContext context) {
     final restaurant = widget.restaurant;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
+    final topPadding = MediaQuery.of(context).padding.top;
+    // 아이폰 다이나믹 아일랜드를 고려한 최소 상단 패딩 (최소 50px 보장)
+    final safeTopPadding = math.max(topPadding, 50.0);
 
     return Container(
       color: Colors.white,
-      child: SafeArea(
-        top: true,
+      child: Padding(
+        padding: EdgeInsets.only(top: safeTopPadding),
         child: Stack(
           children: [
             Padding(
