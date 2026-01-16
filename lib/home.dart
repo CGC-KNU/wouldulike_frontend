@@ -596,6 +596,8 @@ class _HomeContentState extends State<HomeContent> {
                 ),
               ),
             ),
+          if (_bannerAutoScrollTimer?.isActive ?? false)
+            const SizedBox(), // Cleaned up debug text
         ],
       ),
     );

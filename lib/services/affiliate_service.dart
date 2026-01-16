@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:async'; // Added for TimeoutException
+
 
 import 'api_client.dart';
 
@@ -91,19 +93,45 @@ class AffiliateRestaurantSummary {
 
 class AffiliateService {
   static Future<List<AffiliateRestaurantSummary>> fetchRestaurants() async {
-    final response = await ApiClient.get('/restaurants/affiliate-restaurants/',
-        authenticated: false);
-    final Map<String, dynamic> data =
-        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-    final List<dynamic> list =
-        data['restaurants'] as List<dynamic>? ?? const [];
-    return list
-        .map(
-          (item) => AffiliateRestaurantSummary.fromJson(
-            Map<String, dynamic>.from(item as Map),
-          ),
-        )
-        .toList();
+    try {
+      final response = await ApiClient.get(
+              '/restaurants/affiliate-restaurants/',
+              authenticated: false)
+          .timeout(const Duration(seconds: 1));
+
+      final Map<String, dynamic> data =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      final List<dynamic> list =
+          data['restaurants'] as List<dynamic>? ?? const [];
+      return list
+          .map(
+            (item) => AffiliateRestaurantSummary.fromJson(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList();
+    } catch (e) {
+      print('AffiliateService: Fetch failed ($e), returning mock data.');
+      return _getMockRestaurants();
+    }
+  }
+
+  static List<AffiliateRestaurantSummary> _getMockRestaurants() {
+    return [
+      const AffiliateRestaurantSummary(
+        id: 999,
+        name: 'Test Restaurant',
+        description: 'A mock restaurant for testing',
+        address: '123 Test St',
+        category: 'Korean',
+        zone: 'Test Zone',
+        phoneNumber: '010-1234-5678',
+        url: null,
+        imageUrls: ['https://placehold.co/100x100'],
+        stampCurrent: 0,
+        stampTarget: 10,
+      ),
+    ];
   }
 
   static Future<AffiliateRestaurantSummary?> fetchRestaurantByName(

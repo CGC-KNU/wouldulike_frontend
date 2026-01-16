@@ -36,7 +36,8 @@ class TrendItem {
 
 class TrendService {
   static Future<List<TrendItem>> fetchTrends() async {
-    final response = await ApiClient.get('/trends/', authenticated: false);
+    final response = await ApiClient.get('/trends/', authenticated: false)
+        .timeout(const Duration(seconds: 1));
     final body = utf8.decode(response.bodyBytes);
     final decoded = jsonDecode(body);
 

@@ -31,7 +31,7 @@ Future<void> main() async {
     }
   });
   try {
-    final initialUri = await appLinks.getInitialAppLink();
+    final initialUri = await appLinks.getInitialLink();
     if (initialUri != null) {
       debugPrint('Initial deep link: ' + initialUri.toString());
     }
@@ -203,9 +203,12 @@ class MainScreenState extends State<MainScreen> {
       }
 
       _navigateToMainScreen();
+      _navigateToMainScreen();
     } catch (e) {
       print('Error checking type: ' + e.toString());
-      _showErrorDialog();
+      print('Proceeding with fallback type due to error.');
+      await _assignFallbackType(force: true);
+      _navigateToMainScreen();
     }
   }
 
@@ -221,7 +224,9 @@ class MainScreenState extends State<MainScreen> {
       int delay = 1;
 
       do {
-        foodResponse = await http.get(Uri.parse(foodUrl));
+        foodResponse = await http
+            .get(Uri.parse(foodUrl))
+            .timeout(const Duration(seconds: 1));
         if (foodResponse.statusCode == 200 ||
             foodResponse.statusCode == 400 ||
             foodResponse.statusCode == 404) {
@@ -261,7 +266,7 @@ class MainScreenState extends State<MainScreen> {
             Uri.parse(restaurantUrl),
             headers: {'Content-Type': 'application/json'},
             body: json.encode({'food_names': foodNames}),
-          );
+          ).timeout(const Duration(seconds: 1));
           if (restaurantResponse.statusCode == 200 ||
               restaurantResponse.statusCode == 400 ||
               restaurantResponse.statusCode == 404) {

@@ -145,117 +145,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
-<<<<<<< HEAD
-    const backgroundColor = Color(0xFF10163A);
-    final titleStyle = Theme.of(context).textTheme.headlineMedium?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              letterSpacing: 0.5,
-            ) ??
-        const TextStyle(
-          color: Colors.white,
-          fontSize: 34,
-          fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
-        );
-    const subtitleStyle = TextStyle(
-      color: Color(0xCCFFFFFF),
-      fontSize: 16,
-      height: 1.5,
-    );
-
-    return Scaffold(
-      backgroundColor: backgroundColor,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32),
-          child: _isLoggingIn
-              ? const Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 96),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Text('WouldULike', style: titleStyle),
-                        const SizedBox(height: 16),
-                        const Text(
-                          '내 주변 모든 혜택을 우주라이크와 함께',
-                          style: subtitleStyle,
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Column(
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: _loginWithKakao,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFFEE500),
-                              foregroundColor: Colors.black,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              textStyle: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: const BoxDecoration(
-                                    color: Colors.black,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  alignment: Alignment.center,
-                                  child: const Text(
-                                    '톡',
-                                    style: TextStyle(
-                                      color: Color(0xFFFEE500),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                const Text('카카오로 간편로그인'),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 20),
-                        TextButton(
-                          onPressed: () {
-                            Navigator.pushReplacementNamed(context, '/main');
-                          },
-                          style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xCCFFFFFF),
-                            textStyle: const TextStyle(fontSize: 14),
-                          ),
-                          child: const Text('지금은 괜찮아요'),
-                        ),
-                        const SizedBox(height: 36),
-                      ],
-                    ),
-                  ],
-                ),
-        ),
-=======
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
 
@@ -523,7 +412,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ],
               ),
->>>>>>> b9dffe8ab503eebcc1a2a71c4e688b4fcb434fe5
       ),
     );
   }
