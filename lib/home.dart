@@ -253,7 +253,8 @@ class _HomeContentState extends State<HomeContent> {
   void _handleAffiliateRewardCouponsIssued(
       List<String> couponCodes, int restaurantId) {
     if (couponCodes.isEmpty) return;
-    final existingCodes = _affiliateCoupons.map((coupon) => coupon.code).toSet();
+    final existingCodes =
+        _affiliateCoupons.map((coupon) => coupon.code).toSet();
     final newCoupons = couponCodes
         .where((code) => !existingCodes.contains(code))
         .map(
@@ -267,8 +268,8 @@ class _HomeContentState extends State<HomeContent> {
     if (newCoupons.isEmpty) return;
     if (!mounted) return;
     setState(() {
-      _affiliateCoupons =
-          List<UserCoupon>.from(_affiliateCoupons)..addAll(newCoupons);
+      _affiliateCoupons = List<UserCoupon>.from(_affiliateCoupons)
+        ..addAll(newCoupons);
     });
   }
 
@@ -399,7 +400,7 @@ class _HomeContentState extends State<HomeContent> {
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    '회원가입을 축하드려요! 신규가입 쿠폰이 발급되었어요.\n쿠폰함에서 확인하고 사용해 보세요.',
+                    '회원가입을 축하드려요!\n쿠폰함에서 확인하고 사용해 보세요.',
                     style: TextStyle(
                       color: Color(0xFF39393E),
                       fontSize: 14,
@@ -541,8 +542,7 @@ class _HomeContentState extends State<HomeContent> {
     final List<TrendItem> items = _promotionItems;
     final int itemCount = items.isNotEmpty ? items.length : 1;
     final bool hasRemoteData = _trends.isNotEmpty;
-    final double bannerHeight =
-        width <= 0 ? 0 : width * (219.53 / 345.0);
+    final double bannerHeight = width <= 0 ? 0 : width * (219.53 / 345.0);
 
     return SizedBox(
       height: bannerHeight,
@@ -551,7 +551,8 @@ class _HomeContentState extends State<HomeContent> {
           ClipRRect(
             borderRadius: BorderRadius.circular(15),
             child: PageView.builder(
-              key: ValueKey('${hasRemoteData ? 'remote' : 'fallback'}-$itemCount'),
+              key: ValueKey(
+                  '${hasRemoteData ? 'remote' : 'fallback'}-$itemCount'),
               controller: _bannerController,
               itemCount: itemCount,
               physics: itemCount > 1
@@ -593,10 +594,9 @@ class _HomeContentState extends State<HomeContent> {
 
   Widget _buildPromotionSlide(TrendItem item) {
     final bool hasLink = item.hasBlogLink;
-    final String title =
-        (item.title != null && item.title!.trim().isNotEmpty)
-            ? item.title!.trim()
-            : _defaultPromotionTitle;
+    final String title = (item.title != null && item.title!.trim().isNotEmpty)
+        ? item.title!.trim()
+        : _defaultPromotionTitle;
     final String description =
         (item.description != null && item.description!.trim().isNotEmpty)
             ? item.description!.trim()
@@ -730,9 +730,7 @@ class _HomeContentState extends State<HomeContent> {
           width: isActive ? 12 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: isActive
-                ? const Color(0xFF312E81)
-                : const Color(0xFFD1D5DB),
+            color: isActive ? const Color(0xFF312E81) : const Color(0xFFD1D5DB),
             borderRadius: BorderRadius.circular(3),
           ),
         );
@@ -1032,7 +1030,6 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
-
 }
 
 class _AffiliateRestaurantCard extends StatelessWidget {
@@ -1057,13 +1054,13 @@ class _AffiliateRestaurantCard extends StatelessWidget {
     // 예: "스톡홀름샐러드 정문점" -> "스톡홀름샐러드"
     // 예: "대부 대왕유부초밥 경대점" -> "대부 대왕유부초밥"
     final name = restaurant.name.trim();
-    
+
     // 마지막에 공백 + 한글 + "점" 패턴 제거
     final pattern = RegExp(r'\s+[가-힣]+점$');
     if (pattern.hasMatch(name)) {
       return name.replaceAll(pattern, '');
     }
-    
+
     // 마지막에 "점"으로 끝나는 경우 (공백 없이)
     if (name.endsWith('점') && name.length > 1) {
       // 마지막 "점" 앞이 한글인 경우만 제거
@@ -1072,7 +1069,7 @@ class _AffiliateRestaurantCard extends StatelessWidget {
         return name.substring(0, name.length - 1);
       }
     }
-    
+
     return name;
   }
 
@@ -1129,10 +1126,10 @@ class _AffiliateRestaurantCard extends StatelessWidget {
                   alignment: Alignment.topLeft,
                   child: SizedBox(
                     width: 128,
-                child: Text(
-                  _description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                    child: Text(
+                      _description,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Color(0xFF585555),
                         fontSize: 11.5,
