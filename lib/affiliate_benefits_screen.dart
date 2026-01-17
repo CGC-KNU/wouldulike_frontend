@@ -105,6 +105,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   bool _requiresLogin = false;
   String _selectedCategory = 'ALL';
   List<String> _categories = const ['ALL'];
+  bool _isOpeningDetail = false;
 
   @override
   void initState() {
@@ -519,54 +520,62 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
   Future<void> _openRestaurantDetail(
       AffiliateRestaurantSummary restaurant) async {
+    if (_isOpeningDetail) return;
+    setState(() => _isOpeningDetail = true);
     // 식당 상세 화면을 열기 전에 최신 쿠폰 정보를 가져옵니다.
     List<UserCoupon> initialCoupons = _couponsForRestaurant(restaurant.id);
-    if (!_requiresLogin) {
-      try {
-        final refreshedCoupons =
-            await _refreshCouponsForRestaurant(restaurant.id);
-        if (refreshedCoupons.isNotEmpty) {
-          initialCoupons = refreshedCoupons;
-          // 메인 화면의 쿠폰 목록도 업데이트
-          setState(() {
-            _issuedCoupons = _sortCouponsByStatus(
-              List<UserCoupon>.from(_issuedCoupons)
-                ..removeWhere((c) => c.restaurantId == restaurant.id)
-                ..addAll(refreshedCoupons),
-            );
-            _couponCounts = _buildCouponCounts(_issuedCoupons);
-          });
+    try {
+      if (!_requiresLogin) {
+        try {
+          final refreshedCoupons =
+              await _refreshCouponsForRestaurant(restaurant.id);
+          if (refreshedCoupons.isNotEmpty) {
+            initialCoupons = refreshedCoupons;
+            // 메인 화면의 쿠폰 목록도 업데이트
+            setState(() {
+              _issuedCoupons = _sortCouponsByStatus(
+                List<UserCoupon>.from(_issuedCoupons)
+                  ..removeWhere((c) => c.restaurantId == restaurant.id)
+                  ..addAll(refreshedCoupons),
+              );
+              _couponCounts = _buildCouponCounts(_issuedCoupons);
+            });
+          }
+        } catch (e) {
+          // 쿠폰 새로고침 실패 시 기존 쿠폰 목록 사용
         }
-      } catch (e) {
-        // 쿠폰 새로고침 실패 시 기존 쿠폰 목록 사용
+      }
+
+      await showModalBottomSheet<void>(
+        context: context,
+        isScrollControlled: true,
+        isDismissible: false,
+        enableDrag: false,
+        useSafeArea: true,
+        backgroundColor: Colors.white,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        builder: (context) {
+          return AffiliateRestaurantDetailSheet(
+            restaurant: restaurant,
+            coupons: initialCoupons,
+            requiresLogin: _requiresLogin,
+            initialStampStatus: _stampStatuses[restaurant.id],
+            onStampStatusUpdated: (status) =>
+                _handleStampStatusUpdated(restaurant.id, status),
+            onCouponRedeemed: (code) =>
+                _handleCouponRedeemed(code, restaurant.id),
+            onRewardCouponsIssued: (codes) =>
+                _handleRewardCouponsIssued(codes, restaurant.id),
+          );
+        },
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isOpeningDetail = false);
       }
     }
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      isDismissible: false,
-      enableDrag: false,
-      useSafeArea: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return AffiliateRestaurantDetailSheet(
-          restaurant: restaurant,
-          coupons: initialCoupons,
-          requiresLogin: _requiresLogin,
-          initialStampStatus: _stampStatuses[restaurant.id],
-          onStampStatusUpdated: (status) =>
-              _handleStampStatusUpdated(restaurant.id, status),
-          onCouponRedeemed: (code) =>
-              _handleCouponRedeemed(code, restaurant.id),
-          onRewardCouponsIssued: (codes) =>
-              _handleRewardCouponsIssued(codes, restaurant.id),
-        );
-      },
-    );
   }
 
   @override
