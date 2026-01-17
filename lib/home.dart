@@ -258,7 +258,8 @@ class _HomeContentState extends State<HomeContent> {
   void _handleAffiliateRewardCouponsIssued(
       List<String> couponCodes, int restaurantId) {
     if (couponCodes.isEmpty) return;
-    final existingCodes = _affiliateCoupons.map((coupon) => coupon.code).toSet();
+    final existingCodes =
+        _affiliateCoupons.map((coupon) => coupon.code).toSet();
     final newCoupons = couponCodes
         .where((code) => !existingCodes.contains(code))
         .map(
@@ -272,8 +273,8 @@ class _HomeContentState extends State<HomeContent> {
     if (newCoupons.isEmpty) return;
     if (!mounted) return;
     setState(() {
-      _affiliateCoupons =
-          List<UserCoupon>.from(_affiliateCoupons)..addAll(newCoupons);
+      _affiliateCoupons = List<UserCoupon>.from(_affiliateCoupons)
+        ..addAll(newCoupons);
     });
   }
 
@@ -386,101 +387,98 @@ class _HomeContentState extends State<HomeContent> {
       context: context,
       barrierDismissible: false,
       builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return AlertDialog(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-              title: const Text(
-                '신규가입 쿠폰이 도착했어요',
-                style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF111827),
-                ),
-              ),
-              content: const Text(
-                '회원가입을 축하드려요! 신규가입 쿠폰이 발급되었어요.\n쿠폰함에서 확인하고 사용해 보세요.',
-                style: TextStyle(
-                  fontSize: 15,
-                  height: 1.4,
-                  color: Color(0xFF374151),
-                ),
-              ),
-              actionsPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              actions: [
-                SizedBox(
-                  width: double.infinity,
-                  child: Row(
-                    children: [
-                      Flexible(
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              dontShowAgain = !dontShowAgain;
-                            });
-                          },
-                          borderRadius: BorderRadius.circular(8),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 4,
-                              vertical: 4,
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Checkbox(
-                                  value: dontShowAgain,
-                                  onChanged: (value) {
-                                    setState(() {
-                                      dontShowAgain = value ?? false;
-                                    });
-                                  },
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                ),
-                                const SizedBox(width: 4),
-                                const Text(
-                                  '다시 보지 않기',
-                                  style: TextStyle(
-                                    fontSize: 13,
-                                    color: Color(0xFF4B5563),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF4F46E5),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 10,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        onPressed: () =>
-                            Navigator.of(dialogContext).pop(dontShowAgain),
-                        child: const Text(
-                          '확인',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ],
+        return StatefulBuilder(builder: (context, setState) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 360),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                decoration: ShapeDecoration(
+                  color: const Color(0xFFF2F2F2),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
                   ),
                 ),
-              ],
-            );
-          },
-        );
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '신규가입 쿠폰이 도착했어요\n',
+                      style: TextStyle(
+                        color: Color(0xFF39393E),
+                        fontSize: 19,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w800,
+                        height: 1.21,
+                      ),
+                    ),
+                    const SizedBox(height: 22),
+                    const Text(
+                      '회원가입을 축하드려요!\n신규가입 쿠폰이 발급되었어요.\n쿠폰함에서 확인하고 사용해 보세요.',
+                      style: TextStyle(
+                        color: Color(0xFF39393E),
+                        fontSize: 15,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w500,
+                        height: 1.2,
+                      ),
+                    ),
+                    const SizedBox(height: 26),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(true),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              foregroundColor: const Color(0xFF39393E),
+                              side: const BorderSide(color: Color(0xFFBABAC0)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              textStyle: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            child: const Text('확인'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(dontShowAgain),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1C203C),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              textStyle: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                letterSpacing: -0.32,
+                              ),
+                            ),
+                            child: const Text('다시 보지 않기'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        });
       },
     );
     _welcomeDialogVisible = false;
@@ -549,8 +547,7 @@ class _HomeContentState extends State<HomeContent> {
     final List<TrendItem> items = _promotionItems;
     final int itemCount = items.isNotEmpty ? items.length : 1;
     final bool hasRemoteData = _trends.isNotEmpty;
-    final double bannerHeight =
-        width <= 0 ? 0 : width * (219.53 / 345.0);
+    final double bannerHeight = width <= 0 ? 0 : width * (219.53 / 345.0);
 
     return SizedBox(
       height: bannerHeight,
@@ -559,7 +556,8 @@ class _HomeContentState extends State<HomeContent> {
           ClipRRect(
             borderRadius: BorderRadius.circular(15),
             child: PageView.builder(
-              key: ValueKey('${hasRemoteData ? 'remote' : 'fallback'}-$itemCount'),
+              key: ValueKey(
+                  '${hasRemoteData ? 'remote' : 'fallback'}-$itemCount'),
               controller: _bannerController,
               itemCount: itemCount,
               physics: itemCount > 1
@@ -605,10 +603,9 @@ class _HomeContentState extends State<HomeContent> {
 
   Widget _buildPromotionSlide(TrendItem item) {
     final bool hasLink = item.hasBlogLink;
-    final String title =
-        (item.title != null && item.title!.trim().isNotEmpty)
-            ? item.title!.trim()
-            : _defaultPromotionTitle;
+    final String title = (item.title != null && item.title!.trim().isNotEmpty)
+        ? item.title!.trim()
+        : _defaultPromotionTitle;
     final String description =
         (item.description != null && item.description!.trim().isNotEmpty)
             ? item.description!.trim()
@@ -737,9 +734,7 @@ class _HomeContentState extends State<HomeContent> {
           width: isActive ? 12 : 6,
           height: 6,
           decoration: BoxDecoration(
-            color: isActive
-                ? const Color(0xFF312E81)
-                : const Color(0xFFD1D5DB),
+            color: isActive ? const Color(0xFF312E81) : const Color(0xFFD1D5DB),
             borderRadius: BorderRadius.circular(3),
           ),
         );
@@ -1067,7 +1062,6 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
-
 }
 
 class _AffiliateRestaurantCard extends StatelessWidget {
@@ -1140,10 +1134,10 @@ class _AffiliateRestaurantCard extends StatelessWidget {
                   alignment: Alignment.topLeft,
                   child: SizedBox(
                     width: 128,
-                child: Text(
-                  _description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                    child: Text(
+                      _description,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Color(0xFF585555),
                         fontSize: 11.5,

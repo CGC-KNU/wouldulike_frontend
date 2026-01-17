@@ -399,6 +399,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
         (coupon.restaurantId != null
             ? '사용 가능 매장 ID: ${coupon.restaurantId}'
             : '사용 가능한 매장 정보가 없어요.');
+    final expiryText = _formatExpiryDate(coupon.expiresAt);
+    final expiryColor = const Color(0xFF312E81).withOpacity(0.75);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -461,21 +463,21 @@ class _CouponListScreenState extends State<CouponListScreen> {
                     color: Color(0xFF4B5563),
                   ),
                 ),
-                if (_formatExpiryDate(coupon.expiresAt) != null) ...[
+                if (expiryText != null) ...[
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.access_time,
                         size: 14,
-                        color: Color(0xFFEF4444),
+                        color: expiryColor,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _formatExpiryDate(coupon.expiresAt)!,
-                        style: const TextStyle(
+                        expiryText,
+                        style: TextStyle(
                           fontSize: 12,
-                          color: Color(0xFFEF4444),
+                          color: expiryColor,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

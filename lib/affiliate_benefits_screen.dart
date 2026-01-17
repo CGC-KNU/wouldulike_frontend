@@ -1309,6 +1309,33 @@ class _AffiliateRestaurantDetailSheetState
     }
   }
 
+  String? _formatExpiryDate(DateTime? expiresAt) {
+    if (expiresAt == null) return null;
+
+    final now = DateTime.now();
+    final difference = expiresAt.difference(now);
+
+    if (difference.isNegative) {
+      return '만료됨';
+    }
+
+    if (difference.inHours < 24) {
+      if (difference.inHours > 0) {
+        return '${difference.inHours}시간 남음';
+      }
+      if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}분 남음';
+      }
+      return '곧 만료';
+    }
+
+    if (difference.inDays < 7) {
+      return '${difference.inDays}일 남음';
+    }
+
+    return '${expiresAt.year}.${expiresAt.month.toString().padLeft(2, '0')}.${expiresAt.day.toString().padLeft(2, '0')}까지';
+  }
+
   Future<void> _handleRedeem(UserCoupon coupon) async {
     final pin = await _promptForPin(
       title: '쿠폰 사용',
@@ -2351,6 +2378,8 @@ class _AffiliateRestaurantDetailSheetState
     final subtitle =
         benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
     final statusText = _couponStatusLabel(coupon.status);
+    final expiryText = _formatExpiryDate(coupon.expiresAt);
+    final expiryColor = const Color.fromARGB(255, 185, 183, 247);
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
@@ -2389,6 +2418,27 @@ class _AffiliateRestaurantDetailSheetState
                     fontWeight: FontWeight.w500,
                   ),
                 ),
+                if (expiryText != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 14,
+                        color: expiryColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        expiryText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: expiryColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
