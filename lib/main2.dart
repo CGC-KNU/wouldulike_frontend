@@ -5,6 +5,7 @@ import 'package:new1/affiliate_benefits_screen.dart';
 import 'home.dart';
 import 'my.dart';
 import 'package:new1/utils/location_helper.dart';
+import 'package:new1/services/api_client.dart';
 
 class MainAppScreen extends StatefulWidget {
   const MainAppScreen({super.key});
@@ -13,15 +14,50 @@ class MainAppScreen extends StatefulWidget {
   State<MainAppScreen> createState() => _MainAppScreenState();
 }
 
-class _MainAppScreenState extends State<MainAppScreen> {
+class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       LocationHelper.refreshCurrentLocation();
+      // 앱 시작 시 토큰 상태 확인
+      _checkTokenIfNeeded();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // 타이머 취소
+    ApiClient.cancelTokenRefreshTimer();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // 앱이 포그라운드로 돌아올 때 토큰 상태 확인 및 타이머 재설정
+      _checkTokenIfNeeded();
+    } else if (state == AppLifecycleState.paused) {
+      // 백그라운드로 갈 때 타이머 취소 (배터리 절약)
+      ApiClient.cancelTokenRefreshTimer();
+    }
+  }
+
+  /// 토큰이 필요하면 확인하고 갱신
+  Future<void> _checkTokenIfNeeded() async {
+    try {
+      await ApiClient.ensureTokenValid();
+      // 토큰 갱신 타이머 재설정
+      await ApiClient.scheduleTokenRefresh();
+    } catch (e) {
+      // 토큰 갱신 실패는 조용히 처리 (API 요청 시 다시 시도됨)
+      debugPrint('[MainAppScreen] Token validation error: $e');
+    }
   }
 
   void _onItemTapped(int index) {
@@ -59,9 +95,7 @@ class _MainAppScreenState extends State<MainAppScreen> {
 
     return Scaffold(
       body: _buildCurrentScreen(),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: BottomNavigationBar(
+      bottomNavigationBar: BottomNavigationBar(
           elevation: 4,
           backgroundColor: Colors.white,
           type: BottomNavigationBarType.fixed,
@@ -104,7 +138,6 @@ class _MainAppScreenState extends State<MainAppScreen> {
           unselectedItemColor: unselectedColor,
           onTap: _onItemTapped,
         ),
-      ),
     );
   }
 }

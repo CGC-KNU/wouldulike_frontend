@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:new1/utils/user_type_helper.dart';
 import 'services/user_service.dart';
+import 'services/api_client.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'login_screen.dart';
@@ -46,14 +47,81 @@ Future<void> main() async {
   runApp(MyApp(isLoggedIn: loggedIn));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final bool isLoggedIn;
   const MyApp({super.key, required this.isLoggedIn});
 
   @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // 앱 시작 시 토큰 상태 확인
+    _checkTokenOnAppStart();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    // 타이머 취소
+    ApiClient.cancelTokenRefreshTimer();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      // 앱이 포그라운드로 돌아올 때 토큰 상태 확인 및 타이머 재설정
+      _checkTokenWhenResumed();
+    } else if (state == AppLifecycleState.paused) {
+      // 백그라운드로 갈 때 타이머 취소 (배터리 절약)
+      ApiClient.cancelTokenRefreshTimer();
+    }
+  }
+
+  /// 앱 시작 시 토큰 상태 확인
+  Future<void> _checkTokenOnAppStart() async {
+    if (!widget.isLoggedIn) {
+      return;
+    }
+    // 약간의 지연 후 토큰 확인 (앱 초기화 완료 후)
+    await Future.delayed(const Duration(seconds: 1));
+    await _ensureTokenValid();
+    // 토큰 갱신 타이머 설정
+    await ApiClient.scheduleTokenRefresh();
+  }
+
+  /// 앱이 포그라운드로 돌아올 때 토큰 상태 확인
+  Future<void> _checkTokenWhenResumed() async {
+    if (!widget.isLoggedIn) {
+      return;
+    }
+    await _ensureTokenValid();
+    // 토큰 갱신 타이머 다시 설정
+    await ApiClient.scheduleTokenRefresh();
+  }
+
+  /// 토큰이 유효한지 확인하고 필요시 갱신
+  Future<void> _ensureTokenValid() async {
+    try {
+      // ApiClient의 ensureTokenValid 메서드를 사용
+      // 이 메서드는 토큰이 곧 만료되면 자동으로 갱신합니다
+      await ApiClient.ensureTokenValid();
+    } catch (e) {
+      // 토큰 갱신 실패는 조용히 처리 (API 요청 시 다시 시도됨)
+      debugPrint('[MyApp] Token validation error: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: isLoggedIn ? const MainScreen() : const LoginScreen(),
+      home: widget.isLoggedIn ? const MainScreen() : const LoginScreen(),
       routes: {
         '/main': (context) => const MainScreen(),
         '/login': (context) => const LoginScreen(),
@@ -109,6 +177,20 @@ class MainScreenState extends State<MainScreen> {
 
   Future<void> _initFirebaseMessaging() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
+    
+    // 알림 권한 요청 (Android 13 이상)
+    NotificationSettings settings = await messaging.requestPermission(
+      alert: true,
+      announcement: false,
+      badge: true,
+      carPlay: false,
+      criticalAlert: false,
+      provisional: false,
+      sound: true,
+    );
+    
+    print('알림 권한 상태: ${settings.authorizationStatus}');
+    
     String? token = await messaging.getToken();
     if (token != null) {
       print('FCM Token: \$token');

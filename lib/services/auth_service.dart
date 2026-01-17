@@ -61,6 +61,20 @@ class AuthService {
         'user_nickname', data['user']['nickname'] ?? '');
     await prefs.setString('user_profile_image_url',
         data['user']['profile_image_url'] ?? '');
+    // 카카오 ID 저장 (BigInteger이므로 String으로 저장)
+    if (data['user']['kakao_id'] != null) {
+      await prefs.setString('user_kakao_id', data['user']['kakao_id'].toString());
+    }
+    // 토큰 만료 시간 저장 (서버에서 제공하는 경우)
+    final tokenData = data['token'];
+    if (tokenData is Map<String, dynamic>) {
+      if (tokenData['access_expires_at'] != null) {
+        await prefs.setInt('access_expires_at', tokenData['access_expires_at'] as int);
+      }
+      if (tokenData['refresh_expires_at'] != null) {
+        await prefs.setInt('refresh_expires_at', tokenData['refresh_expires_at'] as int);
+      }
+    }
     return data;
   }
 
@@ -83,6 +97,12 @@ class AuthService {
     await prefs.remove('kakao_logged_in');
     await prefs.remove('jwt_access_token');
     await prefs.remove('jwt_refresh_token');
+    await prefs.remove('user_id');
+    await prefs.remove('user_nickname');
+    await prefs.remove('user_profile_image_url');
+    await prefs.remove('user_kakao_id');
+    await prefs.remove('access_expires_at');
+    await prefs.remove('refresh_expires_at');
   }
 
   static Future<void> unlink() async {
@@ -102,5 +122,11 @@ class AuthService {
     await prefs.remove('kakao_logged_in');
     await prefs.remove('jwt_access_token');
     await prefs.remove('jwt_refresh_token');
+    await prefs.remove('user_id');
+    await prefs.remove('user_nickname');
+    await prefs.remove('user_profile_image_url');
+    await prefs.remove('user_kakao_id');
+    await prefs.remove('access_expires_at');
+    await prefs.remove('refresh_expires_at');
   }
 }

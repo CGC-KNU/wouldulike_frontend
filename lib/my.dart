@@ -52,6 +52,7 @@ class _MyScreenState extends State<MyScreen> {
   bool _referralInputLocked = false;
   ReferralSheetStatus? _lastReferralStatus;
   String? _lastReferralMessage;
+  String? _kakaoId;
 
   @override
   void initState() {
@@ -70,15 +71,18 @@ class _MyScreenState extends State<MyScreen> {
   Future<void> _refreshLoginState() async {
     final prefs = await SharedPreferences.getInstance();
     final loggedIn = prefs.getBool('kakao_logged_in') ?? false;
+    final kakaoId = prefs.getString('user_kakao_id');
     if (!mounted) return;
     setState(() {
       isKakaoLoggedIn = loggedIn;
+      _kakaoId = kakaoId;
       if (!loggedIn) {
         inviteCode = null;
         _inviteError = null;
         _referralInputLocked = false;
         _lastReferralStatus = null;
         _lastReferralMessage = null;
+        _kakaoId = null;
       }
     });
     if (loggedIn) {
@@ -422,25 +426,47 @@ class _MyScreenState extends State<MyScreen> {
   Widget _buildAccountTile() {
     final isBusy = _isKakaoLoginInProgress || _isKakaoLogoutInProgress;
     final label = isKakaoLoggedIn ? '로그아웃' : '로그인';
-    return _buildMenuRow(
-      leading: Row(
-        children: [
-          _buildKakaoBadge(),
-          const SizedBox(width: 12),
-          Text(label, style: _kItemTitleStyle),
-        ],
-      ),
-      trailing: isBusy
-          ? const SizedBox(
-              height: 20,
-              width: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          : _buildChevron(),
-      onTap: isBusy
-          ? null
-          : (isKakaoLoggedIn ? _handleKakaoLogout : _handleKakaoLogin),
-      indent: _kItemIndent,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildMenuRow(
+          leading: Row(
+            children: [
+              _buildKakaoBadge(),
+              const SizedBox(width: 12),
+              Text(label, style: _kItemTitleStyle),
+            ],
+          ),
+          trailing: isBusy
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : _buildChevron(),
+          onTap: isBusy
+              ? null
+              : (isKakaoLoggedIn ? _handleKakaoLogout : _handleKakaoLogin),
+          indent: _kItemIndent,
+        ),
+        // 카카오 ID 표시 (로그인 상태일 때만)
+        if (isKakaoLoggedIn && _kakaoId != null && _kakaoId!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(
+              left: _kItemIndent + 44, // 아이콘 너비(32) + 간격(12) + 좌측 여백
+              top: 6,
+              bottom: 6,
+            ),
+            child: Text(
+              '우주라이크 ID: $_kakaoId',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -458,7 +484,7 @@ class _MyScreenState extends State<MyScreen> {
           indent: _kItemIndent,
         ),
         Padding(
-          padding: const EdgeInsets.only(left: _kItemIndent, top: 8),
+          padding: const EdgeInsets.only(left: _kItemIndent, top: 6),
           child: _buildInviteCodeBody(),
         ),
       ],
@@ -550,7 +576,7 @@ class _MyScreenState extends State<MyScreen> {
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF9FAFB),
         borderRadius: BorderRadius.circular(12),
@@ -586,7 +612,7 @@ class _MyScreenState extends State<MyScreen> {
     double indent = 0,
   }) {
     final rowContent = Container(
-      padding: const EdgeInsets.symmetric(vertical: 14),
+      padding: const EdgeInsets.symmetric(vertical: 10),
       child: Row(
         children: [
           Expanded(child: leading),
@@ -616,7 +642,7 @@ class _MyScreenState extends State<MyScreen> {
 
   Widget _buildSectionHeader(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Text(title, style: _kSectionTitleStyle),
     );
   }
@@ -663,6 +689,7 @@ class _MyScreenState extends State<MyScreen> {
   Widget build(BuildContext context) {
     if (isLoading) {
       return const Scaffold(
+        backgroundColor: Colors.white,
         body: Center(
           child: CircularProgressIndicator(
             color: Color(0xFF312E81),
@@ -696,25 +723,26 @@ class _MyScreenState extends State<MyScreen> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 24, 24, 40),
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
         children: [
           _buildSectionHeader('계정 정보'),
           _buildAccountTile(),
-          const SizedBox(height: 40),
+          const SizedBox(height: 24),
           _buildSectionHeader('활동 내역'),
           _buildMenuRow(
             leading: const Text('쿠폰 사용 내역', style: _kItemTitleStyle),
+            trailing: _buildChevron(),
             onTap: _openCouponList,
             indent: _kItemIndent,
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 24),
           _buildSectionHeader('환경 설정'),
           _buildMenuRow(
             leading: const Text('이벤트/프로모션 알림', style: _kItemTitleStyle),
             onTap: _openNotificationSettings,
             indent: _kItemIndent,
           ),
-          const SizedBox(height: 40),
+          const SizedBox(height: 24),
           _buildSectionHeader('친구 초대'),
           _buildMenuRow(
             leading: const Text('카카오톡 친구 초대하기', style: _kItemTitleStyle),
@@ -734,13 +762,15 @@ class _MyScreenState extends State<MyScreen> {
             },
             indent: _kItemIndent,
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           _buildReferralAcceptTile(),
           _buildInviteCodeInline(),
-          const SizedBox(height: 40),
+          const SizedBox(height: 24),
           _buildSectionHeader('고객 지원'),
           _buildMenuRow(
-            leading: const Text('고객센터', style: _kItemTitleStyle),
+            leading: const Text('홈페이지', style: _kItemTitleStyle),
+            trailing: _buildChevron(),
+            onTap: _openHomepage,
             indent: _kItemIndent,
           ),
           _buildMenuRow(
@@ -777,6 +807,7 @@ enum _ReferralSheetMode { input, success, locked }
 
 class _ReferralCodeSheet extends StatefulWidget {
   const _ReferralCodeSheet({
+    super.key,
     this.initialStatus,
     this.initialMessage,
   });
@@ -841,7 +872,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
       if (!mounted) return;
       setState(() {
         _mode = _ReferralSheetMode.success;
-        _successMessage = '이미 추천 코드를 입력했어요.';
+        _successMessage = '친구 추천 쿠폰이 발급되었어요!';
       });
     } on ApiHttpException catch (e) {
       final message = _parseApiError(e.body) ?? '추천 코드를 확인해 주세요.';
@@ -1068,106 +1099,112 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
       mainAxisSize: MainAxisSize.min,
       children: [
         _buildHandle(),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFEE2E2),
-            borderRadius: BorderRadius.circular(36),
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+          decoration: ShapeDecoration(
+            color: const Color(0xFFF2F2F2),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(15),
+            ),
           ),
-          child: const Icon(
-            Icons.check_circle,
-            color: Color(0xFF10B981),
-            size: 32,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                '친구 추천 쿠폰이 발급되었어요',
+                style: TextStyle(
+                  color: Color(0xFF39393E),
+                  fontSize: 19,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w800,
+                  height: 1.21,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text.rich(
+                TextSpan(
+                  style: const TextStyle(
+                    color: Color(0xFF39393E),
+                    fontSize: 14,
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w500,
+                    height: 1.29,
+                  ),
+                  children: [
+                    TextSpan(
+                      text: '친구의 추천 코드 입력이 완료되었어요.\n쿠폰함에서 ',
+                    ),
+                    const TextSpan(
+                      text: '새로 발급된 쿠폰',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const TextSpan(
+                      text: '을 바로 확인해 보세요.',
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                message,
+                style: const TextStyle(
+                  color: Color(0xFF4B5563),
+                  fontSize: 13,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 20),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        const SizedBox(height: 18),
+        Row(
           children: [
-            const Text(
-              '친구 추천 쿠폰이 발급되었어요',
-              style: TextStyle(
-                color: Color(0xFF39393E),
-                fontSize: 19,
-                fontFamily: 'Pretendard',
-                fontWeight: FontWeight.w800,
-                height: 1.21,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text.rich(
-              TextSpan(
-                style: const TextStyle(
-                  color: Color(0xFF39393E),
-                  fontSize: 14,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w500,
-                  height: 1.29,
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _completeSuccess(false),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  side: const BorderSide(color: Color(0xFFBABAC0)),
+                  foregroundColor: const Color(0xFF39393E),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                  ),
                 ),
-                children: [
-                  const TextSpan(
-                    text: '친구의 추천 코드 입력이 완료되었어요.\n쿠폰함에서 ',
-                  ),
-                  const TextSpan(
-                    text: '새로 발급된 쿠폰',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  const TextSpan(
-                    text: '을 바로 확인해 보세요.',
-                  ),
-                ],
+                child: const Text('닫기'),
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              message,
-              style: const TextStyle(
-                color: Color(0xFF4B5563),
-                fontSize: 13,
-                fontFamily: 'Pretendard',
-                fontWeight: FontWeight.w600,
+            const SizedBox(width: 10),
+            Expanded(
+              child: ElevatedButton(
+                onPressed: () => _completeSuccess(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1C203C),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  textStyle: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w700,
+                    fontSize: 16,
+                    letterSpacing: -0.32,
+                  ),
+                ),
+                child: const Text('내 쿠폰 보기'),
               ),
             ),
           ],
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          '이미 추천 코드를 입력했어요',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF111827),
-          ),
-        ),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: () => _completeSuccess(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF10B981),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            child: const Text(
-              '내 쿠폰 보기',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-        TextButton(
-          onPressed: () => _completeSuccess(false),
-          child: const Text('닫기'),
         ),
       ],
     );
