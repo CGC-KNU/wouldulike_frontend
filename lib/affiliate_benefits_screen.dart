@@ -693,7 +693,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     if (_categories.isEmpty) {
       return const SizedBox.shrink();
     }
-    const double scale = 0.81; // 기존 1.125의 0.72배
+    const double scale = 1.00; // 기존 1.125의 0.72배
     return SizedBox(
       height: 90 * scale,
       child: ListView.separated(
@@ -780,7 +780,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       onTap: () => _openRestaurantDetail(restaurant),
       borderRadius: BorderRadius.circular(10),
       child: Container(
-        width: 372,
+        width: double.infinity,
         decoration: ShapeDecoration(
           color: Colors.white,
           shape: RoundedRectangleBorder(
@@ -880,13 +880,12 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 6),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
                       children: [
-                        Flexible(
-                            child: _buildStampTag(stampLabel, _requiresLogin)),
-                        const SizedBox(width: 6),
-                        Flexible(child: _buildCouponTag(couponCounts)),
+                        _buildStampTag(stampLabel, _requiresLogin),
+                        _buildCouponTag(couponCounts),
                       ],
                     ),
                   ],
@@ -932,7 +931,6 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     }
 
     return Container(
-      constraints: const BoxConstraints(minWidth: 130),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
       decoration: ShapeDecoration(
         color: const Color(0xFFEEF4FF),
