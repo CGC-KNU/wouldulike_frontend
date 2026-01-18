@@ -785,7 +785,7 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.0.0', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.0.5', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],
