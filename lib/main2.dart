@@ -6,6 +6,7 @@ import 'home.dart';
 import 'my.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/services/api_client.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 class MainAppScreen extends StatefulWidget {
   const MainAppScreen({super.key});
@@ -16,6 +17,7 @@ class MainAppScreen extends StatefulWidget {
 
 class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  static const List<String> _tabNames = <String>['home', 'affiliate', 'my'];
 
   @override
   void initState() {
@@ -25,6 +27,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       LocationHelper.refreshCurrentLocation();
       // 앱 시작 시 토큰 상태 확인
       _checkTokenIfNeeded();
+      _logTabView(_selectedIndex);
     });
   }
 
@@ -64,6 +67,19 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     setState(() {
       _selectedIndex = index;
     });
+    _logTabView(index);
+  }
+
+  void _logTabView(int index) {
+    final tabName =
+        index >= 0 && index < _tabNames.length ? _tabNames[index] : 'unknown';
+    AnalyticsLogger.logEvent(
+      'tab_view',
+      parameters: {
+        'tab_index': index,
+        'tab_name': tabName,
+      },
+    );
   }
 
   Widget _buildCurrentScreen() {

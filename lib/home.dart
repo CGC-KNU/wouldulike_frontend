@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
+import 'package:new1/utils/analytics_logger.dart';
 import 'affiliate_benefits_screen.dart';
 import 'coupon_list_screen.dart';
 import 'services/affiliate_service.dart';
@@ -489,7 +490,20 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
-  void _handleTrendTap(String url) {
+  void _handleTrendTap(TrendItem item, int index, bool hasRemoteData) {
+    final String url = item.blogLink ?? '';
+    final String title = (item.title != null && item.title!.trim().isNotEmpty)
+        ? item.title!.trim()
+        : _defaultPromotionTitle;
+    AnalyticsLogger.logEvent(
+      'home_banner_click',
+      parameters: {
+        'banner_index': index,
+        'banner_title': title,
+        'banner_url': url,
+        'banner_source': hasRemoteData ? 'remote' : 'fallback',
+      },
+    );
     final trimmed = url.trim();
     if (trimmed.isEmpty) return;
     _launchURL(trimmed);
@@ -497,7 +511,9 @@ class _HomeContentState extends State<HomeContent> {
 
   void _openCouponList() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CouponListScreen()),
+      MaterialPageRoute(
+        builder: (_) => const CouponListScreen(source: 'home'),
+      ),
     );
   }
 
@@ -574,7 +590,7 @@ class _HomeContentState extends State<HomeContent> {
               },
               itemBuilder: (context, index) {
                 final TrendItem item = items[index];
-                return _buildPromotionSlide(item);
+                return _buildPromotionSlide(item, index, hasRemoteData);
               },
             ),
           ),
@@ -601,7 +617,11 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
-  Widget _buildPromotionSlide(TrendItem item) {
+  Widget _buildPromotionSlide(
+    TrendItem item,
+    int index,
+    bool hasRemoteData,
+  ) {
     final bool hasLink = item.hasBlogLink;
     final String title = (item.title != null && item.title!.trim().isNotEmpty)
         ? item.title!.trim()
@@ -616,7 +636,7 @@ class _HomeContentState extends State<HomeContent> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: hasLink ? () => _handleTrendTap(item.blogLink!) : null,
+          onTap: hasLink ? () => _handleTrendTap(item, index, hasRemoteData) : null,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -677,7 +697,7 @@ class _HomeContentState extends State<HomeContent> {
                       ),
                       const SizedBox(width: 12),
                       _buildTrendArrowButton(
-                        hasLink ? () => _handleTrendTap(item.blogLink!) : null,
+                        hasLink ? () => _handleTrendTap(item, index, hasRemoteData) : null,
                       ),
                     ],
                   ),

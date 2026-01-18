@@ -2,12 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
 
 class CouponListScreen extends StatefulWidget {
-  const CouponListScreen({super.key});
+  const CouponListScreen({super.key, this.source});
+
+  final String? source;
 
   @override
   State<CouponListScreen> createState() => _CouponListScreenState();
@@ -47,6 +50,12 @@ class _CouponListScreenState extends State<CouponListScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logEvent(
+      'coupon_page_view',
+      parameters: {
+        if (widget.source != null) 'source': widget.source!,
+      },
+    );
     _loadCoupons();
   }
 

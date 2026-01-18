@@ -8,17 +8,22 @@ import 'package:new1/utils/user_type_helper.dart';
 import 'services/user_service.dart';
 import 'services/api_client.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'login_screen.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/services.dart';
+import 'firebase_options.dart';
+import 'utils/analytics_logger.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   KakaoSdk.init(nativeAppKey: kakaoNativeAppKey, loggingEnabled: true);
   try {
     final origin = await KakaoSdk.origin;
@@ -56,6 +61,8 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
+
   @override
   void initState() {
     super.initState();
@@ -122,6 +129,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return MaterialApp(
       home: widget.isLoggedIn ? const MainScreen() : const LoginScreen(),
+      navigatorObservers: [
+        FirebaseAnalyticsObserver(analytics: _analytics),
+      ],
       routes: {
         '/main': (context) => const MainScreen(),
         '/login': (context) => const LoginScreen(),
@@ -177,7 +187,7 @@ class MainScreenState extends State<MainScreen> {
 
   Future<void> _initFirebaseMessaging() async {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
-    
+
     // 알림 권한 요청 (Android 13 이상)
     NotificationSettings settings = await messaging.requestPermission(
       alert: true,
@@ -188,9 +198,9 @@ class MainScreenState extends State<MainScreen> {
       provisional: false,
       sound: true,
     );
-    
+
     print('알림 권한 상태: ${settings.authorizationStatus}');
-    
+
     String? token = await messaging.getToken();
     if (token != null) {
       print('FCM Token: \$token');
@@ -198,6 +208,23 @@ class MainScreenState extends State<MainScreen> {
       await prefs.setString('fcm_token', token);
       await _updateFcmToken(token);
     }
+
+    FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationOpen);
+    final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
+    if (initialMessage != null) {
+      _handleNotificationOpen(initialMessage);
+    }
+  }
+
+  void _handleNotificationOpen(RemoteMessage message) {
+    AnalyticsLogger.logEvent(
+      'notification_open',
+      parameters: {
+        'message_id': message.messageId ?? '',
+        'from': message.from ?? '',
+        'has_data': message.data.isNotEmpty,
+      },
+    );
   }
 
   Future<void> _updateFcmToken(String token) async {

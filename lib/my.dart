@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 import 'coupon_list_screen.dart';
 import 'services/api_client.dart';
@@ -344,7 +345,9 @@ class _MyScreenState extends State<MyScreen> {
 
   void _openCouponList() {
     Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const CouponListScreen()),
+      MaterialPageRoute(
+        builder: (_) => const CouponListScreen(source: 'my'),
+      ),
     );
   }
 
@@ -499,6 +502,7 @@ class _MyScreenState extends State<MyScreen> {
           leading: const Text('추천 코드 입력하기', style: _kItemTitleStyle),
           trailing: _buildChevron(),
           onTap: () {
+            AnalyticsLogger.logEvent('referral_code_input_click');
             if (!isKakaoLoggedIn) {
               _promptLoginRequired();
               return;
@@ -754,6 +758,7 @@ class _MyScreenState extends State<MyScreen> {
                   )
                 : _buildChevron(),
             onTap: () {
+              AnalyticsLogger.logEvent('kakao_invite_click');
               if (!isKakaoLoggedIn) {
                 _promptLoginRequired();
                 return;

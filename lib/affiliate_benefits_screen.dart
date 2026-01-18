@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
@@ -50,7 +51,7 @@ const Map<String, _CategoryMeta> _kCategoryMeta = {
   'WESTERN': _CategoryMeta('양식', 'assets/images/western.png'),
   'SNACK': _CategoryMeta('분식', 'assets/images/snack.png'),
   'PUB': _CategoryMeta('술집', 'assets/images/pub.png'),
-  'OTHER': _CategoryMeta('기타', 'assets/images/other.png'),
+  'CAFE': _CategoryMeta('카페', 'assets/images/cafe.png'),
 };
 
 const Map<String, String> _kCategoryAlias = {
@@ -69,9 +70,8 @@ const Map<String, String> _kCategoryAlias = {
   'PUB': 'PUB',
   'BAR': 'PUB',
   '술집': 'PUB',
-  'OTHER': 'OTHER',
-  '기타': 'OTHER',
-  'ETC': 'OTHER',
+  'CAFE': 'CAFE',
+  '카페': 'CAFE',
 };
 
 const List<String> _kCategoryOrder = [
@@ -82,7 +82,7 @@ const List<String> _kCategoryOrder = [
   'WESTERN',
   'SNACK',
   'PUB',
-  'OTHER',
+  'CAFE',
 ];
 
 class _CouponCounts {
@@ -375,6 +375,13 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
   void _selectCategory(String category) {
     if (_selectedCategory == category) return;
+    AnalyticsLogger.logEvent(
+      'affiliate_category_click',
+      parameters: {
+        'category': category,
+        'from_category': _selectedCategory,
+      },
+    );
     setState(() => _selectedCategory = category);
   }
 
@@ -401,7 +408,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     final normalized = category.trim().toUpperCase();
     return _kCategoryAlias[normalized] ??
         _kCategoryAlias[category.trim()] ??
-        'OTHER';
+        normalized;
   }
 
   _CategoryMeta _resolveCategoryMeta(String category) {
@@ -411,8 +418,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       return meta;
     }
     final trimmed = category.trim();
-    final label = trimmed.isEmpty ? '기타' : (category == 'ALL' ? '전체' : trimmed);
-    return _CategoryMeta(label, _kCategoryMeta['OTHER']!.assetPath);
+    final label = trimmed.isEmpty ? '카페' : (category == 'ALL' ? '전체' : trimmed);
+    return _CategoryMeta(label, _kCategoryMeta['CAFE']!.assetPath);
   }
 
   List<UserCoupon> _couponsForRestaurant(int restaurantId) {
@@ -521,6 +528,15 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   Future<void> _openRestaurantDetail(
       AffiliateRestaurantSummary restaurant) async {
     if (_isOpeningDetail) return;
+    AnalyticsLogger.logEvent(
+      'affiliate_restaurant_click',
+      parameters: {
+        'restaurant_id': restaurant.id,
+        'restaurant_name': restaurant.name,
+        'category': restaurant.category,
+        'zone': restaurant.zone,
+      },
+    );
     setState(() => _isOpeningDetail = true);
     // 식당 상세 화면을 열기 전에 최신 쿠폰 정보를 가져옵니다.
     List<UserCoupon> initialCoupons = _couponsForRestaurant(restaurant.id);
