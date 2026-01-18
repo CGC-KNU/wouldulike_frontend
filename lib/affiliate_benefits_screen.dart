@@ -799,43 +799,45 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                 topLeft: Radius.circular(10),
                 bottomLeft: Radius.circular(10),
               ),
-              child: Container(
-                color: const Color(0xFFE5E7EB),
+              child: SizedBox(
                 width: 108,
-                constraints: const BoxConstraints(minHeight: 120),
-                child: thumbnailUrl != null
-                    ? Image.network(
-                        thumbnailUrl,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (context, child, event) {
-                          if (event == null) return child;
-                          final expected = event.expectedTotalBytes;
-                          final loaded = event.cumulativeBytesLoaded;
-                          final progress = expected != null && expected > 0
-                              ? loaded / expected
-                              : null;
-                          return Center(
-                            child: CircularProgressIndicator(
-                              value: progress,
-                              strokeWidth: 2,
-                              valueColor: const AlwaysStoppedAnimation<Color>(
-                                Color(0xFF6366F1),
+                height: 108,
+                child: Container(
+                  color: const Color(0xFFE5E7EB),
+                  child: thumbnailUrl != null
+                      ? Image.network(
+                          thumbnailUrl,
+                          fit: BoxFit.cover,
+                          loadingBuilder: (context, child, event) {
+                            if (event == null) return child;
+                            final expected = event.expectedTotalBytes;
+                            final loaded = event.cumulativeBytesLoaded;
+                            final progress = expected != null && expected > 0
+                                ? loaded / expected
+                                : null;
+                            return Center(
+                              child: CircularProgressIndicator(
+                                value: progress,
+                                strokeWidth: 2,
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF6366F1),
+                                ),
                               ),
-                            ),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) =>
-                            const Icon(
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) =>
+                              const Icon(
+                            Icons.store_mall_directory_outlined,
+                            size: 36,
+                            color: Color(0xFF6B7280),
+                          ),
+                        )
+                      : const Icon(
                           Icons.store_mall_directory_outlined,
                           size: 36,
                           color: Color(0xFF6B7280),
                         ),
-                      )
-                    : const Icon(
-                        Icons.store_mall_directory_outlined,
-                        size: 36,
-                        color: Color(0xFF6B7280),
-                      ),
+                ),
               ),
             ),
             Expanded(
