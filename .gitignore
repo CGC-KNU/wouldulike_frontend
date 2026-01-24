@@ -65,3 +65,8 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Android certificates (security sensitive)
+android/app/*.der
+android/*.der
+*.der

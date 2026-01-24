@@ -2,12 +2,15 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
 
 class CouponListScreen extends StatefulWidget {
-  const CouponListScreen({super.key});
+  const CouponListScreen({super.key, this.source});
+
+  final String? source;
 
   @override
   State<CouponListScreen> createState() => _CouponListScreenState();
@@ -47,6 +50,12 @@ class _CouponListScreenState extends State<CouponListScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logEvent(
+      'coupon_page_view',
+      parameters: {
+        if (widget.source != null) 'source': widget.source!,
+      },
+    );
     _loadCoupons();
   }
 
@@ -411,6 +420,37 @@ class _CouponListScreenState extends State<CouponListScreen> {
     return null;
   }
 
+  String? _formatExpiryDate(DateTime? expiresAt) {
+    if (expiresAt == null) return null;
+
+    final now = DateTime.now();
+    final difference = expiresAt.difference(now);
+
+    // Already expired
+    if (difference.isNegative) {
+      return '만료됨';
+    }
+
+    // Less than 24 hours
+    if (difference.inHours < 24) {
+      if (difference.inHours > 0) {
+        return '${difference.inHours}시간 남음';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}분 남음';
+      } else {
+        return '곧 만료';
+      }
+    }
+
+    // Less than 7 days
+    if (difference.inDays < 7) {
+      return '${difference.inDays}일 남음';
+    }
+
+    // 7 days or more - show date
+    return '${expiresAt.year}.${expiresAt.month.toString().padLeft(2, '0')}.${expiresAt.day.toString().padLeft(2, '0')}까지';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -509,6 +549,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
         (coupon.restaurantId != null
             ? '사용 가능 매장 ID: ${coupon.restaurantId}'
             : '사용 가능한 매장 정보가 없어요.');
+    final expiryText = _formatExpiryDate(coupon.expiresAt);
+    final expiryColor = const Color(0xFF312E81).withOpacity(0.75);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -571,6 +613,27 @@ class _CouponListScreenState extends State<CouponListScreen> {
                     color: Color(0xFF4B5563),
                   ),
                 ),
+                if (expiryText != null) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 14,
+                        color: expiryColor,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        expiryText,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: expiryColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

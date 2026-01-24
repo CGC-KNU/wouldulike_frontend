@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
-import 'package:new1/utils/user_type_helper.dart';
 
 class MatchingScreen extends StatefulWidget {
   const MatchingScreen({super.key});
@@ -179,11 +178,6 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       if (userUUID.isEmpty) {
         throw Exception('??? UUID? ?? ? ????');
       }
-      await ensureUserTypeCode(
-        prefs,
-        uuid: userUUID,
-      );
-
       final url =
           'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/unique-random-foods/?uuid=$userUUID';
       http.Response response;

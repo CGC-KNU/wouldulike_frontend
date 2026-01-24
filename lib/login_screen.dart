@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'services/auth_service.dart';
+import 'services/api_client.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -128,6 +129,18 @@ class _LoginScreenState extends State<LoginScreen> {
         'user_profile_image_url',
         data['user']['profile_image_url'] ?? '',
       );
+      // 카카오 ID 저장 (BigInteger이므로 String으로 저장)
+      if (data['user']['kakao_id'] != null) {
+        await prefs.setString('user_kakao_id', data['user']['kakao_id'].toString());
+      }
+
+      // 로그인 후 토큰 갱신 타이머 설정
+      try {
+        await ApiClient.scheduleTokenRefresh();
+      } catch (e) {
+        // 타이머 설정 실패는 조용히 처리
+        debugPrint('[LoginScreen] Failed to schedule token refresh: $e');
+      }
 
       if (!mounted) return;
       setState(() => _isLoggingIn = false);
@@ -161,11 +174,23 @@ class _LoginScreenState extends State<LoginScreen> {
               )
             : Stack(
                 children: [
+                  // 상단 컨텐츠 영역
+                  // Positioned: Stack 내에서 위젯의 위치와 크기를 지정
+                  // - top: 상단에서 얼마나 떨어져 있는지 (0 = 화면 최상단)
+                  // - bottom: 하단에서 얼마나 떨어져 있는지 (값이 클수록 영역이 작아짐)
+                  //   현재: screenHeight * 0.344 = 화면 높이의 34.4%만큼 하단에서 떨어짐
+                  //   즉, 상단 65.6% 영역을 사용 (하단 흰색 사각형이 34.4% 차지)
+                  //
+                  // 위치 조정 팁:
+                  // - 로고를 위로 올리려면: top 값을 음수로 (예: top: -30)
+                  // - 로고를 아래로 내리려면: top 값을 양수로 (예: top: 50)
+                  // - 영역을 더 크게 하려면: bottom 값을 줄이기 (예: 0.3)
+                  // - 영역을 더 작게 하려면: bottom 값을 늘리기 (예: 0.4)
                   Positioned(
-                    top: 20,
+                    top: 20, // 상단 여백: 0 = 화면 최상단부터 시작
                     left: 0,
                     right: 0,
-                    bottom: screenHeight * 0.3,
+                    bottom: screenHeight * 0.3, // 하단 여백: 화면 높이의 34.4%
                     child: Padding(
                       padding:
                           EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
@@ -212,17 +237,29 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             textAlign: TextAlign.center,
                           ),
-                          SizedBox(height: 5 * (screenHeight / 844)),
+                          // ===== 서브텍스트 위치 조정 =====
+                          // 1. 로고와 서브텍스트 사이의 간격
+                          //    현재: 화면 높이의 49/844 비율 (약 5.8%)
+                          //    조정: 값을 늘리면 서브텍스트가 아래로, 줄이면 위로 이동 (간격이 가까워짐)
+                          //    예: 35-40으로 줄이면 간격이 더 가까워짐
+                          // Figma: 서브텍스트 y=261, 로고 y=212
+                          // 간격: 261-212 = 49px (전체 844 기준)
+                          SizedBox(
+                              height: 5 *
+                                  (screenHeight /
+                                      844)), // 49에서 35로 줄여서 간격을 가깝게 조정
+
+                          // 2. 서브텍스트
                           Text(
                             '내 주변 모든 혜택을 우주라이크와 함께',
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: const Color(0xFFDADCFF),
-                              fontSize: 18,
+                              fontSize: 18, // 4. 텍스트 크기
                               fontFamily: 'Pretendard',
                               fontWeight: FontWeight.w600,
                               height: 3.33,
-                              letterSpacing: -0.50,
+                              letterSpacing: -0.50, // 6. 글자 사이 간격
                             ),
                           ),
                         ],
@@ -253,9 +290,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           mainAxisAlignment: MainAxisAlignment.start,
                           children: [
                             SizedBox(height: 90 * (screenHeight / 844)),
+
+                            // 2. 버튼의 높이
+                            //    현재: 50px로 조정하여 텍스트가 잘리지 않도록 함
                             SizedBox(
                               width: double.infinity,
-                              height: 47.2,
+                              height: 50, // 버튼 높이를 약간 늘려 텍스트 여유 공간 확보
                               child: ElevatedButton(
                                 onPressed: _loginWithKakao,
                                 style: ElevatedButton.styleFrom(
@@ -265,15 +305,16 @@ class _LoginScreenState extends State<LoginScreen> {
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(5),
                                   ),
-                                  padding: EdgeInsets.only(
-                                    top: 3,
-                                    bottom: 12,
-                                    left: 0,
-                                    right: 0,
+                                  // 버튼 내부 패딩을 균등하게 조정하여 텍스트가 중앙에 위치하도록 함
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 0,
+                                    vertical: 0,
                                   ),
                                 ),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
+                                  // 5. Row 내부의 수직 정렬 (아이콘과 텍스트의 수직 정렬)
+                                  crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
                                     SizedBox(
                                       width: 26,
@@ -289,18 +330,24 @@ class _LoginScreenState extends State<LoginScreen> {
                                       ),
                                     ),
                                     const SizedBox(width: 8),
-                                    Transform.translate(
-                                      offset: Offset(0, -6),
+                                    // 텍스트가 잘리지 않도록 height를 1.0으로 설정하고 overflow 방지
+                                    Flexible(
                                       child: Text(
-                                        '카카오로  간편로그인 ',
+                                        '카카오로 간편로그인',
+                                        // 7. 텍스트의 수평 정렬 (텍스트 자체의 정렬)
+                                        //    - center: 중앙 정렬 (현재)
+                                        //    - left: 왼쪽 정렬
+                                        //    - right: 오른쪽 정렬
                                         textAlign: TextAlign.center,
+                                        overflow: TextOverflow.visible,
                                         style: TextStyle(
                                           color: Colors.black,
-                                          fontSize: 19,
+                                          fontSize: 19, // 8. 텍스트 크기
                                           fontFamily: 'Pretendard',
                                           fontWeight: FontWeight.w700,
-                                          height: 3.16,
-                                          letterSpacing: -0.50,
+                                          // 9. 텍스트의 줄 간격 (높이)을 1.0으로 설정하여 실제 텍스트 높이만 사용
+                                          height: 1.0,
+                                          letterSpacing: -0.50, // 10. 글자 사이 간격
                                         ),
                                       ),
                                     ),
