@@ -25,19 +25,19 @@ Future<void> main() async {
   KakaoSdk.init(nativeAppKey: kakaoNativeAppKey, loggingEnabled: true);
   try {
     final origin = await KakaoSdk.origin;
-    debugPrint('[Kakao] origin (key hash): ' + origin);
+    debugPrint('[Kakao] origin (key hash): $origin');
   } catch (_) {}
   final appLinks = AppLinks();
   // Listen for deep links such as the Kakao login redirect.
   appLinks.uriLinkStream.listen((Uri? uri) {
     if (uri != null) {
-      debugPrint('Deep link received: ' + uri.toString());
+      debugPrint('Deep link received: $uri');
     }
   });
   try {
     final initialUri = await appLinks.getInitialAppLink();
     if (initialUri != null) {
-      debugPrint('Initial deep link: ' + initialUri.toString());
+      debugPrint('Initial deep link: $initialUri');
     }
   } on PlatformException {
     // Ignored: platform not ready for deep links.
@@ -288,7 +288,7 @@ class MainScreenState extends State<MainScreen> {
         throw Exception('Failed to check UUID');
       }
     } catch (e) {
-      print('Error checking UUID: ' + e.toString());
+      print('Error checking UUID: $e');
       _showErrorDialog();
     }
   }
@@ -321,7 +321,7 @@ class MainScreenState extends State<MainScreen> {
         throw Exception('Failed to create UUID');
       }
     } catch (e) {
-      print('Error creating UUID: ' + e.toString());
+      print('Error creating UUID: $e');
       _showErrorDialog();
     }
   }

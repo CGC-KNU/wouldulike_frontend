@@ -7,6 +7,7 @@ import 'my.dart';
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/utils/analytics_logger.dart';
+import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
 
 class MainAppScreen extends StatefulWidget {
   const MainAppScreen({super.key});
@@ -98,8 +99,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   Widget _navIcon(String assetPath, Color color) {
     return SvgPicture.asset(
       assetPath,
-      width: 24,
-      height: 24,
+      width: 22,
+      height: 22,
       colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
     );
   }
@@ -108,52 +109,45 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   Widget build(BuildContext context) {
     const Color selectedColor = Color(0xFF312E81);
     const Color unselectedColor = Color(0xFF9CA3AF);
+    const TextStyle selectedLabelStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontWeight: FontWeight.w600,
+      height: 1.5,
+      letterSpacing: -0.2,
+    );
+    const TextStyle unselectedLabelStyle = TextStyle(
+      fontFamily: 'Pretendard',
+      fontWeight: FontWeight.w500,
+      height: 1.5,
+      letterSpacing: -0.2,
+    );
 
     return Scaffold(
+      extendBody: true,
       body: _buildCurrentScreen(),
-      bottomNavigationBar: BottomNavigationBar(
-          elevation: 4,
-          backgroundColor: Colors.white,
-          type: BottomNavigationBarType.fixed,
-          iconSize: 26,
-          selectedIconTheme: const IconThemeData(size: 26),
-          unselectedIconTheme: const IconThemeData(size: 26),
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          selectedLabelStyle: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w600,
-            height: 1.5,
-            letterSpacing: -0.2,
+      bottomNavigationBar: LiquidGlassBottomBar(
+        tabs: const [
+          LiquidGlassTab(
+            label: '홈',
+            assetPath: 'assets/images/home.svg',
           ),
-          unselectedLabelStyle: const TextStyle(
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w500,
-            height: 1.5,
-            letterSpacing: -0.2,
+          LiquidGlassTab(
+            label: '제휴 / 혜택',
+            assetPath: 'assets/images/fork.svg',
           ),
-          items: <BottomNavigationBarItem>[
-            BottomNavigationBarItem(
-              icon: _navIcon('assets/images/home.svg', unselectedColor),
-              activeIcon: _navIcon('assets/images/home.svg', selectedColor),
-              label: '홈',
-            ),
-            BottomNavigationBarItem(
-              icon: _navIcon('assets/images/fork.svg', unselectedColor),
-              activeIcon: _navIcon('assets/images/fork.svg', selectedColor),
-              label: '제휴 / 혜택',
-            ),
-            BottomNavigationBarItem(
-              icon: _navIcon('assets/images/my.svg', unselectedColor),
-              activeIcon: _navIcon('assets/images/my.svg', selectedColor),
-              label: '마이페이지',
-            ),
-          ],
-          currentIndex: _selectedIndex,
-          selectedItemColor: selectedColor,
-          unselectedItemColor: unselectedColor,
-          onTap: _onItemTapped,
-        ),
+          LiquidGlassTab(
+            label: '마이페이지',
+            assetPath: 'assets/images/my.svg',
+          ),
+        ],
+        selectedIndex: _selectedIndex,
+        onTap: _onItemTapped,
+        iconBuilder: _navIcon,
+        selectedColor: selectedColor,
+        unselectedColor: unselectedColor,
+        selectedLabelStyle: selectedLabelStyle,
+        unselectedLabelStyle: unselectedLabelStyle,
+      ),
     );
   }
 }

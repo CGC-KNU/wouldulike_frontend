@@ -98,7 +98,7 @@ class CouponBenefitInfo {
     if (rawDetails is Map<String, dynamic>) {
       details = rawDetails;
     } else if (rawDetails is Map) {
-      details = Map<String, dynamic>.from(rawDetails as Map);
+      details = Map<String, dynamic>.from(rawDetails);
     }
 
     return CouponBenefitInfo(
@@ -142,7 +142,7 @@ CouponBenefitInfo? _parseCouponBenefit(Map<String, dynamic> json) {
   }
   if (raw is Map) {
     return CouponBenefitInfo.fromJson(
-      Map<String, dynamic>.from(raw as Map),
+      Map<String, dynamic>.from(raw),
     );
   }
   return null;
@@ -187,7 +187,7 @@ class StampStatus {
               }
               if (item is Map) {
                 return StampRewardCoupon.fromJson(
-                    Map<String, dynamic>.from(item as Map));
+                    Map<String, dynamic>.from(item));
               }
               return null;
             })
@@ -255,7 +255,7 @@ class StampActionResult {
               }
               if (item is Map) {
                 return StampRewardCoupon.fromJson(
-                    Map<String, dynamic>.from(item as Map));
+                    Map<String, dynamic>.from(item));
               }
               return null;
             })
@@ -397,7 +397,7 @@ class CouponService {
       final result = <int, StampStatus>{};
       for (final item in value) {
         if (item is! Map) continue;
-        final mapItem = Map<String, dynamic>.from(item as Map);
+        final mapItem = Map<String, dynamic>.from(item);
         final restaurantId = _parseInt(mapItem['restaurant_id']);
         if (restaurantId == 0) continue;
         Map<String, dynamic> statusJson;
@@ -405,7 +405,7 @@ class CouponService {
         if (statusValue is Map<String, dynamic>) {
           statusJson = statusValue;
         } else if (statusValue is Map) {
-          statusJson = Map<String, dynamic>.from(statusValue as Map);
+          statusJson = Map<String, dynamic>.from(statusValue);
         } else {
           statusJson = Map<String, dynamic>.from(mapItem)
             ..remove('restaurant_id');

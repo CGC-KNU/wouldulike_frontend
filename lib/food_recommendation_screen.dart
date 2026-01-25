@@ -5,14 +5,11 @@ import 'package:http/http.dart' as http;
 import 'package:new1/main2.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'package:new1/utils/location_helper.dart';
-import 'package:new1/utils/user_type_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
 class FoodRecommendationScreen extends StatefulWidget {
-  final String resultMessage;
-
-  const FoodRecommendationScreen({super.key, required this.resultMessage});
+  const FoodRecommendationScreen({super.key});
 
   @override
   State<FoodRecommendationScreen> createState() => _FoodRecommendationScreenState();
@@ -22,37 +19,12 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
   List<Map<String, dynamic>> recommendedFoods = [];
   bool isLoading = true;
   final pageController = PageController();
-  late String typeLabel;
-  late String displayedTypeCode;
   List<Map<String, dynamic>> recommendedRestaurants = [];
 
   @override
   void initState() {
     super.initState();
-    displayedTypeCode = widget.resultMessage.trim();
-    if (displayedTypeCode.isEmpty) {
-      displayedTypeCode = '알 수 없음';
-    }
-    typeLabel = getTypeLabel(displayedTypeCode);
-
-    _syncStoredTypeCode();
     fetchRecommendedData();
-  }
-
-  Future<void> _syncStoredTypeCode() async {
-    final prefs = await SharedPreferences.getInstance();
-    final storedTypeCode = prefs.getString('user_type');
-    if (!mounted || storedTypeCode == null || storedTypeCode.isEmpty) {
-      return;
-    }
-
-    final newTypeLabel = getTypeLabel(storedTypeCode);
-    if (displayedTypeCode != storedTypeCode || typeLabel != newTypeLabel) {
-      setState(() {
-        displayedTypeCode = storedTypeCode;
-        typeLabel = newTypeLabel;
-      });
-    }
   }
 
   Future<void> fetchRecommendedData() async {
@@ -156,21 +128,6 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
         throw Exception('User UUID is missing.');
       }
 
-      final resolvedTypeCode = await ensureUserTypeCode(
-        prefs,
-        uuid: userUuid,
-      );
-
-      if (mounted) {
-        final newTypeLabel = getTypeLabel(resolvedTypeCode);
-        if (displayedTypeCode != resolvedTypeCode || typeLabel != newTypeLabel) {
-          setState(() {
-            displayedTypeCode = resolvedTypeCode;
-            typeLabel = newTypeLabel;
-          });
-        }
-      }
-
       final url =
           'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$userUuid';
       http.Response response;
@@ -180,7 +137,9 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
         response = await http.get(Uri.parse(url));
         if (response.statusCode == 200 ||
             response.statusCode == 400 ||
-            response.statusCode == 404) break;
+            response.statusCode == 404) {
+          break;
+        }
         await Future.delayed(Duration(seconds: delay));
         delay *= 2;
         retry++;
@@ -220,7 +179,7 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
       } else if (response.statusCode == 400 || response.statusCode == 404) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No type code available. Showing defaults.')),
+            const SnackBar(content: Text('추천 음식을 불러오지 못했어요.')),
           );
         }
         setState(() {
@@ -246,26 +205,6 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
   }
 
 
-  String getTypeLabel(String resultMessage) {
-    if (resultMessage == 'IYFW') return '강렬한';
-    if (resultMessage == 'IYFE') return '활발한';
-    if (resultMessage == 'IYJW') return '자유로운';
-    if (resultMessage == 'IYJE') return '섬세한';
-    if (resultMessage == 'INFW') return '독립적인';
-    if (resultMessage == 'INFE') return '여유로운';
-    if (resultMessage == 'INJW') return '신중한';
-    if (resultMessage == 'INJE') return '감각적인';
-    if (resultMessage == 'SYFW') return '부드러운';
-    if (resultMessage == 'SYFE') return '온화한';
-    if (resultMessage == 'SYJW') return '안정적인';
-    if (resultMessage == 'SYJE') return '따뜻한';
-    if (resultMessage == 'SNFW') return '직관적인';
-    if (resultMessage == 'SNFE') return '실용적인';
-    if (resultMessage == 'SNJW') return '차분한';
-    if (resultMessage == 'SNJE') return '정돈된';
-    return '알 수 없음';
-  }
-
   @override
   Widget build(BuildContext context) {
     final double screenHeight = MediaQuery.of(context).size.height;
@@ -282,7 +221,7 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '$typeLabel $displayedTypeCode 유형',
+                  '오늘의 메뉴 추천',
                   style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: size.width * 0.055,
@@ -292,7 +231,7 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  '입맛 유형을 기반으로 오늘의 메뉴를 추천해드립니다.',
+                  '지금 추천되는 메뉴를 확인해 보세요.',
                   style: TextStyle(
                     fontFamily: 'Pretendard',
                     fontSize: size.width * 0.032,

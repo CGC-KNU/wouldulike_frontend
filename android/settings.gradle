@@ -6,13 +6,21 @@ pluginManagement {
         assert flutterSdkPath != null, "flutter.sdk not set in local.properties"
         return flutterSdkPath
     }()
-
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
-
+    
     repositories {
         google()
         mavenCentral()
         gradlePluginPortal()
+    }
+    
+    // Kotlin 버전 강제 설정
+    resolutionStrategy {
+        eachPlugin {
+            if (requested.id.namespace == 'org.jetbrains.kotlin') {
+                useVersion '1.9.20'
+            }
+        }
     }
 }
 

@@ -8,10 +8,10 @@ class QuizScreen extends StatefulWidget {
   final Function answerPressed;
 
   const QuizScreen({
-    Key? key,
+    super.key,
     required this.answerPressed,
     required this.questionIndex,
-  }) : super(key: key);
+  });
 
   @override
   _QuizScreenState createState() => _QuizScreenState();
@@ -218,7 +218,7 @@ class _QuizScreenState extends State<QuizScreen> {
                         minHeight: screenHeight * 0.11,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF2F8FFFF),
+                        color: const Color(0xfff2f8ffff),
                         borderRadius: BorderRadius.circular(15),
                         border: Border.all(
                           color: isSelected ? Color(0xFF312E81) : Colors.grey.shade300,

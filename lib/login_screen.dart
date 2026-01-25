@@ -195,17 +195,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       padding:
                           EdgeInsets.symmetric(horizontal: screenWidth * 0.08),
                       child: Column(
-                        // mainAxisAlignment: Column 내부의 자식들을 수직으로 정렬
-                        // - center: 수직 중앙 정렬 (현재 설정)
-                        // - start: 상단 정렬 (로고를 위로 올리고 싶을 때)
-                        // - end: 하단 정렬 (로고를 아래로 내리고 싶을 때)
-                        // - spaceBetween: 첫 요소는 상단, 마지막 요소는 하단에 배치
-                        // - spaceAround: 각 요소 주변에 균등한 공간
-                        // - spaceEvenly: 모든 요소 사이에 균등한 공간
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          // 로고 영역
-                          // Figma: y=212
                           Text.rich(
                             TextSpan(
                               children: [
@@ -261,20 +252,12 @@ class _LoginScreenState extends State<LoginScreen> {
                           // 2. 서브텍스트
                           Text(
                             '내 주변 모든 혜택을 우주라이크와 함께',
-                            // 3. 텍스트의 수평 정렬
-                            //    - center: 중앙 정렬 (현재)
-                            //    - left: 왼쪽 정렬
-                            //    - right: 오른쪽 정렬
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               color: const Color(0xFFDADCFF),
                               fontSize: 18, // 4. 텍스트 크기
                               fontFamily: 'Pretendard',
                               fontWeight: FontWeight.w600,
-                              // 5. 텍스트의 줄 간격 (높이)
-                              //    현재: 3.33 (폰트 크기의 3.33배)
-                              //    조정: 값을 줄이면 텍스트가 위로, 늘리면 아래로 이동
-                              //    주의: 이 값은 줄 간격이므로 텍스트가 여러 줄일 때만 영향
                               height: 3.33,
                               letterSpacing: -0.50, // 6. 글자 사이 간격
                             ),
@@ -283,13 +266,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                     ),
                   ),
-                  // 하단 흰색 사각형 영역 (Rectangle 56)
-                  // Figma: y=554, height=290 (전체 844 중)
                   Positioned(
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    height: screenHeight * 0.344, // 290/844 = 34.4%
+                    height: screenHeight * 0.344,
                     child: Container(
                       width: double.infinity,
                       decoration: const ShapeDecoration(
@@ -308,10 +289,6 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.start,
                           children: [
-                            // ===== 카카오 로그인 버튼 위치 조정 =====
-                            // 1. 버튼 전체의 수직 위치 (하단 흰색 영역 내에서)
-                            //    현재: 하단 사각형 상단에서 90px 떨어진 위치
-                            //    조정: 값을 늘리면 버튼이 아래로, 줄이면 위로 이동
                             SizedBox(height: 90 * (screenHeight / 844)),
 
                             // 2. 버튼의 높이
@@ -335,17 +312,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                 ),
                                 child: Row(
-                                  // 4. Row 내부 정렬 (아이콘과 텍스트의 수평 정렬)
-                                  //    - center: 중앙 정렬 (현재)
-                                  //    - start: 왼쪽 정렬
-                                  //    - end: 오른쪽 정렬
-                                  //    - spaceBetween: 양 끝 정렬
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   // 5. Row 내부의 수직 정렬 (아이콘과 텍스트의 수직 정렬)
                                   crossAxisAlignment: CrossAxisAlignment.center,
                                   children: [
-                                    // 카카오톡 아이콘 SVG
-                                    Container(
+                                    SizedBox(
                                       width: 26,
                                       height: 24,
                                       child: Stack(
@@ -358,9 +329,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                         ],
                                       ),
                                     ),
-                                    // 6. 아이콘과 텍스트 사이 간격
-                                    //    현재: 8px
-                                    //    조정: 값을 늘리면 간격이 넓어짐
                                     const SizedBox(width: 8),
                                     // 텍스트가 잘리지 않도록 height를 1.0으로 설정하고 overflow 방지
                                     Flexible(
@@ -387,11 +355,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
-                            // Figma: "지금은 괜찮아요" y=721, 카카오 버튼 하단 y=704 (644+60)
-                            // 간격: (721-704)/844 = 2.0% 또는 고정값 17px
                             SizedBox(height: 17 * (screenHeight / 844)),
-                            // 지금은 괜찮아요 버튼
-                            // Figma: y=721, height=41
                             GestureDetector(
                               onTap: () {
                                 Navigator.pushReplacementNamed(

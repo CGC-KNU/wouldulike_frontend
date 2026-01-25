@@ -5,7 +5,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
-import 'package:new1/utils/user_type_helper.dart';
 
 class MatchingScreen extends StatefulWidget {
   const MatchingScreen({super.key});
@@ -179,11 +178,6 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       if (userUUID.isEmpty) {
         throw Exception('??? UUID? ?? ? ????');
       }
-      await ensureUserTypeCode(
-        prefs,
-        uuid: userUUID,
-      );
-
       final url =
           'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/unique-random-foods/?uuid=$userUUID';
       http.Response response;
@@ -193,7 +187,9 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         response = await http.get(Uri.parse(url));
         if (response.statusCode == 200 ||
             response.statusCode == 400 ||
-            response.statusCode == 404) break;
+            response.statusCode == 404) {
+          break;
+        }
         await Future.delayed(Duration(seconds: delay));
         delay *= 2;
         retry++;
@@ -308,7 +304,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
           final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
           final name = restaurant['name'] ?? '이름 없음';
           final address = restaurant['road_address'] ?? '주소 없음';
-          final isLiked = prefs.getBool('liked_${name}_${address}') ?? false;
+          final isLiked = prefs.getBool('liked_${name}_$address') ?? false;
 
           final mapped = {
             'name': name,
@@ -365,7 +361,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
       restaurants[restaurantIndex]['isLiked'] = newLiked;
     });
 
-    await prefs.setBool('liked_${name}_${address}', newLiked);
+    await prefs.setBool('liked_${name}_$address', newLiked);
 
     Map<String, dynamic> allLiked = {};
     final savedLikedAll = prefs.getString('liked_restaurants_all');
