@@ -563,7 +563,8 @@ class _HomeContentState extends State<HomeContent> {
     final List<TrendItem> items = _promotionItems;
     final int itemCount = items.isNotEmpty ? items.length : 1;
     final bool hasRemoteData = _trends.isNotEmpty;
-    final double bannerHeight = width <= 0 ? 0 : width * (219.53 / 345.0);
+    // 배너 비율: 가로:세로 = 5:2 → 세로 = 가로 * (2 / 5)
+    final double bannerHeight = width <= 0 ? 0 : width * (2 / 5);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -628,96 +629,15 @@ class _HomeContentState extends State<HomeContent> {
     bool hasRemoteData,
   ) {
     final bool hasLink = item.hasBlogLink;
-    final String title = (item.title != null && item.title!.trim().isNotEmpty)
-        ? item.title!.trim()
-        : _defaultPromotionTitle;
-    final String description =
-        (item.description != null && item.description!.trim().isNotEmpty)
-            ? item.description!.trim()
-            : _defaultPromotionDescription;
 
     return ClipRRect(
       borderRadius: BorderRadius.circular(15),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: hasLink ? () => _handleTrendTap(item, index, hasRemoteData) : null,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              _buildTrendImage(item.imageUrl),
-              // 디자인 시안처럼 배너를 "사진 영역 + 하단 정보 영역"으로
-              // 명확히 나누기 위해, 하단에 고정 높이의 정보 영역을 둡니다.
-              Align(
-                alignment: Alignment.bottomCenter,
-                child: Container(
-                  width: double.infinity,
-                  // 제목 1줄 + 설명 2줄이 여유 있게 들어가도록
-                  // 정보 영역 높이를 조금 늘려 RenderFlex overflow를 방지한다.
-                  height: 112,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment(0.5, 0.0),
-                      end: Alignment(0.5, 1.0),
-                      colors: [
-                        Color(0xFFEEEFF1),
-                        Color(0xFFEDEEF0),
-                        Color(0xFFEBECEE),
-                        Color(0xFFEEEFF1),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.only(
-                      bottomLeft: Radius.circular(15),
-                      bottomRight: Radius.circular(15),
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              title,
-                              style: const TextStyle(
-                                color: Colors.black,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w700,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              description,
-                              style: const TextStyle(
-                                color: Color(0xFF374151),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w400,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      _buildTrendArrowButton(
-                        hasLink
-                            ? () =>
-                                _handleTrendTap(item, index, hasRemoteData)
-                            : null,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
+          onTap:
+              hasLink ? () => _handleTrendTap(item, index, hasRemoteData) : null,
+          child: _buildTrendImage(item.imageUrl),
         ),
       ),
     );
@@ -1093,7 +1013,8 @@ class _HomeContentState extends State<HomeContent> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPromotionBanner(screenWidth),
-                SizedBox(height: padding * 0.8),
+                // 배너와 "내 주변에서 즐기는 우주라이크 혜택" 섹션 사이 간격을 조금 더 넉넉하게 확보
+                SizedBox(height: padding * 1.5),
                 if (_hasAffiliateContent) ...[
                   _buildAffiliateRestaurantsSection(),
                   SizedBox(height: padding * 0.8),
