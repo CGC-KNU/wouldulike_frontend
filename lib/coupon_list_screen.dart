@@ -540,6 +540,10 @@ class _CouponListScreenState extends State<CouponListScreen> {
       ),
       backgroundColor: const Color(0xFFF9FAFB),
       body: RefreshIndicator(
+        // 일반 화면 진입 로딩과 동일한 톤의 인디케이터 사용
+        color: const Color(0xFF6366F1),
+        backgroundColor: Colors.white,
+        strokeWidth: 2,
         onRefresh: _loadCoupons,
         child: _buildBody(),
       ),

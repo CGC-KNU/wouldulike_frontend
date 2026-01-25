@@ -661,6 +661,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       backgroundColor: Colors.white,
       appBar: appBar,
       body: RefreshIndicator(
+        // 화면 진입 시 로딩과 통일감 있게, 브랜드 컬러/두께를 맞춘 인디케이터 사용
+        color: const Color(0xFF6366F1),
+        backgroundColor: Colors.white,
+        strokeWidth: 2,
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.only(

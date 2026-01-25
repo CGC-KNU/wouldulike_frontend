@@ -1075,6 +1075,10 @@ class _HomeContentState extends State<HomeContent> {
         ],
       ),
       body: RefreshIndicator(
+        // 홈 화면 진입 시 로딩 스타일과 통일된 새로고침 인디케이터
+        color: const Color(0xFF6366F1),
+        backgroundColor: Colors.white,
+        strokeWidth: 2,
         onRefresh: _refreshFoodsAndRestaurants,
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
