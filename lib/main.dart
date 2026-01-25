@@ -167,7 +167,12 @@ class MainScreenState extends State<MainScreen> {
 
   Future<void> _initializeApp() async {
     final prefs = await SharedPreferences.getInstance();
-    await _initFirebaseMessaging();
+    // FCM 초기화가 너무 오래 걸려 스플래시에 머무르지 않도록 타임아웃을 건다.
+    try {
+      await _initFirebaseMessaging().timeout(const Duration(seconds: 5));
+    } catch (e) {
+      print('FCM init error/timeout: $e');
+    }
 
     // 위치 갱신은 메인 화면 진입 후 비동기로 처리
     final storedUUID = prefs.getString(_uuidKey);
@@ -197,7 +202,12 @@ class MainScreenState extends State<MainScreen> {
 
     print('알림 권한 상태: ${settings.authorizationStatus}');
 
-    String? token = await messaging.getToken();
+    String? token;
+    try {
+      token = await messaging.getToken().timeout(const Duration(seconds: 5));
+    } catch (e) {
+      print('FCM token fetch error/timeout: $e');
+    }
     if (token != null) {
       print('FCM Token: \$token');
       final prefs = await SharedPreferences.getInstance();

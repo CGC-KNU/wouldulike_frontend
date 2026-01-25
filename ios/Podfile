@@ -1,0 +1,54 @@
+# Uncomment this line to define a global platform for your project
+# Firebase 및 최신 플러터 플러그인 권장 최소 버전
+platform :ios, '13.0'
+
+# Swift Pod(FirebaseCoreInternal 등)이 모듈이 없는 Obj‑C 의존성(GoogleUtilities)을
+# static library 방식에서 사용할 수 있도록 모듈 헤더를 생성
+use_modular_headers!
+
+# CocoaPods analytics sends network stats synchronously affecting flutter build latency.
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+def flutter_root
+  generated_xcode_build_settings_path = File.expand_path(File.join('..', 'Flutter', 'Generated.xcconfig'), __FILE__)
+  unless File.exist?(generated_xcode_build_settings_path)
+    raise "#{generated_xcode_build_settings_path} must exist. If you're running pod install manually, make sure flutter pub get is executed first"
+  end
+
+  File.foreach(generated_xcode_build_settings_path) do |line|
+    matches = line.match(/FLUTTER_ROOT\=(.*)/)
+    return matches[1].strip if matches
+  end
+  raise "FLUTTER_ROOT not found in #{generated_xcode_build_settings_path}. Try deleting Generated.xcconfig, then run flutter pub get"
+end
+
+require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelper'), flutter_root)
+
+flutter_ios_podfile_setup
+
+target 'Runner' do
+  # 특별히 필요하지 않다면 use_frameworks!를 사용하지 않고
+  # 기본(static library) 방식으로 Pods를 통합하는 것이 Flutter/Firebase에서 더 안정적입니다.
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  target 'RunnerTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    flutter_additional_ios_build_settings(target)
+
+    # Firebase.h 등 비모듈 헤더 포함 오류 방지를 위해
+    # 모든 Pod 타겟에서 non‑modular includes 허용
+    target.build_configurations.each do |config|
+      config.build_settings['CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES'] = 'YES'
+    end
+  end
+end
