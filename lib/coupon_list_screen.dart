@@ -715,103 +715,114 @@ class _CouponListScreenState extends State<CouponListScreen> {
           end: Alignment.bottomRight,
         ),
       ),
-      child: Row(
-        // ListView 안에서 높이가 무한대로 주어질 수 있기 때문에
-        // stretch를 사용하면 자식에게 h=Infinity 제약이 전달되어 레이아웃 에러가 발생한다.
-        // 쿠폰 타일은 세로로 늘릴 필요가 없으므로 center 정렬로 안전하게 처리한다.
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (restaurantLabel != null) ...[
+      child: IntrinsicHeight(
+        child: Row(
+          // ListView 안에서 높이가 무한대로 주어질 수 있기 때문에
+          // stretch를 직접 사용하면 h=Infinity 제약이 전달될 수 있어
+          // IntrinsicHeight로 한 번 감싸 높이를 한정한 뒤, 버튼을
+          // 우측 하단에 정렬한다.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (restaurantLabel != null) ...[
+                    Text(
+                      restaurantLabel,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFCBD5FF),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                  ],
                   Text(
-                    restaurantLabel,
+                    title,
                     style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFFCBD5FF),
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 6),
-                ],
-                // 상단 상태 배지는 제거하고, 제목부터 바로 노출
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: Colors.white,
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFFD1D6FF),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFFD1D6FF),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                // 사용 가능 쿠폰(issued)에서만 만료 기한을 보여주고,
-                // 사용 완료/만료/취소 쿠폰들은 기한을 숨긴다.
-                if (expiryText != null &&
-                    coupon.status == CouponStatus.issued) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 14,
-                        color: expiryColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        expiryText,
-                        style: TextStyle(
-                          fontSize: 12,
+                  if (expiryText != null &&
+                      coupon.status == CouponStatus.issued) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
                           color: expiryColor,
-                          fontWeight: FontWeight.w600,
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 4),
+                        Text(
+                          expiryText,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: expiryColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
-            ),
-          ),
-          if (coupon.status == CouponStatus.issued)
-            Align(
-              alignment: Alignment.bottomRight,
-              child: ElevatedButton(
-                onPressed: isProcessing ? null : () => _handleRedeem(coupon),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: const Color(0xFF0B1033),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  textStyle: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: isProcessing
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Color(0xFF0B1033),
-                        ),
-                      )
-                    : const Text('사용'),
               ),
             ),
-        ],
+            if (coupon.status == CouponStatus.issued) ...[
+              const SizedBox(width: 12),
+              SizedBox(
+                height: double.infinity,
+                child: Align(
+                  alignment: Alignment.bottomRight,
+                  child: ElevatedButton(
+                    onPressed:
+                        isProcessing ? null : () => _handleRedeem(coupon),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: const Color(0xFF0B1033),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 18,
+                        vertical: 12,
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: isProcessing
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFF0B1033),
+                            ),
+                          )
+                        : const Text('사용'),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

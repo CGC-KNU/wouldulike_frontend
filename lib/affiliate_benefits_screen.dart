@@ -2434,91 +2434,97 @@ class _AffiliateRestaurantDetailSheetState
           end: Alignment.bottomRight,
         ),
       ),
-      child: Row(
-        // 바텀시트 내부의 스크롤 영역에서는 높이가 무한대로 주어질 수 있어서
-        // stretch를 사용하면 자식에게 h=Infinity 제약이 전달되어 크래시가 발생한다.
-        // 따라서 center 정렬로 변경해 안전하게 높이를 계산하도록 한다.
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildCouponStatusBadge(coupon.status, statusText),
-                const SizedBox(height: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: Colors.white,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildCouponStatusBadge(coupon.status, statusText),
+                  const SizedBox(height: 12),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFFD1D6FF),
-                    fontWeight: FontWeight.w500,
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: Color(0xFFD1D6FF),
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-                if (expiryText != null) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.access_time,
-                        size: 14,
-                        color: expiryColor,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        expiryText,
-                        style: TextStyle(
-                          fontSize: 12,
+                  if (expiryText != null) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.access_time,
+                          size: 14,
                           color: expiryColor,
-                          fontWeight: FontWeight.w600,
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 4),
+                        Text(
+                          expiryText,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: expiryColor,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: ElevatedButton(
-              onPressed: isProcessing || widget.requiresLogin
-                  ? null
-                  : () => _handleRedeem(coupon),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: const Color(0xFF0B1033),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                textStyle: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+            const SizedBox(width: 12),
+            SizedBox(
+              height: double.infinity,
+              child: Align(
+                alignment: Alignment.bottomRight,
+                child: ElevatedButton(
+                  onPressed: isProcessing || widget.requiresLogin
+                      ? null
+                      : () => _handleRedeem(coupon),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF0B1033),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 12),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: isProcessing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF0B1033),
+                          ),
+                        )
+                      : const Text('사용'),
                 ),
               ),
-              child: isProcessing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFF0B1033),
-                      ),
-                    )
-                  : const Text('사용'),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
