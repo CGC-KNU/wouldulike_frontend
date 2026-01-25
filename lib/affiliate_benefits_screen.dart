@@ -1036,6 +1036,10 @@ class _AffiliateRestaurantDetailSheetState
       5: '감자튀김 서비스',
       10: '메인메뉴 택 1',
     },
+    '구구포차': {
+      5: '치킨/통닭 랜덤 한마리(~23시)',
+      10: '치킨/통닭 랜덤 한마리(~23시)',
+    },
     '깨꼬닭': {
       5: '닭껍질 튀김',
       10: '후라이드 똥집',
@@ -1136,7 +1140,8 @@ class _AffiliateRestaurantDetailSheetState
   bool _isStampProcessing = false;
   String? _stampError;
   String? _processingCouponCode;
-  int _selectedTabIndex = 0;
+  final PageController _imagePageController = PageController();
+  int _currentImageIndex = 0;
 
   String? _stampBenefitFor(int threshold) {
     final restaurantName = widget.restaurant.name.trim();
@@ -1166,6 +1171,12 @@ class _AffiliateRestaurantDetailSheetState
         _stampError = '로그인 후 스탬프 정보를 확인할 수 있어요.';
       }
     }
+  }
+
+  @override
+  void dispose() {
+    _imagePageController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadStampStatus({bool showLoading = true}) async {
@@ -1604,19 +1615,13 @@ class _AffiliateRestaurantDetailSheetState
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _selectTab(int index) {
-    if (_selectedTabIndex == index) return;
-    setState(() => _selectedTabIndex = index);
-  }
-
   @override
   Widget build(BuildContext context) {
     final restaurant = widget.restaurant;
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final topPadding = MediaQuery.of(context).padding.top;
-    // 아이폰 다이나믹 아일랜드를 고려한 최소 상단 패딩 (최소 50px 보장)
+    // 아이폰 다이나믹 아일랜드 등을 고려한 최소 상단 여백
     final safeTopPadding = math.max(topPadding, 50.0);
-
     return Container(
       color: Colors.white,
       child: Padding(
@@ -1627,31 +1632,16 @@ class _AffiliateRestaurantDetailSheetState
               padding: EdgeInsets.only(bottom: bottomInset),
               child: SingleChildScrollView(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                  padding: const EdgeInsets.only(top: 16, bottom: 24),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        restaurant.name.isNotEmpty
-                            ? restaurant.name
-                            : '매장 정보를 찾을 수 없어요',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF1F2937),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildImageCarousel(restaurant.imageUrls),
+                      _buildHeroSection(restaurant),
                       const SizedBox(height: 24),
-                      _buildTabSwitcher(),
-                      const SizedBox(height: 24),
-                      AnimatedSwitcher(
-                        duration: const Duration(milliseconds: 200),
-                        child: _selectedTabIndex == 0
-                            ? _buildBenefitsTab()
-                            : _buildStoreInfoTab(restaurant),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        child: _buildBenefitsTab(restaurant),
                       ),
                     ],
                   ),
@@ -1695,58 +1685,7 @@ class _AffiliateRestaurantDetailSheetState
     );
   }
 
-  Widget _buildTabSwitcher() {
-    const labels = ['혜택', '매장 정보'];
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE7E9F8),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: List.generate(labels.length, (index) {
-          final selected = _selectedTabIndex == index;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => _selectTab(index),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
-                decoration: BoxDecoration(
-                  color: selected ? Colors.white : Colors.transparent,
-                  borderRadius: BorderRadius.circular(10),
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF0B1033).withOpacity(0.12),
-                            blurRadius: 12,
-                            offset: const Offset(0, 6),
-                          ),
-                        ]
-                      : null,
-                ),
-                child: Center(
-                  child: Text(
-                    labels[index],
-                    style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: selected
-                          ? const Color(0xFF111439)
-                          : const Color(0xFF6B6F94),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget _buildBenefitsTab() {
+  Widget _buildBenefitsTab(AffiliateRestaurantSummary restaurant) {
     return Column(
       key: const ValueKey('benefits'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1754,6 +1693,8 @@ class _AffiliateRestaurantDetailSheetState
         _buildStampSection(),
         const SizedBox(height: 24),
         _buildCouponSection(),
+        const SizedBox(height: 32),
+        _buildStoreInfoTab(restaurant),
       ],
     );
   }
@@ -1785,37 +1726,79 @@ class _AffiliateRestaurantDetailSheetState
               ? restaurant.phoneNumber
               : '전화번호 정보가 없어요.',
         ),
-        if (restaurant.category.isNotEmpty || restaurant.zone.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 16),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
+      ],
+    );
+  }
+
+  Widget _buildRestaurantHeader(AffiliateRestaurantSummary restaurant) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            restaurant.name.isNotEmpty
+                ? restaurant.name
+                : '매장 정보를 찾을 수 없어요',
+            style: const TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF1F2937),
+            ),
+          ),
+          if (restaurant.category.isNotEmpty || restaurant.zone.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                if (restaurant.category.isNotEmpty)
-                  _buildInfoChip(restaurant.category),
-                if (restaurant.zone.isNotEmpty) _buildInfoChip(restaurant.zone),
+                Expanded(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (restaurant.category.isNotEmpty)
+                        _buildInfoChip(restaurant.category),
+                      if (restaurant.zone.isNotEmpty)
+                        _buildInfoChip(restaurant.zone),
+                    ],
+                  ),
+                ),
+                if (restaurant.url != null && restaurant.url!.isNotEmpty)
+                  IconButton(
+                    onPressed: _openRestaurantPage,
+                    icon: const Icon(Icons.link),
+                    tooltip: '매장 페이지 열기',
+                    color: const Color(0xFF111439),
+                  ),
               ],
             ),
-          ),
-        if (restaurant.url != null && restaurant.url!.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          OutlinedButton.icon(
-            onPressed: _openRestaurantPage,
-            icon: const Icon(Icons.open_in_new),
-            label: const Text('매장 페이지 열기'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xFF111439),
-              side: const BorderSide(color: Color(0xFFE0E3FF)),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              textStyle: const TextStyle(fontWeight: FontWeight.w600),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-          ),
+          ],
         ],
-      ],
+      ),
+    );
+  }
+
+  Widget _buildHeroSection(AffiliateRestaurantSummary restaurant) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: Color(0xFFF3F4F6),
+        borderRadius: BorderRadius.vertical(
+          bottom: Radius.circular(20),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ClipRRect(
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(20),
+            ),
+            child: _buildImageCarousel(restaurant.imageUrls),
+          ),
+          _buildRestaurantHeader(restaurant),
+        ],
+      ),
     );
   }
 
@@ -1888,8 +1871,6 @@ class _AffiliateRestaurantDetailSheetState
             )
           else ...[
             _buildStampProgress(),
-            const SizedBox(height: 16),
-            _buildRewardMessage(),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
@@ -1968,6 +1949,24 @@ class _AffiliateRestaurantDetailSheetState
     final milestoneSet =
         rewardThresholds.isNotEmpty ? rewardThresholds.toSet() : <int>{5, 10};
 
+    // 메인 리워드 요약 문구: "스탬프 ~개 적립 시 ~ 제공"
+    String? headline;
+    final primaryThreshold =
+        status.target > 0 ? status.target : (rewardThresholds.isNotEmpty ? rewardThresholds.last : 0);
+    if (primaryThreshold > 0) {
+      final benefit = _stampBenefitFor(primaryThreshold);
+      if (benefit != null) {
+        headline = '스탬프 ${primaryThreshold}개 적립 시 $benefit 제공';
+      } else {
+        headline = '스탬프 ${primaryThreshold}개 적립 시 리워드 쿠폰 제공';
+      }
+    }
+
+    final remainingToTarget = math.max(total - status.current, 0);
+    final remainingText = remainingToTarget > 0
+        ? '리워드 획득까지 ${remainingToTarget}개 남았어요!'
+        : '리워드 획득 조건을 달성했어요!';
+
     // 5x2 그리드로 스탬프 배치
     final rows = <List<int>>[];
     for (int i = 0; i < total; i += 5) {
@@ -1981,15 +1980,17 @@ class _AffiliateRestaurantDetailSheetState
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          '현재 진행도',
-          style: TextStyle(
-            color: Colors.white70,
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
+        if (headline != null) ...[
+          Text(
+            headline,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
           ),
-        ),
-        const SizedBox(height: 12),
+          const SizedBox(height: 12),
+        ],
         LayoutBuilder(
           builder: (context, constraints) {
             const columns = 5;
@@ -2030,13 +2031,47 @@ class _AffiliateRestaurantDetailSheetState
             );
           },
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 24),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              '현재 진행도',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Text(
+              '${status.current} / $total',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: LinearProgressIndicator(
+            value: total > 0 ? filled / total : 0.0,
+            minHeight: 8,
+            backgroundColor: Colors.white.withOpacity(0.16),
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              Color(0xFFFACC15),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
         Text(
-          '${status.current} / $total',
+          remainingText,
           style: const TextStyle(
-            color: Colors.white,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
+            color: Colors.white70,
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
           ),
         ),
         if (status.updatedAt != null) ...[
@@ -2120,9 +2155,9 @@ class _AffiliateRestaurantDetailSheetState
       return buildRichText([
         const TextSpan(text: '스탬프 '),
         TextSpan(text: '${threshold}개', style: highlightStyle),
-        const TextSpan(text: '까지 적립하면 '),
+        const TextSpan(text: ' 적립 시 '),
         TextSpan(text: benefit, style: highlightStyle),
-        const TextSpan(text: ' 혜택을 받을 수 있어요.'),
+        const TextSpan(text: ' 제공'),
       ], upcomingStyle);
     }
 
@@ -2160,7 +2195,7 @@ class _AffiliateRestaurantDetailSheetState
       nextMessageWidget = benefit != null
           ? buildUpcomingMessage(5, benefit)
           : Text(
-              '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.',
+              '스탬프 5개까지 적립시 첫 번째 리워드 쿠폰 제공',
               style: upcomingStyle,
             );
     } else if (status.current < 10 &&
@@ -2169,19 +2204,17 @@ class _AffiliateRestaurantDetailSheetState
       nextMessageWidget = benefit != null
           ? buildUpcomingMessage(10, benefit)
           : Text(
-              '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.',
+              '스탬프 10개까지 적립시 두 번째 리워드 쿠폰 제공',
               style: upcomingStyle,
             );
     } else if (pendingRewards.isNotEmpty) {
       final reward = pendingRewards.first;
       final benefit = _stampBenefitFor(reward.threshold);
       if (benefit != null) {
-        final remaining = math.max(reward.threshold - status.current, 0);
-        final prefix = remaining <= 0 ? '이제 ' : '스탬프 ${remaining}개 더 적립하면 ';
         nextMessageWidget = buildRichText([
-          TextSpan(text: prefix),
+          TextSpan(text: '스탬프 ${reward.threshold}개 적립 시 '),
           TextSpan(text: benefit, style: highlightStyle),
-          const TextSpan(text: ' 혜택을 받을 수 있어요.'),
+          const TextSpan(text: ' 제공'),
         ], upcomingStyle);
       } else {
         final remaining = math.max(reward.threshold - status.current, 0);
@@ -2205,7 +2238,7 @@ class _AffiliateRestaurantDetailSheetState
           nextMessageWidget = buildUpcomingMessage(status.target, benefit);
         } else {
           nextMessageWidget = Text(
-            '스탬프 ${remainingToTarget}개 더 적립하면 리워드 쿠폰을 받을 수 있어요.',
+            '스탬프 ${remainingToTarget}개 적립시 리워드 쿠폰 제공',
             style: upcomingStyle,
           );
         }
@@ -2257,20 +2290,19 @@ class _AffiliateRestaurantDetailSheetState
   }
 
   String _pendingRewardMessage(int threshold, int current, int remaining) {
-    final benefit = _stampBenefitFor(threshold);
-    if (benefit != null) {
-      final prefix = remaining <= 0 ? '이제' : '스탬프 ${remaining}개 더 적립하면';
-      return '$prefix $benefit 혜택을 받을 수 있어요.';
-    }
-    if (threshold == 5 && current < 5) {
-      return '스탬프 5개까지 적립하면 첫 번째 리워드 쿠폰을 받을 수 있어요.';
-    }
-    if (threshold == 10 && current >= 5 && current < 10) {
-      return '스탬프 10개까지 적립하면 두 번째 리워드 쿠폰을 받을 수 있어요.';
-    }
-    final milestoneName = _milestoneLabel(threshold);
-    final prefix = remaining <= 0 ? '이제' : '스탬프 $remaining개 더 적립하면';
-    return '$prefix $milestoneName을 받을 수 있어요.';
+      final benefit = _stampBenefitFor(threshold);
+      // 공통 포맷: "스탬프 ~개 적립 시 ~ 제공"
+      if (benefit != null) {
+        return '스탬프 ${threshold}개 적립 시 $benefit 제공';
+      }
+      if (threshold == 5 && current < 5) {
+        return '스탬프 5개 적립 시 첫 번째 리워드 쿠폰 제공';
+      }
+      if (threshold == 10 && current >= 5 && current < 10) {
+        return '스탬프 10개 적립 시 두 번째 리워드 쿠폰 제공';
+      }
+      final milestoneName = _milestoneLabel(threshold);
+      return '스탬프 ${threshold}개 적립 시 $milestoneName 제공';
   }
 
   String _milestoneLabel(int threshold) {
@@ -2535,49 +2567,81 @@ class _AffiliateRestaurantDetailSheetState
 
   Widget _buildImageCarousel(List<String> imageUrls) {
     if (imageUrls.isEmpty) {
-      return Container(
-        height: 132,
-        decoration: BoxDecoration(
+      return AspectRatio(
+        aspectRatio: 3 / 2,
+        child: Container(
           color: const Color(0xFFF3F4F6),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: const Color(0xFFE5E7EB)),
-        ),
-        child: const Center(
-          child: Text(
-            '등록된 사진이 없어요.',
-            style: TextStyle(color: Color(0xFF9CA3AF)),
+          child: const Center(
+            child: Text(
+              '등록된 사진이 없어요.',
+              style: TextStyle(color: Color(0xFF9CA3AF)),
+            ),
           ),
         ),
       );
     }
 
-    final items = imageUrls.take(4).toList();
-    return SizedBox(
-      height: 132,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
-        itemBuilder: (context, index) {
-          final url = items[index];
-          return ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              width: 132,
-              color: const Color(0xFFE5E7EB),
-              child: Image.network(
-                url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const Center(
-                  child: Icon(
-                    Icons.broken_image_outlined,
-                    color: Color(0xFF9CA3AF),
+    final items = imageUrls.toList();
+    return AspectRatio(
+      aspectRatio: 3 / 2,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          PageView.builder(
+            controller: _imagePageController,
+            onPageChanged: (index) {
+              setState(() {
+                _currentImageIndex = index;
+              });
+            },
+            itemCount: items.length,
+            itemBuilder: (context, index) {
+              final url = items[index];
+              return Container(
+                color: const Color(0xFFE5E7EB),
+                child: Image.network(
+                  url,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      color: Color(0xFF9CA3AF),
+                    ),
                   ),
+                ),
+              );
+            },
+          ),
+          if (items.length > 1)
+            Positioned(
+              right: 12,
+              bottom: 12,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.4),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Row(
+                  children: List.generate(items.length, (index) {
+                    final isActive = index == _currentImageIndex;
+                    return Container(
+                      width: isActive ? 8 : 6,
+                      height: isActive ? 8 : 6,
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: isActive
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.6),
+                      ),
+                    );
+                  }),
                 ),
               ),
             ),
-          );
-        },
+        ],
       ),
     );
   }
@@ -2612,15 +2676,15 @@ class _AffiliateRestaurantDetailSheetState
 
   Widget _buildInfoChip(String label) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F4F6),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
         label,
         style: const TextStyle(
-          fontSize: 12,
+          fontSize: 13,
           color: Color(0xFF4B5563),
           fontWeight: FontWeight.w600,
         ),
