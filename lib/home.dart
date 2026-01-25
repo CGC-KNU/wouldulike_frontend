@@ -1064,11 +1064,15 @@ class _HomeContentState extends State<HomeContent> {
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: padding),
+            padding: EdgeInsets.fromLTRB(
+              padding,
+              padding,
+              padding,
+              140, // 하단 바와 겹치지 않도록 홈 화면도 동일한 여백 부여
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(height: padding * 0.8),
                 _buildPromotionBanner(screenWidth),
                 SizedBox(height: padding * 0.8),
                 if (_hasAffiliateContent) ...[

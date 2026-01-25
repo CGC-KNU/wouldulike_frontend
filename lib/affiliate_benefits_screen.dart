@@ -663,9 +663,11 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(
-          padding: EdgeInsets.only(
+          padding: const EdgeInsets.only(
             top: 16,
-            bottom: MediaQuery.of(context).padding.bottom + 16,
+            // 마지막 식당 카드 한 블록 정도의 여백은 두어서
+            // 하단 바와 겹치지 않고 자연스럽게 보이도록 유지합니다.
+            bottom: 140,
           ),
           children: [
             _buildCategoryFilter(),

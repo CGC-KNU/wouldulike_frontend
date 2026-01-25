@@ -727,7 +727,12 @@ class _MyScreenState extends State<MyScreen> {
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+        padding: const EdgeInsets.fromLTRB(
+          24,
+          20,
+          24,
+          140, // 제휴/혜택, 홈과 동일하게 하단 바 높이만큼 여백 부여
+        ),
         children: [
           _buildSectionHeader('계정 정보'),
           _buildAccountTile(),
