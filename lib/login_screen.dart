@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'services/auth_service.dart';
 import 'services/api_client.dart';
+import 'services/coupon_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -144,7 +145,32 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
       setState(() => _isLoggingIn = false);
-      Navigator.pushReplacementNamed(context, '/main');
+      // 로그인 진입 경로에 따라 후처리를 다르게 수행한다.
+      final route = ModalRoute.of(context);
+      final args = route?.settings.arguments;
+      String? redirect;
+      if (args is Map) {
+        final map = Map<String, dynamic>.from(args);
+        final value = map['redirect'];
+        if (value is String && value.isNotEmpty) {
+          redirect = value;
+        }
+      }
+
+      if (redirect == 'coupon_list') {
+        // 쿠폰 리스트에서 진입한 경우:
+        // 로그인 직후 쿠폰 목록을 미리 불러와서 함께 돌려준다.
+        List<UserCoupon>? coupons;
+        try {
+          coupons = await CouponService.fetchMyCoupons();
+        } catch (_) {
+          // 쿠폰 동기화 실패는 로그인 성공 자체를 막지 않는다.
+        }
+        Navigator.of(context).pop(coupons ?? true);
+      } else {
+        // 일반 진입(앱 시작 등)인 경우: 기존처럼 메인 화면으로 이동.
+        Navigator.pushReplacementNamed(context, '/main');
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoggingIn = false);

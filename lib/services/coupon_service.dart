@@ -352,8 +352,10 @@ class CouponService {
       }
       return const [];
     } catch (e) {
-      print('CouponService: Fetch failed ($e), returning mock data.');
-      return _getMockCoupons();
+      // 실제 사용자 쿠폰 리스트에서는 더 이상 테스트용 목업 쿠폰을 노출하지 않기 위해
+      // 네트워크/인증 오류를 상위 호출자로 전달한다.
+      print('CouponService: Fetch failed ($e)');
+      rethrow;
     }
   }
 

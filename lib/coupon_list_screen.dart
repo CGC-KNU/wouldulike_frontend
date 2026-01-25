@@ -21,6 +21,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   String? _errorMessage;
   List<UserCoupon> _coupons = const [];
   String? _processingCouponCode;
+  bool _requiresLogin = false;
 
   int _statusPriority(CouponStatus status) {
     switch (status) {
@@ -63,6 +64,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
     setState(() {
       _isLoading = true;
       _errorMessage = null;
+      _requiresLogin = false;
     });
 
     try {
@@ -73,29 +75,36 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _isLoading = false;
         _processingCouponCode = null;
       });
-    } on ApiAuthException catch (e) {
+    } on ApiAuthException {
+      // 로그인 필요 상태: 자세한 에러 메시지는 노출하지 않고
+      // 전용 로그인 안내 UI를 보여준다.
       if (!mounted) return;
       setState(() {
-        _errorMessage = e.message;
+        _requiresLogin = true;
         _isLoading = false;
+        _coupons = const [];
+        _processingCouponCode = null;
       });
-    } on ApiHttpException catch (e) {
+    } on ApiHttpException catch (_) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '쿠폰 정보를 불러오지 못했어요 (${e.statusCode})';
+        _errorMessage = 'HTTP_ERROR';
         _isLoading = false;
+        _coupons = const [];
       });
-    } on ApiNetworkException catch (e) {
+    } on ApiNetworkException catch (_) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '네트워크 오류가 발생했어요: $e';
+        _errorMessage = 'NETWORK_ERROR';
         _isLoading = false;
+        _coupons = const [];
       });
-    } catch (e) {
+    } catch (_) {
       if (!mounted) return;
       setState(() {
-        _errorMessage = '예상치 못한 오류가 발생했어요: $e';
+        _errorMessage = 'UNKNOWN_ERROR';
         _isLoading = false;
+        _coupons = const [];
       });
     }
   }
@@ -455,13 +464,15 @@ class _CouponListScreenState extends State<CouponListScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        scrolledUnderElevation: 0,
+        elevation: 0,
         title: const Text(
           '내 쿠폰',
           style: TextStyle(color: Colors.black),
         ),
         iconTheme: const IconThemeData(color: Colors.black),
-        backgroundColor: Colors.white,
-        elevation: 0,
       ),
       backgroundColor: const Color(0xFFF9FAFB),
       body: RefreshIndicator(
@@ -476,6 +487,60 @@ class _CouponListScreenState extends State<CouponListScreen> {
       return const Center(child: CircularProgressIndicator());
     }
 
+    if (_requiresLogin) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.4,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.lock_outline,
+                    size: 48,
+                    color: Color(0xFF312E81),
+                  ),
+                  const SizedBox(height: 12),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Text(
+                      '로그인하면 보유한 쿠폰을 확인할 수 있어요.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final result = await Navigator.of(context).pushNamed(
+                        '/login',
+                        arguments: const {'redirect': 'coupon_list'},
+                      );
+                      // 로그인 화면에서 쿠폰 리스트를 미리 불러온 경우
+                      // 바로 상태를 갱신하고, 실패했으면 기존 로딩 로직을 사용.
+                      if (result is List<UserCoupon>) {
+                        setState(() {
+                          _requiresLogin = false;
+                          _errorMessage = null;
+                          _isLoading = false;
+                          _coupons = _sortedCoupons(result);
+                        });
+                      } else if (result == true) {
+                        await _loadCoupons();
+                      }
+                    },
+                    child: const Text('카카오로 로그인'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
     if (_errorMessage != null) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -486,20 +551,21 @@ class _CouponListScreenState extends State<CouponListScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.error_outline, size: 48, color: Colors.redAccent),
+                  const Icon(
+                    Icons.refresh,
+                    size: 40,
+                    color: Color(0xFF9CA3AF),
+                  ),
                   const SizedBox(height: 12),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Text(
-                      _errorMessage!,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(fontSize: 16),
-                    ),
+                  const Text(
+                    '쿠폰을 불러오지 못했어요.\n다시 시도해 주세요.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 15),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(
                     onPressed: _loadCoupons,
-                    child: const Text('다시 시도'),
+                    child: const Text('새로고침'),
                   ),
                 ],
               ),

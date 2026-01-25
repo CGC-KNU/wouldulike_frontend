@@ -706,6 +706,8 @@ class _MyScreenState extends State<MyScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        scrolledUnderElevation: 0,
         elevation: 0,
         centerTitle: true,
         foregroundColor: const Color(0xFF111827),

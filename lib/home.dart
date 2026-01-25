@@ -565,55 +565,60 @@ class _HomeContentState extends State<HomeContent> {
     final bool hasRemoteData = _trends.isNotEmpty;
     final double bannerHeight = width <= 0 ? 0 : width * (219.53 / 345.0);
 
-    return SizedBox(
-      height: bannerHeight,
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(15),
-            child: PageView.builder(
-              key: ValueKey(
-                  '${hasRemoteData ? 'remote' : 'fallback'}-$itemCount'),
-              controller: _bannerController,
-              itemCount: itemCount,
-              physics: itemCount > 1
-                  ? const PageScrollPhysics()
-                  : const NeverScrollableScrollPhysics(),
-              onPageChanged: (index) {
-                if (_currentBannerIndex != index) {
-                  setState(() {
-                    _currentBannerIndex = index;
-                  });
-                  // 사용자가 수동으로 넘기면 타이머 재시작
-                  _startBannerAutoScroll();
-                }
-              },
-              itemBuilder: (context, index) {
-                final TrendItem item = items[index];
-                return _buildPromotionSlide(item, index, hasRemoteData);
-              },
-            ),
-          ),
-          if (itemCount > 1)
-            Positioned(
-              bottom: 12,
-              left: 0,
-              right: 0,
-              child: _buildBannerIndicators(itemCount),
-            ),
-          if (_isTrendLoading && !hasRemoteData)
-            Positioned.fill(
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(15),
-                  color: Colors.black.withOpacity(0.05),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: bannerHeight,
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: PageView.builder(
+                  key: ValueKey(
+                      '${hasRemoteData ? 'remote' : 'fallback'}-$itemCount'),
+                  controller: _bannerController,
+                  itemCount: itemCount,
+                  physics: itemCount > 1
+                      ? const PageScrollPhysics()
+                      : const NeverScrollableScrollPhysics(),
+                  onPageChanged: (index) {
+                    if (_currentBannerIndex != index) {
+                      setState(() {
+                        _currentBannerIndex = index;
+                      });
+                      // 사용자가 수동으로 넘기면 타이머 재시작
+                      _startBannerAutoScroll();
+                    }
+                  },
+                  itemBuilder: (context, index) {
+                    final TrendItem item = items[index];
+                    return _buildPromotionSlide(item, index, hasRemoteData);
+                  },
                 ),
               ),
-            ),
-          if (_bannerAutoScrollTimer?.isActive ?? false)
-            const SizedBox(), // Cleaned up debug text
-        ],
-      ),
+              if (_isTrendLoading && !hasRemoteData)
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(15),
+                      color: Colors.black.withOpacity(0.05),
+                    ),
+                  ),
+                ),
+              if (_bannerAutoScrollTimer?.isActive ?? false)
+                const SizedBox(), // Cleaned up debug text
+            ],
+          ),
+        ),
+        if (itemCount > 1)
+          Padding(
+            // 배너 설명과 인디케이터 사이, 인디케이터와 다음 섹션 사이
+            // 간격을 동일하게 맞추기 위해 상하 대칭 패딩을 사용
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: _buildBannerIndicators(itemCount),
+          ),
+      ],
     );
   }
 
@@ -641,12 +646,15 @@ class _HomeContentState extends State<HomeContent> {
             fit: StackFit.expand,
             children: [
               _buildTrendImage(item.imageUrl),
+              // 디자인 시안처럼 배너를 "사진 영역 + 하단 정보 영역"으로
+              // 명확히 나누기 위해, 하단에 고정 높이의 정보 영역을 둡니다.
               Align(
                 alignment: Alignment.bottomCenter,
                 child: Container(
                   width: double.infinity,
+                  height: 96, // 하단 정보 영역 고정 높이
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: const BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment(0.5, 0.0),
@@ -681,7 +689,7 @@ class _HomeContentState extends State<HomeContent> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 6),
                             Text(
                               description,
                               style: const TextStyle(
@@ -697,7 +705,10 @@ class _HomeContentState extends State<HomeContent> {
                       ),
                       const SizedBox(width: 12),
                       _buildTrendArrowButton(
-                        hasLink ? () => _handleTrendTap(item, index, hasRemoteData) : null,
+                        hasLink
+                            ? () =>
+                                _handleTrendTap(item, index, hasRemoteData)
+                            : null,
                       ),
                     ],
                   ),
@@ -989,6 +1000,8 @@ class _HomeContentState extends State<HomeContent> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white, // 스크롤 시 붉은/보라 tint 제거
+        scrolledUnderElevation: 0, // 스크롤해도 그림자/색 변화 없도록
         elevation: 0,
         centerTitle: false,
         titleSpacing: padding,
