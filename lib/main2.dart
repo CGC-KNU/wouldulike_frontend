@@ -99,25 +99,28 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   Widget _navIcon(String assetPath, Color color) {
     return SvgPicture.asset(
       assetPath,
-      width: 22,
-      height: 22,
+      width: 20,
+      height: 20,
       colorFilter: ColorFilter.mode(color, BlendMode.srcIn),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    // 선택된 탭: 기존 남색 유지, 미선택 탭: 좀 더 투명하게 표시
     const Color selectedColor = Color(0xFF312E81);
-    const Color unselectedColor = Color(0xFF9CA3AF);
+    const Color unselectedColor = Color(0x999CA3AF); // 기존 색상에서 알파(투명도)만 낮춤
     const TextStyle selectedLabelStyle = TextStyle(
       fontFamily: 'Pretendard',
       fontWeight: FontWeight.w600,
+      fontSize: 11.5,
       height: 1.5,
       letterSpacing: -0.2,
     );
     const TextStyle unselectedLabelStyle = TextStyle(
       fontFamily: 'Pretendard',
       fontWeight: FontWeight.w500,
+      fontSize: 11.0,
       height: 1.5,
       letterSpacing: -0.2,
     );
