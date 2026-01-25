@@ -501,11 +501,23 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
                         }
                       },
                       child: Transform(
-                        transform: Matrix4.identity()
-                          ..setEntry(3, 2, 0.001)
-                          ..rotateY(math.pi * _animation.value),
+                        // 애니메이션 값이 NaN/무한대가 되는 경우를 방어해
+                        // 잘못된 변환 행렬(Invalid matrix)이 생성되지 않도록 처리합니다.
+                        transform: () {
+                          final rawValue = _animation.value;
+                          final safeValue = (rawValue.isNaN || !rawValue.isFinite)
+                              ? 0.0
+                              : rawValue.clamp(0.0, 1.0);
+                          return Matrix4.identity()
+                            // 3D 효과를 위한 퍼스펙티브 설정
+                            ..setEntry(3, 2, 0.001)
+                            ..rotateY(math.pi * safeValue);
+                        }(),
                         alignment: Alignment.center,
-                        child: _animation.value < 0.5
+                        child: (_animation.value.isNaN || !_animation.value.isFinite
+                                ? 0.0
+                                : _animation.value) <
+                                0.5
                             ? _buildFrontCard(size, padding, actualIndex)
                             : Transform(
                           transform: Matrix4.identity()..rotateY(math.pi),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,6 +23,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   List<UserCoupon> _coupons = const [];
   String? _processingCouponCode;
   bool _requiresLogin = false;
+  int _selectedTabIndex = 0; // 0: 사용 가능, 1: 사용 완료
 
   int _statusPriority(CouponStatus status) {
     switch (status) {
@@ -68,7 +70,11 @@ class _CouponListScreenState extends State<CouponListScreen> {
     });
 
     try {
-      final coupons = await CouponService.fetchMyCoupons();
+      // 안전망으로 화면 단에서도 최대 10초까지만 기다리고,
+      // 그 이상 걸리면 에러 UI를 통해 다시 시도를 안내한다.
+      final coupons = await CouponService.fetchMyCoupons().timeout(
+        const Duration(seconds: 10),
+      );
       if (!mounted) return;
       setState(() {
         _coupons = _sortedCoupons(coupons);
@@ -84,6 +90,13 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _isLoading = false;
         _coupons = const [];
         _processingCouponCode = null;
+      });
+    } on TimeoutException {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'TIMEOUT';
+        _isLoading = false;
+        _coupons = const [];
       });
     } on ApiHttpException catch (_) {
       if (!mounted) return;
@@ -109,35 +122,86 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
-  String _statusLabel(CouponStatus status) {
-    switch (status) {
-      case CouponStatus.issued:
-        return '사용 가능';
-      case CouponStatus.redeemed:
-        return '사용 완료';
-      case CouponStatus.expired:
-        return '만료';
-      case CouponStatus.canceled:
-        return '취소';
-      case CouponStatus.unknown:
-        return '알 수 없음';
+  List<UserCoupon> get _availableCoupons =>
+      _coupons.where((c) => c.status == CouponStatus.issued).toList();
+
+  List<UserCoupon> get _completedCoupons =>
+      _coupons.where((c) => c.status != CouponStatus.issued).toList();
+
+  List<UserCoupon> get _filteredCoupons {
+    if (_selectedTabIndex == 0) {
+      return _availableCoupons;
     }
+    return _completedCoupons;
   }
 
-  Color _statusColor(CouponStatus status) {
-    switch (status) {
-      case CouponStatus.issued:
-        return const Color(0xFF10B981);
-      case CouponStatus.redeemed:
-        return const Color(0xFF6366F1);
-      case CouponStatus.expired:
-        return const Color(0xFFF97316);
-      case CouponStatus.canceled:
-        return const Color(0xFFEF4444);
-      case CouponStatus.unknown:
-        return const Color(0xFF6B7280);
-    }
+  void _selectStatusTab(int index) {
+    if (_selectedTabIndex == index) return;
+    setState(() {
+      _selectedTabIndex = index;
+    });
   }
+
+  Widget _buildStatusTabSwitcher({
+    required int availableCount,
+    required int completedCount,
+  }) {
+    const labels = ['사용 가능', '사용 완료'];
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE7E9F8),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: List.generate(labels.length, (index) {
+          final selected = _selectedTabIndex == index;
+          return Expanded(
+            child: GestureDetector(
+              onTap: () => _selectStatusTab(index),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                padding:
+                    const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
+                decoration: BoxDecoration(
+                  color: selected ? Colors.white : Colors.transparent,
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: selected
+                      ? [
+                          BoxShadow(
+                            color: const Color(0xFF0B1033).withOpacity(0.10),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ]
+                      : null,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      labels[index],
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13,
+                        color: selected
+                            ? const Color(0xFF111439)
+                            : const Color(0xFF6B6F94),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+
+  // 상태 색상은 상세 시트 디자인에 맞춘 배지 스타일에서 처리하므로
+  // 더 이상 별도 매핑이 필요 없어졌다.
 
   Future<void> _handleRedeem(UserCoupon coupon) async {
     final restaurantId = coupon.restaurantId;
@@ -592,83 +656,93 @@ class _CouponListScreenState extends State<CouponListScreen> {
       );
     }
 
-    return ListView.builder(
+    final availableCount = _availableCoupons.length;
+    final completedCount = _completedCoupons.length;
+    final filtered = _filteredCoupons;
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      itemCount: _coupons.length,
-      itemBuilder: (context, index) {
-        final coupon = _coupons[index];
-        return _buildCouponTile(coupon);
-      },
+      children: [
+        _buildStatusTabSwitcher(
+          availableCount: availableCount,
+          completedCount: completedCount,
+        ),
+        const SizedBox(height: 12),
+        if (filtered.isEmpty)
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.25,
+            child: Center(
+              child: Text(
+                _selectedTabIndex == 0
+                    ? '사용 가능한 쿠폰이 없어요.'
+                    : '사용 완료된 쿠폰이 없어요.',
+                style: const TextStyle(fontSize: 15),
+              ),
+            ),
+          )
+        else ...[
+          for (final coupon in filtered) _buildCouponTile(coupon),
+        ],
+      ],
     );
   }
 
   Widget _buildCouponTile(UserCoupon coupon) {
-    final statusColor = _statusColor(coupon.status);
-    final statusText = _statusLabel(coupon.status);
     final bool isProcessing = _processingCouponCode == coupon.code;
     final benefit = coupon.benefit;
-    final title =
-        benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
+    final title = benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
     final subtitle =
         benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
-    final String restaurantLabel = benefit?.restaurantNameText ??
-        (coupon.restaurantId != null
-            ? '사용 가능 매장 ID: ${coupon.restaurantId}'
-            : '사용 가능한 매장 정보가 없어요.');
+    final String? restaurantName = benefit?.restaurantNameText;
+    String? restaurantLabel;
+    if (restaurantName != null && restaurantName.isNotEmpty) {
+      restaurantLabel = restaurantName;
+    } else if (coupon.restaurantId != null) {
+      restaurantLabel = '적용 매장 ID: ${coupon.restaurantId}';
+    }
     final expiryText = _formatExpiryDate(coupon.expiresAt);
-    final expiryColor = const Color(0xFF312E81).withOpacity(0.75);
+    final expiryColor = const Color.fromARGB(255, 185, 183, 247);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0B1033), Color(0xFF1C2470)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        // ListView 안에서 높이가 무한대로 주어질 수 있기 때문에
+        // stretch를 사용하면 자식에게 h=Infinity 제약이 전달되어 레이아웃 에러가 발생한다.
+        // 쿠폰 타일은 세로로 늘릴 필요가 없으므로 center 정렬로 안전하게 처리한다.
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              statusText,
-              style: TextStyle(
-                color: statusColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  restaurantLabel,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.w600,
+                if (restaurantLabel != null) ...[
+                  Text(
+                    restaurantLabel,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFFCBD5FF),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 8),
+                  const SizedBox(height: 6),
+                ],
+                // 상단 상태 배지는 제거하고, 제목부터 바로 노출
                 Text(
                   title,
                   style: const TextStyle(
+                    fontWeight: FontWeight.w700,
                     fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
+                    color: Colors.white,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -676,11 +750,15 @@ class _CouponListScreenState extends State<CouponListScreen> {
                   subtitle,
                   style: const TextStyle(
                     fontSize: 13,
-                    color: Color(0xFF4B5563),
+                    color: Color(0xFFD1D6FF),
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-                if (expiryText != null) ...[
-                  const SizedBox(height: 6),
+                // 사용 가능 쿠폰(issued)에서만 만료 기한을 보여주고,
+                // 사용 완료/만료/취소 쿠폰들은 기한을 숨긴다.
+                if (expiryText != null &&
+                    coupon.status == CouponStatus.issued) ...[
+                  const SizedBox(height: 8),
                   Row(
                     children: [
                       Icon(
@@ -704,18 +782,40 @@ class _CouponListScreenState extends State<CouponListScreen> {
             ),
           ),
           if (coupon.status == CouponStatus.issued)
-            TextButton(
-              onPressed: isProcessing ? null : () => _handleRedeem(coupon),
-              child: isProcessing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('사용'),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: ElevatedButton(
+                onPressed: isProcessing ? null : () => _handleRedeem(coupon),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: const Color(0xFF0B1033),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                  textStyle: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: isProcessing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xFF0B1033),
+                        ),
+                      )
+                    : const Text('사용'),
+              ),
             ),
         ],
       ),
     );
   }
+
+  // 쿠폰 상태 배지는 상단 탭으로 대체되었기 때문에,
+  // 블록 내부에는 별도의 상태 텍스트를 표시하지 않는다.
 }

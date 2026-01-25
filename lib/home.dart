@@ -652,7 +652,9 @@ class _HomeContentState extends State<HomeContent> {
                 alignment: Alignment.bottomCenter,
                 child: Container(
                   width: double.infinity,
-                  height: 96, // 하단 정보 영역 고정 높이
+                  // 제목 1줄 + 설명 2줄이 여유 있게 들어가도록
+                  // 정보 영역 높이를 조금 늘려 RenderFlex overflow를 방지한다.
+                  height: 112,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                   decoration: const BoxDecoration(

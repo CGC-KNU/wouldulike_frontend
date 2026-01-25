@@ -2435,7 +2435,10 @@ class _AffiliateRestaurantDetailSheetState
         ),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        // 바텀시트 내부의 스크롤 영역에서는 높이가 무한대로 주어질 수 있어서
+        // stretch를 사용하면 자식에게 h=Infinity 제약이 전달되어 크래시가 발생한다.
+        // 따라서 center 정렬로 변경해 안전하게 높이를 계산하도록 한다.
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Column(
@@ -2484,32 +2487,36 @@ class _AffiliateRestaurantDetailSheetState
               ],
             ),
           ),
-          ElevatedButton(
-            onPressed: isProcessing || widget.requiresLogin
-                ? null
-                : () => _handleRedeem(coupon),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF0B1033),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-              textStyle: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
+          Align(
+            alignment: Alignment.bottomRight,
+            child: ElevatedButton(
+              onPressed: isProcessing || widget.requiresLogin
+                  ? null
+                  : () => _handleRedeem(coupon),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: const Color(0xFF0B1033),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              child: isProcessing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFF0B1033),
+                      ),
+                    )
+                  : const Text('사용'),
             ),
-            child: isProcessing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Color(0xFF0B1033),
-                    ),
-                  )
-                : const Text('사용'),
           ),
         ],
       ),

@@ -334,10 +334,14 @@ class CouponService {
     }
 
     try {
+      // 최대 10초까지 응답을 기다리고, 그 이상 걸리면
+      // 명시적으로 네트워크 타임아웃 에러를 발생시킨다.
       final http.Response response = await ApiClient.get(
         '/api/coupons/my/',
         queryParameters: params,
-      ).timeout(const Duration(seconds: 1));
+      ).timeout(
+        const Duration(seconds: 10),
+      );
 
       final decoded = _decodeResponseBody(response);
       if (decoded is List) {
@@ -351,6 +355,10 @@ class CouponService {
             .toList();
       }
       return const [];
+    } on TimeoutException catch (e) {
+      // 쿠폰 전용 타임아웃은 10초로 제한하고, UI에서 새로고침을 안내하기 위해
+      // 네트워크 예외로 변환해 상위에서 처리하도록 전달한다.
+      throw ApiNetworkException('쿠폰 조회 요청 시간 초과: $e');
     } catch (e) {
       // 실제 사용자 쿠폰 리스트에서는 더 이상 테스트용 목업 쿠폰을 노출하지 않기 위해
       // 네트워크/인증 오류를 상위 호출자로 전달한다.
