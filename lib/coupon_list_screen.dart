@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
+import 'widgets/coupon_card.dart';
 
 class CouponListScreen extends StatefulWidget {
   const CouponListScreen({super.key});
@@ -18,6 +19,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   String? _errorMessage;
   List<UserCoupon> _coupons = const [];
   String? _processingCouponCode;
+
 
   int _statusPriority(CouponStatus status) {
     switch (status) {
@@ -88,36 +90,6 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _errorMessage = '예상치 못한 오류가 발생했어요: $e';
         _isLoading = false;
       });
-    }
-  }
-
-  String _statusLabel(CouponStatus status) {
-    switch (status) {
-      case CouponStatus.issued:
-        return '사용 가능';
-      case CouponStatus.redeemed:
-        return '사용 완료';
-      case CouponStatus.expired:
-        return '만료';
-      case CouponStatus.canceled:
-        return '취소';
-      case CouponStatus.unknown:
-        return '알 수 없음';
-    }
-  }
-
-  Color _statusColor(CouponStatus status) {
-    switch (status) {
-      case CouponStatus.issued:
-        return const Color(0xFF10B981);
-      case CouponStatus.redeemed:
-        return const Color(0xFF6366F1);
-      case CouponStatus.expired:
-        return const Color(0xFFF97316);
-      case CouponStatus.canceled:
-        return const Color(0xFFEF4444);
-      case CouponStatus.unknown:
-        return const Color(0xFF6B7280);
     }
   }
 
@@ -270,36 +242,6 @@ class _CouponListScreenState extends State<CouponListScreen> {
     return null;
   }
 
-  String? _formatExpiryDate(DateTime? expiresAt) {
-    if (expiresAt == null) return null;
-
-    final now = DateTime.now();
-    final difference = expiresAt.difference(now);
-
-    // Already expired
-    if (difference.isNegative) {
-      return '만료됨';
-    }
-
-    // Less than 24 hours
-    if (difference.inHours < 24) {
-      if (difference.inHours > 0) {
-        return '${difference.inHours}시간 남음';
-      } else if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}분 남음';
-      } else {
-        return '곧 만료';
-      }
-    }
-
-    // Less than 7 days
-    if (difference.inDays < 7) {
-      return '${difference.inDays}일 남음';
-    }
-
-    // 7 days or more - show date
-    return '${expiresAt.year}.${expiresAt.month.toString().padLeft(2, '0')}.${expiresAt.day.toString().padLeft(2, '0')}까지';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -381,123 +323,12 @@ class _CouponListScreenState extends State<CouponListScreen> {
       itemCount: _coupons.length,
       itemBuilder: (context, index) {
         final coupon = _coupons[index];
-        return _buildCouponTile(coupon);
+        return CouponCard(
+          coupon: coupon,
+          isProcessing: _processingCouponCode == coupon.code,
+          onRedeem: () => _handleRedeem(coupon),
+        );
       },
-    );
-  }
-
-  Widget _buildCouponTile(UserCoupon coupon) {
-    final statusColor = _statusColor(coupon.status);
-    final statusText = _statusLabel(coupon.status);
-    final bool isProcessing = _processingCouponCode == coupon.code;
-    final benefit = coupon.benefit;
-    final title =
-        benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
-    final subtitle =
-        benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
-    final String restaurantLabel = benefit?.restaurantNameText ??
-        (coupon.restaurantId != null
-            ? '사용 가능 매장 ID: ${coupon.restaurantId}'
-            : '사용 가능한 매장 정보가 없어요.');
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-            decoration: BoxDecoration(
-              color: statusColor.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              statusText,
-              style: TextStyle(
-                color: statusColor,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  restaurantLabel,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: Color(0xFF4B5563),
-                  ),
-                ),
-                if (_formatExpiryDate(coupon.expiresAt) != null) ...[
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.access_time,
-                        size: 14,
-                        color: Color(0xFFEF4444),
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        _formatExpiryDate(coupon.expiresAt)!,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Color(0xFFEF4444),
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-          if (coupon.status == CouponStatus.issued)
-            TextButton(
-              onPressed: isProcessing ? null : () => _handleRedeem(coupon),
-              child: isProcessing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('사용'),
-            ),
-        ],
-      ),
     );
   }
 }

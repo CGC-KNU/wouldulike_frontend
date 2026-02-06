@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:new1/affiliate_benefits_screen.dart';
 import 'home.dart';
 import 'my.dart';
+import 'coupon_list_screen.dart';
 import 'package:new1/utils/location_helper.dart';
 
 class MainAppScreen extends StatefulWidget {
@@ -37,6 +38,8 @@ class _MainAppScreenState extends State<MainAppScreen> {
       case 1:
         return const AffiliateBenefitsScreen();
       case 2:
+        return const CouponListScreen();
+      case 3:
         return const MyScreen();
       default:
         return const HomeContent();
@@ -92,6 +95,11 @@ class _MainAppScreenState extends State<MainAppScreen> {
               icon: _navIcon('assets/images/fork.svg', unselectedColor),
               activeIcon: _navIcon('assets/images/fork.svg', selectedColor),
               label: '제휴 / 혜택',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.confirmation_num_outlined, color: unselectedColor), // Placeholder icon
+              activeIcon: Icon(Icons.confirmation_num, color: selectedColor),
+              label: '쿠폰&스탬프',
             ),
             BottomNavigationBarItem(
               icon: _navIcon('assets/images/my.svg', unselectedColor),

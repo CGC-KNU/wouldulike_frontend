@@ -1,6 +1,7 @@
 ﻿import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
@@ -12,6 +13,7 @@ import 'services/affiliate_service.dart';
 import 'services/coupon_service.dart';
 import 'services/api_client.dart';
 import 'services/trend_service.dart';
+import 'widgets/coupon_card.dart';
 
 const String _kAffiliatePlaceholderImage =
     'https://placehold.co/128x121?text=No+Image';
@@ -89,6 +91,11 @@ class _HomeContentState extends State<HomeContent> {
   bool _isOpeningAffiliateDetail = false;
   Timer? _bannerAutoScrollTimer;
   static const Duration _bannerAutoScrollDuration = Duration(seconds: 3);
+  List<UserCoupon> _myCoupons = [];
+  bool _isMyCouponsLoading = false;
+  Timer? _couponAutoScrollTimer;
+  static const Duration _couponAutoScrollDuration = Duration(seconds: 4);
+  final PageController _couponPageController = PageController(viewportFraction: 0.92);
 
   @override
   void initState() {
@@ -96,6 +103,7 @@ class _HomeContentState extends State<HomeContent> {
     _initializePrefs();
     _loadTrends();
     _loadAffiliateRestaurants();
+    _loadMyCoupons();
     _startBannerAutoScroll();
   }
 
@@ -236,6 +244,31 @@ class _HomeContentState extends State<HomeContent> {
     } catch (e, stackTrace) {
       debugPrint('Failed to load affiliate coupons: $e');
       debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _loadMyCoupons() async {
+    if (_isMyCouponsLoading) return;
+    setState(() => _isMyCouponsLoading = true);
+    try {
+      final coupons = await CouponService.fetchMyCoupons(status: CouponStatus.issued);
+      if (!mounted) return;
+      setState(() {
+        _myCoupons = coupons;
+        _currentCouponIndex = 0;
+      });
+      // 타이머는 위젯 빌드 후 시작 (WidgetsBinding 사용)
+      if (coupons.length > 1) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _startCouponAutoScroll();
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load my coupons: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isMyCouponsLoading = false);
+      }
     }
   }
 
@@ -765,6 +798,122 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
+  Future<void> _handleMyCouponRedeem(UserCoupon coupon) async {
+    final restaurantId = coupon.restaurantId;
+    if (restaurantId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('이 쿠폰은 사용 가능한 매장 정보가 없어요.')),
+      );
+      return;
+    }
+
+    final pin = await _promptForPin(
+      title: '쿠폰 사용',
+      confirmLabel: '사용하기',
+    );
+    if (pin == null) return;
+
+    // Show loading state if needed, or optimistic update
+    // For Home Screen, let's just show simple processing or block interaction
+    // CouponCard has isProcessing prop. We need state for it?
+    // Simply showing a global loading or snackbar for now.
+    
+    try {
+      await CouponService.redeemCoupon(
+        couponCode: coupon.code,
+        restaurantId: restaurantId,
+        pin: pin,
+      );
+      if (!mounted) return;
+      setState(() {
+        _myCoupons =
+            _myCoupons.where((element) => element.code != coupon.code).toList();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('쿠폰을 사용했어요.')),
+      );
+      // Also update affiliate coupons if loaded
+      if (_affiliateCoupons.isNotEmpty) {
+          setState(() {
+            _affiliateCoupons = _affiliateCoupons
+                .where((element) => element.code != coupon.code)
+                .toList();
+          });
+      }
+    } on ApiAuthException catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('쿠폰 사용에 실패했어요.')),
+      );
+    }
+  }
+
+  Future<String?> _promptForPin({
+    required String title,
+    required String confirmLabel,
+  }) async {
+    final controller = TextEditingController();
+    String? error;
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: Text(title),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                   TextField(
+                    controller: controller,
+                    keyboardType: TextInputType.number,
+                    obscureText: true,
+                    maxLength: 4,
+                    inputFormatters: [
+                      FilteringTextInputFormatter.digitsOnly,
+                      LengthLimitingTextInputFormatter(4),
+                    ],
+                    decoration: InputDecoration(
+                      labelText: 'PIN (4자리)',
+                      counterText: '',
+                      errorText: error,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '제휴 매장 관리자가 안내해준 4자리 PIN을 입력해 주세요.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('취소'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final value = controller.text.trim();
+                    if (value.length != 4) {
+                      setState(() {
+                        error = 'PIN은 4자리 숫자여야 해요.';
+                      });
+                      return;
+                    }
+                    Navigator.of(dialogContext).pop(value);
+                  },
+                  child: Text(confirmLabel),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
   Widget _buildMenuCard(String imagePath, String title, double width,
       {VoidCallback? onTap}) {
     return GestureDetector(
@@ -873,16 +1022,115 @@ class _HomeContentState extends State<HomeContent> {
     _bannerAutoScrollTimer = null;
   }
 
+  void _startCouponAutoScroll() {
+    _couponAutoScrollTimer?.cancel();
+    _couponAutoScrollTimer = Timer.periodic(_couponAutoScrollDuration, (timer) {
+      if (!mounted || !_couponPageController.hasClients) {
+        timer.cancel();
+        return;
+      }
+      final itemCount = _myCoupons.length;
+      if (itemCount <= 1) return;
+      final nextPage = (_currentCouponIndex + 1) % itemCount;
+      _couponPageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
+  void _stopCouponAutoScroll() {
+    _couponAutoScrollTimer?.cancel();
+    _couponAutoScrollTimer = null;
+  }
+
   @override
   void dispose() {
     _stopBannerAutoScroll();
+    _stopCouponAutoScroll();
     _bannerController.dispose();
+    _couponPageController.dispose();
     super.dispose();
+  }
+
+  int _currentCouponIndex = 0;
+
+  Widget _buildMyCouponsSection(double screenWidth) {
+    if (_myCoupons.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '지금 바로 사용 가능한 쿠폰을 확인해요!',
+          style: TextStyle(
+            color: Color(0xFF111827),
+            fontSize: 18,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 190,
+          child: PageView.builder(
+            controller: _couponPageController,
+            padEnds: false,
+            itemCount: _myCoupons.length,
+            onPageChanged: (index) {
+              if (_currentCouponIndex != index) {
+                setState(() {
+                  _currentCouponIndex = index;
+                });
+                _startCouponAutoScroll();
+              }
+            },
+            itemBuilder: (context, index) {
+              final coupon = _myCoupons[index];
+              return Padding(
+                padding: const EdgeInsets.only(right: 8.0),
+                child: CouponCard(
+                  coupon: coupon,
+                  onRedeem: () => _handleMyCouponRedeem(coupon),
+                ),
+              );
+            },
+          ),
+        ),
+        if (_myCoupons.length > 1) ...[
+          const SizedBox(height: 12),
+          _buildCouponIndicators(_myCoupons.length),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCouponIndicators(int itemCount) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(itemCount, (index) {
+        final bool isActive = index == _currentCouponIndex;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 10 : 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: isActive
+                ? const Color(0xFF312E81)
+                : const Color(0xFFD1D5DB),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      }),
+    );
   }
 
   Widget _buildAffiliateRestaurantsSection() {
     const header = Text(
-      '내 주변에서 즐기는 우주라이크 혜택',
+      '현재 이용 중인 우주라이크 제휴 식당',
       style: TextStyle(
         color: Color(0xFF111827),
         fontSize: 18,
@@ -959,6 +1207,44 @@ class _HomeContentState extends State<HomeContent> {
                 onTap: () => _openAffiliateRestaurantDetail(restaurant),
               );
             },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEventSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '우주라이크가 준비한 기획전을 만나봐요!',
+          style: TextStyle(
+            color: Color(0xFF111827),
+            fontSize: 18,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: const Center(
+            child: Text(
+              '기획전이 곧 준비될 예정이에요!',
+              style: TextStyle(
+                fontSize: 14,
+                color: Color(0xFF9CA3AF),
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
           ),
         ),
       ],
@@ -1056,10 +1342,19 @@ class _HomeContentState extends State<HomeContent> {
                 SizedBox(height: padding * 0.8),
                 _buildPromotionBanner(screenWidth),
                 SizedBox(height: padding * 0.8),
+
                 if (_hasAffiliateContent) ...[
                   _buildAffiliateRestaurantsSection(),
                   SizedBox(height: padding * 0.8),
                 ],
+
+                if (_myCoupons.isNotEmpty) ...[
+                  _buildMyCouponsSection(screenWidth),
+                  SizedBox(height: padding * 0.8),
+                ],
+
+                _buildEventSection(),
+                SizedBox(height: padding * 0.8),
               ],
             ),
           ),
@@ -1078,14 +1373,6 @@ class _AffiliateRestaurantCard extends StatelessWidget {
 
   final AffiliateRestaurantSummary restaurant;
   final VoidCallback onTap;
-
-  String get _description {
-    final raw = restaurant.description.trim();
-    if (raw.isNotEmpty) {
-      return raw;
-    }
-    return '상세 설명이 준비 중입니다.';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1117,9 +1404,9 @@ class _AffiliateRestaurantCard extends StatelessWidget {
                   child: _buildImage(imageUrl),
                 ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 10),
               SizedBox(
-                width: 104,
+                width: 128,
                 child: Text(
                   restaurant.name,
                   maxLines: 1,
@@ -1135,28 +1422,40 @@ class _AffiliateRestaurantCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: SizedBox(
-                    width: 128,
-                child: Text(
-                  _description,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: Color(0xFF585555),
-                        fontSize: 11.5,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w400,
-                        height: 1.3,
-                        letterSpacing: -0.5,
-                      ),
+              // Stamp info row
+              Row(
+                children: [
+                  const Icon(Icons.restaurant, size: 14, color: Color(0xFF6B7280)),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${restaurant.stampCurrent}/${restaurant.stampTarget}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF6B7280),
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 2),
+              // Coupon info row
+              Row(
+                children: [
+                  const Icon(Icons.confirmation_num_outlined, size: 14, color: Color(0xFF6B7280)),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${restaurant.stampCurrent}/${restaurant.stampTarget}',
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF6B7280),
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
               SizedBox(
                 width: double.infinity,
                 height: 22,

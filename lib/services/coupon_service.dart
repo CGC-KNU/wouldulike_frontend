@@ -371,6 +371,30 @@ class CouponService {
         ),
         expiresAt: DateTime.now().add(const Duration(days: 7)),
       ),
+      UserCoupon(
+        code: 'TEST-COUPON-5678',
+        status: CouponStatus.issued,
+        restaurantId: 888,
+        benefit: const CouponBenefitInfo(
+          title: '10% 할인',
+          subtitle: '음료 1잔 무료',
+          description: '친구 초대 보상',
+          restaurantName: '팀스 쿠치나',
+        ),
+        expiresAt: DateTime.now().add(const Duration(days: 14)),
+      ),
+      UserCoupon(
+        code: 'TEST-COUPON-9999',
+        status: CouponStatus.issued,
+        restaurantId: 777,
+        benefit: const CouponBenefitInfo(
+          title: '신규가입 쿠폰',
+          subtitle: '첫 방문 20% 할인',
+          description: '회원가입 축하',
+          restaurantName: '한끼 갈비',
+        ),
+        expiresAt: DateTime.now().add(const Duration(days: 30)),
+      ),
     ];
   }
 
