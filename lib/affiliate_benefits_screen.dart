@@ -106,11 +106,19 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   String _selectedCategory = 'ALL';
   List<String> _categories = const ['ALL'];
   bool _isOpeningDetail = false;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -367,10 +375,30 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   }
 
   List<AffiliateRestaurantSummary> get _filteredRestaurants {
-    if (_selectedCategory == 'ALL') return _restaurants;
-    return _restaurants
-        .where((restaurant) => restaurant.category == _selectedCategory)
-        .toList();
+    final categoryFiltered = _selectedCategory == 'ALL'
+        ? _restaurants
+        : _restaurants
+            .where((restaurant) => restaurant.category == _selectedCategory)
+            .toList();
+
+    final normalizedQuery = _normalizeForSearch(_searchQuery);
+    if (normalizedQuery.isEmpty) return categoryFiltered;
+
+    final scored = <MapEntry<AffiliateRestaurantSummary, int>>[];
+    for (final restaurant in categoryFiltered) {
+      final score = _searchMatchScore(restaurant, normalizedQuery);
+      if (score != null) {
+        scored.add(MapEntry(restaurant, score));
+      }
+    }
+
+    scored.sort((a, b) {
+      final scoreCompare = a.value.compareTo(b.value);
+      if (scoreCompare != 0) return scoreCompare;
+      return a.key.name.compareTo(b.key.name);
+    });
+
+    return scored.map((entry) => entry.key).toList();
   }
 
   void _selectCategory(String category) {
@@ -383,6 +411,97 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       },
     );
     setState(() => _selectedCategory = category);
+  }
+
+  String _normalizeForSearch(String value) {
+    return value.toLowerCase().replaceAll(RegExp(r'\s+'), '').trim();
+  }
+
+  int? _searchMatchScore(
+    AffiliateRestaurantSummary restaurant,
+    String normalizedQuery,
+  ) {
+    final normalizedName = _normalizeForSearch(restaurant.name);
+    if (normalizedName.isEmpty) return null;
+
+    if (normalizedName == normalizedQuery) {
+      return 0;
+    }
+
+    if (normalizedName.startsWith(normalizedQuery)) {
+      return 10;
+    }
+
+    if (normalizedName.contains(normalizedQuery)) {
+      return 20;
+    }
+
+    var wordPrefixMatched = false;
+    final queryLen = normalizedQuery.length;
+    final words = restaurant.name
+        .toLowerCase()
+        .split(RegExp(r'\s+'))
+        .where((word) => word.isNotEmpty)
+        .map(_normalizeForSearch);
+    for (final word in words) {
+      if (word.startsWith(normalizedQuery)) {
+        wordPrefixMatched = true;
+        break;
+      }
+    }
+    if (wordPrefixMatched) {
+      return 30;
+    }
+
+    final fullPrefix = normalizedName.length >= queryLen
+        ? normalizedName.substring(0, queryLen)
+        : normalizedName;
+    final baseTolerance = queryLen <= 3 ? 1 : 2;
+    final fullDistance = _levenshteinDistance(normalizedQuery, fullPrefix);
+    if (fullDistance <= baseTolerance) {
+      return 40 + fullDistance;
+    }
+
+    var bestWordDistance = 999;
+    for (final word in words) {
+      final wordPrefix =
+          word.length >= queryLen ? word.substring(0, queryLen) : word;
+      final distance = _levenshteinDistance(normalizedQuery, wordPrefix);
+      if (distance < bestWordDistance) {
+        bestWordDistance = distance;
+      }
+    }
+    if (bestWordDistance <= 1) {
+      return 50 + bestWordDistance;
+    }
+
+    return null;
+  }
+
+  int _levenshteinDistance(String a, String b) {
+    final aLen = a.length;
+    final bLen = b.length;
+    if (aLen == 0) return bLen;
+    if (bLen == 0) return aLen;
+
+    var previous = List<int>.generate(bLen + 1, (i) => i);
+    var current = List<int>.filled(bLen + 1, 0);
+
+    for (var i = 1; i <= aLen; i++) {
+      current[0] = i;
+      for (var j = 1; j <= bLen; j++) {
+        final cost = a[i - 1] == b[j - 1] ? 0 : 1;
+        final deletion = previous[j] + 1;
+        final insertion = current[j - 1] + 1;
+        final substitution = previous[j - 1] + cost;
+        current[j] = math.min(math.min(deletion, insertion), substitution);
+      }
+      final temp = previous;
+      previous = current;
+      current = temp;
+    }
+
+    return previous[bLen];
   }
 
   List<String> _sortCategories(Iterable<String> source) {
@@ -676,12 +795,20 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             bottom: 140,
           ),
           children: [
+            _buildRestaurantSearchBar(),
+            const SizedBox(height: 12),
             _buildCategoryFilter(),
             const SizedBox(height: 12),
             if (_filteredRestaurants.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(24),
-                child: Center(child: Text('표시할 제휴 매장이 없어요.')),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: Text(
+                    _normalizeForSearch(_searchQuery).isEmpty
+                        ? '표시할 제휴 매장이 없어요.'
+                        : '검색 결과가 없어요.',
+                  ),
+                ),
               )
             else
               ..._filteredRestaurants
@@ -692,6 +819,61 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                       ))
                   ,
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRestaurantSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        height: 44,
+        decoration: ShapeDecoration(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            side: const BorderSide(width: 1, color: Color(0xFFD9D9D9)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        alignment: Alignment.center,
+        child: TextField(
+          controller: _searchController,
+          textInputAction: TextInputAction.search,
+          style: const TextStyle(
+            color: Color(0xFF39393E),
+            fontSize: 14,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w600,
+          ),
+          onChanged: (value) {
+            setState(() => _searchQuery = value);
+          },
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            isCollapsed: true,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            hintText: '식당명을 검색해보세요',
+            hintStyle: const TextStyle(
+              color: Color(0xFF9CA3AF),
+              fontSize: 14,
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w500,
+            ),
+            prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
+            suffixIcon: _normalizeForSearch(_searchQuery).isEmpty
+                ? null
+                : IconButton(
+                    onPressed: () {
+                      _searchController.clear();
+                      setState(() => _searchQuery = '');
+                    },
+                    icon: const Icon(Icons.close, size: 18),
+                    color: const Color(0xFF6B7280),
+                    splashRadius: 18,
+                  ),
+          ),
         ),
       ),
     );
