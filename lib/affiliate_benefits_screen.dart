@@ -611,12 +611,14 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       centerTitle: true,
       foregroundColor: Colors.white,
       title: const Text(
-        '제휴 / 혜택',
+        '대학가 근처 식당',
         style: TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w700,
           color: Colors.white,
         ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
       bottom: const PreferredSize(
         preferredSize: Size.fromHeight(1),

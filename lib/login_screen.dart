@@ -132,7 +132,8 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       // 카카오 ID 저장 (BigInteger이므로 String으로 저장)
       if (data['user']['kakao_id'] != null) {
-        await prefs.setString('user_kakao_id', data['user']['kakao_id'].toString());
+        await prefs.setString(
+            'user_kakao_id', data['user']['kakao_id'].toString());
       }
 
       // 로그인 후 토큰 갱신 타이머 설정

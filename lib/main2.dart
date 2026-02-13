@@ -135,7 +135,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             assetPath: 'assets/images/home.svg',
           ),
           LiquidGlassTab(
-            label: '제휴 / 혜택',
+            label: '대학가 근처 식당',
             assetPath: 'assets/images/fork.svg',
           ),
           LiquidGlassTab(
