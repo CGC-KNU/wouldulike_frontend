@@ -16,6 +16,7 @@ class NearbyRestaurantsScreen extends StatefulWidget {
 class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
   bool _isLoading = true;
   String? _errorMessage;
+  bool _requiresLogin = false;
   List<Map<String, dynamic>> _restaurants = [];
 
   @override
@@ -29,6 +30,7 @@ class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
       setState(() {
         _isLoading = true;
         _errorMessage = null;
+        _requiresLogin = false;
       });
 
       final prefs = await SharedPreferences.getInstance();
@@ -70,6 +72,14 @@ class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
             'distance': distance,
           };
         }).toList();
+      } else if (_isReloginRequiredResponse(response)) {
+        if (!mounted) return;
+        setState(() {
+          _restaurants = [];
+          _requiresLogin = true;
+          _errorMessage = null;
+        });
+        return;
       } else {
         throw Exception('음식점 정보를 불러오지 못했어요.');
       }
@@ -105,6 +115,45 @@ class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
   Widget _buildBody() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_requiresLogin) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: MediaQuery.of(context).size.height * 0.45,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.lock_outline,
+                    size: 48,
+                    color: Color(0xFF312E81),
+                  ),
+                  const SizedBox(height: 12),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Text(
+                      '세션이 만료되어 로그인이 필요해요.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 16),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.of(context).pushNamed('/login');
+                    },
+                    child: const Text('카카오로 로그인'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
     }
 
     if (_errorMessage != null) {
@@ -170,5 +219,21 @@ class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
         );
       },
     );
+  }
+
+  bool _isReloginRequiredResponse(http.Response response) {
+    if (response.statusCode != 401) return false;
+    try {
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is Map<String, dynamic>) {
+        final code = decoded['code']?.toString();
+        final reloginRequired = decoded['relogin_required'] == true;
+        if (reloginRequired || code == 'kakao_token_expired') {
+          return true;
+        }
+      }
+    } catch (_) {}
+    // 401 응답은 기본적으로 로그인 필요 상태로 간주
+    return true;
   }
 }

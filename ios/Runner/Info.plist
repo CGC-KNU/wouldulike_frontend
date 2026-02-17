@@ -33,6 +33,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
 	<true/>
 	<key>FirebaseAppDelegateProxyEnabled</key>

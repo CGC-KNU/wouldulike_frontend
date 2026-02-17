@@ -174,9 +174,11 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoggingIn = false);
-      final msg = e.toString().contains('Auth server')
-          ? '서버 로그인 오류가 발생했어요. 잠시 후 다시 시도해 주세요.'
-          : '카카오 로그인 실패: $e';
+      final msg = e is ReloginRequiredException
+          ? '세션이 만료되어 다시 로그인이 필요해요.'
+          : e.toString().contains('Auth server')
+              ? '서버 로그인 오류가 발생했어요. 잠시 후 다시 시도해 주세요.'
+              : '카카오 로그인 실패: $e';
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(msg)),
       );
