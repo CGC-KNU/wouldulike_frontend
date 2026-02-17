@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'main2.dart';
 import 'package:http/http.dart' as http;
@@ -14,6 +15,7 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'utils/analytics_logger.dart';
+import 'services/auth_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 
@@ -43,11 +45,55 @@ Future<void> main() async {
     // Ignored: platform not ready for deep links.
   }
   final prefs = await SharedPreferences.getInstance();
+  // 카카오 로그인 플래그가 있으나 JWT가 비어 있으면, UI 없이 refresh-first 복구를 먼저 시도합니다.
+  await _tryAutoRecoverSession(prefs);
+
   // Consider a user logged in only if flag is true AND JWT exists
   final kakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
   final jwt = prefs.getString('jwt_access_token');
   final loggedIn = kakaoLoggedIn && jwt != null && jwt.isNotEmpty;
   runApp(MyApp(isLoggedIn: loggedIn));
+}
+
+Future<bool> _tryAutoRecoverSession(SharedPreferences prefs) async {
+  final kakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
+  if (!kakaoLoggedIn) return false;
+
+  final jwt = prefs.getString('jwt_access_token');
+  if (jwt != null && jwt.isNotEmpty) return false;
+
+  final kakaoAccessToken = prefs.getString('kakao_access_token');
+  if (kakaoAccessToken == null || kakaoAccessToken.isEmpty) {
+    if (kDebugMode) {
+      debugPrint('[Auth] Auto recover skipped: missing kakao_access_token');
+    }
+    return false;
+  }
+
+  final guestUuid = prefs.getString('user_uuid');
+  try {
+    final data = await AuthService.loginWithKakao(
+      kakaoAccessToken,
+      guestUuid: guestUuid,
+    );
+    if (kDebugMode) {
+      debugPrint(
+        '[Auth] Auto recover success (auth_method: ${data['auth_method'] ?? 'unknown'})',
+      );
+    }
+    return true;
+  } on ReloginRequiredException catch (e) {
+    if (kDebugMode) {
+      debugPrint('[Auth] Auto recover requires relogin: ${e.code ?? e.message}');
+    }
+    return false;
+  } catch (e) {
+    // 네트워크/일시 오류일 수 있으므로 기존 플래그는 유지하고 앱 진입 후 재시도 가능 상태로 둡니다.
+    if (kDebugMode) {
+      debugPrint('[Auth] Auto recover failed: $e');
+    }
+    return false;
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -91,6 +137,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   /// 앱 시작 시 토큰 상태 확인
   Future<void> _checkTokenOnAppStart() async {
+    final prefs = await SharedPreferences.getInstance();
+    await _tryAutoRecoverSession(prefs);
+
     if (!widget.isLoggedIn) {
       return;
     }
@@ -103,6 +152,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   /// 앱이 포그라운드로 돌아올 때 토큰 상태 확인
   Future<void> _checkTokenWhenResumed() async {
+    final prefs = await SharedPreferences.getInstance();
+    final recovered = await _tryAutoRecoverSession(prefs);
+    if (recovered && mounted && !(widget.isLoggedIn)) {
+      Navigator.of(context).pushReplacementNamed('/main');
+      return;
+    }
+
     if (!widget.isLoggedIn) {
       return;
     }
@@ -209,11 +265,25 @@ class MainScreenState extends State<MainScreen> {
       print('FCM token fetch error/timeout: $e');
     }
     if (token != null) {
-      print('FCM Token: \$token');
+      print('FCM Token: $token');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('fcm_token', token);
       await _updateFcmToken(token);
     }
+
+    // 토큰이 회전/갱신될 때마다 서버에 최신 토큰을 업로드
+    FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+      try {
+        print('FCM Token refreshed: $newToken');
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('fcm_token', newToken);
+        await _updateFcmToken(newToken);
+      } catch (e) {
+        print('FCM token refresh handling error: $e');
+      }
+    }).onError((e) {
+      print('FCM onTokenRefresh stream error: $e');
+    });
 
     FirebaseMessaging.onMessageOpenedApp.listen(_handleNotificationOpen);
     final initialMessage = await FirebaseMessaging.instance.getInitialMessage();

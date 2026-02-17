@@ -114,8 +114,11 @@ class _MyScreenState extends State<MyScreen> {
       );
     } catch (e) {
       if (!mounted) return;
+      final message = e is ReloginRequiredException
+          ? '세션이 만료되어 다시 로그인이 필요해요.'
+          : '카카오 로그인에 실패했어요. $e';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('카카오 로그인에 실패했어요. $e')),
+        SnackBar(content: Text(message)),
       );
     } finally {
       if (mounted) {
@@ -792,7 +795,7 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.0.5', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.0.8', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],

@@ -59,10 +59,10 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBWc4YXggwBQQiyKhpYoqtDEoU6KmxWsdk',
-    appId: '1:1029789294160:ios:342768df7a929416bd3b55',
+    appId: '1:1029789294160:ios:1443a87cd3d7f04cbd3b55',
     messagingSenderId: '1029789294160',
     projectId: 'wouldulike-efe19',
     storageBucket: 'wouldulike-efe19.firebasestorage.app',
-    iosBundleId: 'com.example.new1',
+    iosBundleId: 'com.coggiri.wouldulike0117',
   );
 }
