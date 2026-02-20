@@ -7,12 +7,14 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:new1/utils/analytics_logger.dart';
+import 'package:new1/profile_setup_screen.dart';
 
 import 'coupon_list_screen.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/coupon_service.dart';
 import 'services/kakao_share_service.dart';
+import 'services/user_service.dart';
 
 const TextStyle _kSectionTitleStyle = TextStyle(
   fontSize: 16,
@@ -429,6 +431,16 @@ class _MyScreenState extends State<MyScreen> {
     }
   }
 
+  Future<void> _openProfileSetup() async {
+    final profile = await UserService.fetchCurrentUserProfile();
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ProfileSetupScreen(initialProfile: profile),
+      ),
+    );
+  }
+
   Widget _buildAccountTile() {
     final isBusy = _isKakaoLoginInProgress || _isKakaoLogoutInProgress;
     final label = isKakaoLoggedIn ? '로그아웃' : '로그인';
@@ -741,6 +753,12 @@ class _MyScreenState extends State<MyScreen> {
         children: [
           _buildSectionHeader('계정 정보'),
           _buildAccountTile(),
+          _buildMenuRow(
+            leading: const Text('프로필 설정', style: _kItemTitleStyle),
+            trailing: _buildChevron(),
+            onTap: _openProfileSetup,
+            indent: _kItemIndent,
+          ),
           const SizedBox(height: 24),
           _buildSectionHeader('활동 내역'),
           _buildMenuRow(

@@ -319,7 +319,7 @@ class ApiClient {
 
     const candidates = <String>[
       '/api/auth/token/refresh/',
-      '/api/auth/refresh/',
+      '/api/auth/refresh',
     ];
 
     for (final path in candidates) {

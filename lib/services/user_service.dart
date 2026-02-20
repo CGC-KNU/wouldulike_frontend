@@ -29,4 +29,41 @@ class UserService {
     }
     return null;
   }
+
+  static bool isRequiredProfileIncomplete(Map<String, dynamic>? profile) {
+    if (profile == null) return false;
+    return _isBlank(profile['nickname']) ||
+        _isBlank(profile['school']) ||
+        _isBlank(profile['student_id']) ||
+        _isBlank(profile['department']);
+  }
+
+  static Future<Map<String, dynamic>> updateCurrentUserProfile({
+    required String nickname,
+    required String school,
+    required String studentId,
+    required String department,
+  }) async {
+    final response = await ApiClient.patch(
+      '/api/users/me/',
+      body: {
+        'nickname': nickname,
+        'school': school,
+        'student_id': studentId,
+        'department': department,
+      },
+    );
+
+    final dynamic data = json.decode(utf8.decode(response.bodyBytes));
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    throw const FormatException('사용자 프로필 응답 형식이 올바르지 않아요.');
+  }
+
+  static bool _isBlank(dynamic value) {
+    if (value == null) return true;
+    if (value is String) return value.trim().isEmpty;
+    return false;
+  }
 }

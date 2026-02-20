@@ -10,12 +10,14 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'login_screen.dart';
+import 'profile_setup_screen.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
 import 'utils/analytics_logger.dart';
 import 'services/auth_service.dart';
+import 'services/user_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 
@@ -84,7 +86,8 @@ Future<bool> _tryAutoRecoverSession(SharedPreferences prefs) async {
     return true;
   } on ReloginRequiredException catch (e) {
     if (kDebugMode) {
-      debugPrint('[Auth] Auto recover requires relogin: ${e.code ?? e.message}');
+      debugPrint(
+          '[Auth] Auto recover requires relogin: ${e.code ?? e.message}');
     }
     return false;
   } catch (e) {
@@ -182,7 +185,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      home: widget.isLoggedIn ? const MainScreen() : const LoginScreen(),
+      home: AppEntryScreen(isLoggedIn: widget.isLoggedIn),
       navigatorObservers: [
         FirebaseAnalyticsObserver(analytics: _analytics),
       ],
@@ -191,6 +194,76 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         '/login': (context) => const LoginScreen(),
       },
     );
+  }
+}
+
+class AppEntryScreen extends StatefulWidget {
+  const AppEntryScreen({super.key, required this.isLoggedIn});
+
+  final bool isLoggedIn;
+
+  @override
+  State<AppEntryScreen> createState() => _AppEntryScreenState();
+}
+
+class _AppEntryScreenState extends State<AppEntryScreen> {
+  bool _isCheckingProfile = true;
+  bool _isProfileIncomplete = false;
+  Map<String, dynamic>? _profile;
+
+  @override
+  void initState() {
+    super.initState();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    if (!widget.isLoggedIn) {
+      if (!mounted) return;
+      setState(() {
+        _isCheckingProfile = false;
+      });
+      return;
+    }
+
+    final profile = await UserService.fetchCurrentUserProfile();
+    if (!mounted) return;
+    setState(() {
+      _profile = profile;
+      _isProfileIncomplete = UserService.isRequiredProfileIncomplete(profile);
+      _isCheckingProfile = false;
+    });
+  }
+
+  void _handleProfileCompleted() {
+    if (!mounted) return;
+    setState(() {
+      _isProfileIncomplete = false;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.isLoggedIn) {
+      return const LoginScreen();
+    }
+    if (_isCheckingProfile) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(
+          child: CircularProgressIndicator(
+            color: Color(0xFF312E81),
+          ),
+        ),
+      );
+    }
+    if (_isProfileIncomplete) {
+      return ProfileSetupScreen(
+        initialProfile: _profile,
+        onCompleted: _handleProfileCompleted,
+      );
+    }
+    return const MainScreen();
   }
 }
 
