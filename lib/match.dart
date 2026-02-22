@@ -6,6 +6,15 @@ import 'dart:math' as math;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 
+bool _isValidNetworkImageUrl(String? value) {
+  if (value == null) return false;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return false;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) return false;
+  return (uri.scheme == 'http' || uri.scheme == 'https') && uri.host.isNotEmpty;
+}
+
 class MatchingScreen extends StatefulWidget {
   const MatchingScreen({super.key});
   @override
@@ -567,9 +576,9 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
           Positioned.fill(
             child: ClipRRect(
               borderRadius: BorderRadius.circular(24),
-              child: food["image"]!.startsWith('http')
+              child: _isValidNetworkImageUrl(food["image"]?.toString())
                   ? Image.network(
-                food["image"]!,
+                food["image"]!.toString().trim(),
                 fit: BoxFit.cover,
                 loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;

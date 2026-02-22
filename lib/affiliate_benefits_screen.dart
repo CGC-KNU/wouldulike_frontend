@@ -11,6 +11,15 @@ import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
 
+bool _isValidNetworkImageUrl(String? value) {
+  if (value == null) return false;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return false;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) return false;
+  return (uri.scheme == 'http' || uri.scheme == 'https') && uri.host.isNotEmpty;
+}
+
 StampStatus _defaultStampStatusForRestaurant(
   AffiliateRestaurantSummary restaurant, {
   int? fallbackTarget,
@@ -994,9 +1003,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                 height: 108,
                 child: Container(
                   color: const Color(0xFFE5E7EB),
-                  child: thumbnailUrl != null
+                  child: _isValidNetworkImageUrl(thumbnailUrl)
                       ? Image.network(
-                          thumbnailUrl,
+                          thumbnailUrl!.trim(),
                           fit: BoxFit.cover,
                           loadingBuilder: (context, child, event) {
                             if (event == null) return child;
@@ -2783,16 +2792,23 @@ class _AffiliateRestaurantDetailSheetState
               final url = items[index];
               return Container(
                 color: const Color(0xFFE5E7EB),
-                child: Image.network(
-                  url,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Center(
-                    child: Icon(
-                      Icons.broken_image_outlined,
-                      color: Color(0xFF9CA3AF),
-                    ),
-                  ),
-                ),
+                child: _isValidNetworkImageUrl(url)
+                    ? Image.network(
+                        url.trim(),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Icon(
+                            Icons.broken_image_outlined,
+                            color: Color(0xFF9CA3AF),
+                          ),
+                        ),
+                      )
+                    : const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          color: Color(0xFF9CA3AF),
+                        ),
+                      ),
               );
             },
           ),

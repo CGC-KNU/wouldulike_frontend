@@ -1,5 +1,6 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,10 +13,18 @@ import 'coupon_list_screen.dart';
 import 'services/affiliate_service.dart';
 import 'services/coupon_service.dart';
 import 'services/api_client.dart';
+import 'services/popup_service.dart';
 import 'services/trend_service.dart';
 
-const String _kAffiliatePlaceholderImage =
-    'https://placehold.co/128x121?text=No+Image';
+bool _isValidHttpImageUrl(String? value) {
+  if (value == null) return false;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return false;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) return false;
+  final hasHttpScheme = uri.scheme == 'http' || uri.scheme == 'https';
+  return hasHttpScheme && uri.host.isNotEmpty;
+}
 
 // URL 열기 도구
 class UrlLauncherUtil {
@@ -55,6 +64,7 @@ class HomeContent extends StatefulWidget {
 class _HomeContentState extends State<HomeContent> {
   static const String _kWelcomeCouponDismissedKey =
       'welcome_coupon_dialog_dismissed';
+  static const String _kPopupDismissedPrefix = 'home_popup_dismissed';
   static const List<String> _kWelcomeCouponKeywords = <String>[
     '신규가입',
     '회원가입',
@@ -66,7 +76,7 @@ class _HomeContentState extends State<HomeContent> {
   ];
   static const String _defaultPromotionTitle = '우주라이크 사용 가이드';
   static const String _defaultPromotionDescription = '앱 사용 가이드를 바로 만나보세요.';
-  static const String _defaultPromotionImage = 'https://placehold.co/345x220';
+  static const String _defaultPromotionImage = 'https://placehold.co/345x220.png';
   late SharedPreferences prefs;
   List<TrendItem> _trends = [];
   final PageController _bannerController = PageController();
@@ -86,6 +96,8 @@ class _HomeContentState extends State<HomeContent> {
   bool _isCheckingWelcomeCoupon = false;
   bool _welcomeDialogVisible = false;
   bool _welcomePromptScheduled = false;
+  bool _popupDialogVisible = false;
+  bool _popupPromptScheduled = false;
   bool _suppressWelcomeCoupon = false;
   bool _isOpeningAffiliateDetail = false;
   Timer? _bannerAutoScrollTimer;
@@ -104,9 +116,135 @@ class _HomeContentState extends State<HomeContent> {
     prefs = await SharedPreferences.getInstance();
     _suppressWelcomeCoupon =
         prefs.getBool(_kWelcomeCouponDismissedKey) ?? false;
+    _scheduleHomePopupCheck();
     if (!_suppressWelcomeCoupon) {
       await _checkWelcomeCouponStatus();
     }
+  }
+
+  void _scheduleHomePopupCheck() {
+    if (_popupPromptScheduled) return;
+    _popupPromptScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _popupPromptScheduled = false;
+      await _checkAndShowHomePopup();
+    });
+  }
+
+  Future<void> _checkAndShowHomePopup() async {
+    if (!mounted || _popupDialogVisible) return;
+    try {
+      final popups = await PopupService.fetchVisiblePopups();
+      if (!mounted || popups.isEmpty) return;
+      final candidates = popups
+          .where((item) => !_isPopupDismissedToday(item.id))
+          .toList(growable: false);
+      if (!mounted || candidates.isEmpty) return;
+      final preloadedImages = await _preloadPopupImages(candidates);
+      if (!mounted) return;
+      await _showHomePopupDialog(candidates, preloadedImages);
+    } catch (_) {
+      // Ignore popup failures; main content should remain unaffected.
+    }
+  }
+
+  Future<Map<int, Uint8List?>> _preloadPopupImages(
+    List<HomePopupItem> popups,
+  ) async {
+    final Map<int, Uint8List?> results = <int, Uint8List?>{};
+    await Future.wait(
+      popups.map((popup) async {
+        results[popup.id] = await _fetchPopupImageBytes(popup.imageUrl);
+      }),
+    );
+    return results;
+  }
+
+  Future<Uint8List?> _fetchPopupImageBytes(String imageUrl) async {
+    final uri = Uri.tryParse(imageUrl);
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
+      return null;
+    }
+    try {
+      final response = await http.get(uri);
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return response.bodyBytes;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  bool _isPopupDismissedToday(int popupId) {
+    final now = DateTime.now();
+    final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final key = '$_kPopupDismissedPrefix:$popupId:$today';
+    return prefs.getBool(key) ?? false;
+  }
+
+  Future<void> _markPopupDismissedToday(int popupId) async {
+    final now = DateTime.now();
+    final today = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final key = '$_kPopupDismissedPrefix:$popupId:$today';
+    await prefs.setBool(key, true);
+  }
+
+  Future<void> _showHomePopupDialog(
+    List<HomePopupItem> popups,
+    Map<int, Uint8List?> preloadedImages,
+  ) async {
+    if (!mounted || _popupDialogVisible) return;
+    _popupDialogVisible = true;
+    await showGeneralDialog<void>(
+      context: context,
+      barrierLabel: 'popup',
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.62),
+      transitionDuration: const Duration(milliseconds: 200),
+      pageBuilder: (dialogContext, animation, secondaryAnimation) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 28),
+            child: Material(
+              color: Colors.transparent,
+              child: _HomePopupCarouselDialog(
+                popups: popups,
+                preloadedImages: preloadedImages,
+                onTapPopup: (popup) async {
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                  await _launchURL(popup.instagramUrl);
+                },
+                onDismissToday: (popup) async {
+                  await _markPopupDismissedToday(popup.id);
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                },
+                onClose: () {
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                },
+              ),
+            ),
+          ),
+        );
+      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) {
+        final curve = CurvedAnimation(parent: animation, curve: Curves.easeOutCubic);
+        return FadeTransition(
+          opacity: curve,
+          child: ScaleTransition(
+            scale: Tween<double>(begin: 0.95, end: 1.0).animate(curve),
+            child: child,
+          ),
+        );
+      },
+    );
+    _popupDialogVisible = false;
   }
 
   Future<void> _loadTrends() async {
@@ -552,7 +690,7 @@ class _HomeContentState extends State<HomeContent> {
           blogLink: 'https://example.com/guides/get-started',
         ),
         TrendItem(
-          imageUrl: 'https://placehold.co/345x220?text=Promo',
+          imageUrl: 'https://placehold.co/345x220.png?text=Promo',
           title: '제휴 매장 혜택 모음',
           description: '주변 제휴 매장의 신규 쿠폰과 이벤트를 확인해보세요.',
           blogLink: 'https://example.com/promotions/benefits',
@@ -696,19 +834,19 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   Widget _buildTrendImage(String imageUrl) {
-    final String resolvedUrl =
-        imageUrl.trim().isNotEmpty ? imageUrl : _defaultPromotionImage;
+    if (!_isValidHttpImageUrl(imageUrl)) {
+      return Image.asset(
+        'assets/images/food_image0.png',
+        fit: BoxFit.cover,
+      );
+    }
     return Image.network(
-      resolvedUrl,
+      imageUrl.trim(),
       fit: BoxFit.cover,
       alignment: Alignment.center,
-      errorBuilder: (_, __, ___) => Image.network(
-        _defaultPromotionImage,
+      errorBuilder: (_, __, ___) => Image.asset(
+        'assets/images/food_image0.png',
         fit: BoxFit.cover,
-        alignment: Alignment.center,
-        errorBuilder: (_, __, ___) => Container(
-          color: const Color(0xFFE5E7EB),
-        ),
       ),
     );
   }
@@ -738,9 +876,9 @@ class _HomeContentState extends State<HomeContent> {
             ClipRRect(
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(12)),
-              child: imagePath.startsWith('http')
+              child: _isValidHttpImageUrl(imagePath)
                   ? Image.network(
-                      imagePath,
+                      imagePath.trim(),
                       height: width * 0.8,
                       width: double.infinity,
                       fit: BoxFit.cover,
@@ -1156,28 +1294,16 @@ class _AffiliateRestaurantCard extends StatelessWidget {
       fit: BoxFit.cover,
     );
 
-    if (imageUrl == null || imageUrl.isEmpty) {
-      return Image.network(
-        _kAffiliatePlaceholderImage,
-        width: 128,
-        height: 121,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
-      );
+    if (!_isValidHttpImageUrl(imageUrl)) {
+      return fallback;
     }
 
     return Image.network(
-      imageUrl,
+      imageUrl!.trim(),
       width: 128,
       height: 121,
       fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => Image.network(
-        _kAffiliatePlaceholderImage,
-        width: 128,
-        height: 121,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => fallback,
-      ),
+      errorBuilder: (_, __, ___) => fallback,
     );
   }
 }
@@ -1391,9 +1517,9 @@ class _FoodHeader extends StatelessWidget {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(16),
-          child: imageUrl.startsWith('http')
+          child: _isValidHttpImageUrl(imageUrl)
               ? Image.network(
-                  imageUrl,
+                  imageUrl.trim(),
                   height: 180,
                   width: double.infinity,
                   fit: BoxFit.cover,
@@ -1417,6 +1543,176 @@ class _FoodHeader extends StatelessWidget {
           style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
         ),
       ],
+    );
+  }
+}
+
+class _HomePopupCarouselDialog extends StatefulWidget {
+  const _HomePopupCarouselDialog({
+    required this.popups,
+    required this.preloadedImages,
+    required this.onTapPopup,
+    required this.onDismissToday,
+    required this.onClose,
+  });
+
+  final List<HomePopupItem> popups;
+  final Map<int, Uint8List?> preloadedImages;
+  final Future<void> Function(HomePopupItem popup) onTapPopup;
+  final Future<void> Function(HomePopupItem popup) onDismissToday;
+  final VoidCallback onClose;
+
+  @override
+  State<_HomePopupCarouselDialog> createState() => _HomePopupCarouselDialogState();
+}
+
+class _HomePopupCarouselDialogState extends State<_HomePopupCarouselDialog> {
+  late final PageController _controller;
+  Timer? _autoSlideTimer;
+  int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController();
+    _startAutoSlide();
+  }
+
+  @override
+  void dispose() {
+    _autoSlideTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _startAutoSlide() {
+    if (widget.popups.length <= 1) return;
+    _autoSlideTimer?.cancel();
+    _autoSlideTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!_controller.hasClients) return;
+      final next = (_currentIndex + 1) % widget.popups.length;
+      _controller.animateToPage(
+        next,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentPopup = widget.popups[_currentIndex];
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            width: 310,
+            child: AspectRatio(
+              aspectRatio: 1 / 1.1,
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: widget.popups.length,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentIndex = index;
+                  });
+                },
+                itemBuilder: (context, index) {
+                  final popup = widget.popups[index];
+                  return GestureDetector(
+                    onTap: () => widget.onTapPopup(popup),
+                    child: Container(
+                      color: const Color(0xFF111827),
+                      child: _PopupImageView(
+                        imageBytes: widget.preloadedImages[popup.id],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+        if (widget.popups.length > 1) ...[
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(widget.popups.length, (index) {
+              final active = index == _currentIndex;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                width: active ? 10 : 6,
+                height: 6,
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                decoration: BoxDecoration(
+                  color: active ? Colors.white : Colors.white38,
+                  borderRadius: BorderRadius.circular(99),
+                ),
+              );
+            }),
+          ),
+        ],
+        const SizedBox(height: 10),
+        SizedBox(
+          width: 310,
+          child: Row(
+            children: [
+              Expanded(
+                child: TextButton(
+                  onPressed: () => widget.onDismissToday(currentPopup),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text(
+                    '오늘 그만 보기',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+              Container(width: 1, height: 18, color: Colors.white38),
+              Expanded(
+                child: TextButton(
+                  onPressed: widget.onClose,
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  child: const Text(
+                    '닫기',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PopupImageView extends StatelessWidget {
+  const _PopupImageView({required this.imageBytes});
+
+  final Uint8List? imageBytes;
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageBytes == null || imageBytes!.isEmpty) {
+      return const Center(
+        child: Icon(
+          Icons.broken_image_outlined,
+          color: Colors.white70,
+        ),
+      );
+    }
+    return Image.memory(
+      imageBytes!,
+      fit: BoxFit.cover,
+      gaplessPlayback: true,
     );
   }
 }

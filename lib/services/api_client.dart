@@ -122,7 +122,7 @@ class ApiClient {
           await _headers(authenticated: authenticated, extra: headers);
       try {
         return await _http.get(uri, headers: requestHeaders);
-      } on http.ClientException catch (e) {
+      } catch (e) {
         throw ApiNetworkException(e);
       }
     }
@@ -149,7 +149,7 @@ class ApiClient {
           await _headers(authenticated: authenticated, extra: headers);
       try {
         return await _http.post(uri, headers: requestHeaders, body: payload);
-      } on http.ClientException catch (e) {
+      } catch (e) {
         throw ApiNetworkException(e);
       }
     }
@@ -176,7 +176,7 @@ class ApiClient {
           await _headers(authenticated: authenticated, extra: headers);
       try {
         return await _http.patch(uri, headers: requestHeaders, body: payload);
-      } on http.ClientException catch (e) {
+      } catch (e) {
         throw ApiNetworkException(e);
       }
     }

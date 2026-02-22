@@ -20,6 +20,7 @@ import 'services/auth_service.dart';
 import 'services/user_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
+const MethodChannel _deviceInfoChannel = MethodChannel('app/device_info');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,10 +51,9 @@ Future<void> main() async {
   // 카카오 로그인 플래그가 있으나 JWT가 비어 있으면, UI 없이 refresh-first 복구를 먼저 시도합니다.
   await _tryAutoRecoverSession(prefs);
 
-  // Consider a user logged in only if flag is true AND JWT exists
-  final kakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
+  // 카카오 로그인 플래그와 무관하게 JWT 존재 여부로 로그인 상태를 판단합니다.
   final jwt = prefs.getString('jwt_access_token');
-  final loggedIn = kakaoLoggedIn && jwt != null && jwt.isNotEmpty;
+  final loggedIn = jwt != null && jwt.isNotEmpty;
   runApp(MyApp(isLoggedIn: loggedIn));
 }
 
@@ -261,6 +261,7 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
       return ProfileSetupScreen(
         initialProfile: _profile,
         onCompleted: _handleProfileCompleted,
+        isRequiredFlow: true,
       );
     }
     return const MainScreen();
@@ -278,8 +279,46 @@ class MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   static const String _uuidKey = 'user_uuid'; // SharedPreferences ??
 
-  void _navigateToMainScreen() {
+  Future<void> _navigateAfterSplash() async {
+    final prefs = await SharedPreferences.getInstance();
+    final jwt = prefs.getString('jwt_access_token');
+    final isLoggedIn = jwt != null && jwt.isNotEmpty;
+
     if (!mounted) return;
+    if (!isLoggedIn) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => const MainAppScreen(),
+        ),
+      );
+      return;
+    }
+
+    final profile = await UserService.fetchCurrentUserProfile();
+    final profileIncomplete = UserService.isRequiredProfileIncomplete(profile);
+    if (!mounted) return;
+
+    if (profileIncomplete) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute<void>(
+          builder: (profileContext) => ProfileSetupScreen(
+            initialProfile: profile,
+            isRequiredFlow: true,
+            onCompleted: () {
+              Navigator.of(profileContext).pushReplacement(
+                MaterialPageRoute<void>(
+                  builder: (_) => const MainAppScreen(),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      return;
+    }
+
     Navigator.pushReplacement(
       context,
       MaterialPageRoute<void>(
@@ -308,7 +347,7 @@ class MainScreenState extends State<MainScreen> {
     //final storedUUID = null;
     if (storedUUID != null) {
       print('Stored UUID found: $storedUUID');
-      _navigateToMainScreen();
+      await _navigateAfterSplash();
     } else {
       print('No UUID found in SharedPreferences. Generating a new UUID...');
       await _createUUID();
@@ -330,6 +369,13 @@ class MainScreenState extends State<MainScreen> {
     );
 
     print('알림 권한 상태: ${settings.authorizationStatus}');
+
+    final isIosSimulator = await _isIosSimulator();
+    if (isIosSimulator) {
+      debugPrint(
+          'iOS simulator detected. Skip FCM token fetch; verify push on real device.');
+      return;
+    }
 
     String? token;
     try {
@@ -362,6 +408,18 @@ class MainScreenState extends State<MainScreen> {
     final initialMessage = await FirebaseMessaging.instance.getInitialMessage();
     if (initialMessage != null) {
       _handleNotificationOpen(initialMessage);
+    }
+  }
+
+  Future<bool> _isIosSimulator() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) {
+      return false;
+    }
+    try {
+      final value = await _deviceInfoChannel.invokeMethod<bool>('isSimulator');
+      return value ?? false;
+    } catch (_) {
+      return false;
     }
   }
 
@@ -423,7 +481,7 @@ class MainScreenState extends State<MainScreen> {
           final prefs = await SharedPreferences.getInstance();
           final String fetchedUuid = data['uuid'];
           await prefs.setString(_uuidKey, fetchedUuid);
-          _navigateToMainScreen();
+          await _navigateAfterSplash();
         } else {
           await _createUUID();
         }
@@ -455,7 +513,7 @@ class MainScreenState extends State<MainScreen> {
           final String newUuid = data['uuid'];
           await prefs.setString(_uuidKey, newUuid);
           print('New UUID created and saved: ' + newUuid);
-          _navigateToMainScreen();
+          await _navigateAfterSplash();
         } else {
           throw Exception(
               'UUID creation failed: Response does not contain UUID');

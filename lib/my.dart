@@ -436,7 +436,10 @@ class _MyScreenState extends State<MyScreen> {
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => ProfileSetupScreen(initialProfile: profile),
+        builder: (_) => ProfileSetupScreen(
+          initialProfile: profile,
+          isRequiredFlow: false,
+        ),
       ),
     );
   }
@@ -754,7 +757,7 @@ class _MyScreenState extends State<MyScreen> {
           _buildSectionHeader('계정 정보'),
           _buildAccountTile(),
           _buildMenuRow(
-            leading: const Text('프로필 설정', style: _kItemTitleStyle),
+            leading: const Text('프로필 설정/재설정', style: _kItemTitleStyle),
             trailing: _buildChevron(),
             onTap: _openProfileSetup,
             indent: _kItemIndent,

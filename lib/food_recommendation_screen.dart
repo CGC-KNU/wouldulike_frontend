@@ -8,6 +8,15 @@ import 'package:new1/utils/location_helper.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
+bool _isValidNetworkImageUrl(String? value) {
+  if (value == null) return false;
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return false;
+  final uri = Uri.tryParse(trimmed);
+  if (uri == null) return false;
+  return (uri.scheme == 'http' || uri.scheme == 'https') && uri.host.isNotEmpty;
+}
+
 class FoodRecommendationScreen extends StatefulWidget {
   const FoodRecommendationScreen({super.key});
 
@@ -271,9 +280,9 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(12),
-                          child: food['image']!.startsWith('http')
+                          child: _isValidNetworkImageUrl(food['image']?.toString())
                               ? Image.network(
-                            food['image']!,
+                            food['image']!.toString().trim(),
                             width: double.infinity,
                             height: double.infinity,
                             fit: BoxFit.cover,
