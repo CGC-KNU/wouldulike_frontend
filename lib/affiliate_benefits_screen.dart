@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
@@ -117,6 +118,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   bool _isOpeningDetail = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  Set<int> _favoriteRestaurantIds = <int>{};
 
   @override
   void initState() {
@@ -137,6 +139,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     });
 
     try {
+      final favoriteIds = await _loadFavoriteRestaurantIds();
       final restaurants = await AffiliateService.fetchRestaurants();
       final issuedCoupons = await _fetchIssuedCoupons();
       final allCoupons = await _fetchAllCoupons();
@@ -157,6 +160,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         _stampStatuses = {};
         _categories = categories.toList();
         _selectedCategory = 'ALL';
+        _favoriteRestaurantIds = favoriteIds;
       });
 
       if (_requiresLogin || !mounted) return;
@@ -194,6 +198,46 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         setState(() => _isLoading = false);
       }
     }
+  }
+
+  Future<Set<int>> _loadFavoriteRestaurantIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getStringList('affiliate_favorite_restaurant_ids') ?? const <String>[];
+    return raw
+        .map((value) => int.tryParse(value))
+        .whereType<int>()
+        .toSet();
+  }
+
+  Future<void> _persistFavoriteRestaurantIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    final values = _favoriteRestaurantIds.map((id) => id.toString()).toList();
+    await prefs.setStringList('affiliate_favorite_restaurant_ids', values);
+  }
+
+  bool _isFavoriteRestaurant(int restaurantId) {
+    return _favoriteRestaurantIds.contains(restaurantId);
+  }
+
+  Future<void> _setFavoriteRestaurant(int restaurantId, bool isFavorite) async {
+    if (!mounted) return;
+    setState(() {
+      final next = Set<int>.from(_favoriteRestaurantIds);
+      if (isFavorite) {
+        next.add(restaurantId);
+      } else {
+        next.remove(restaurantId);
+      }
+      _favoriteRestaurantIds = next;
+    });
+    await _persistFavoriteRestaurantIds();
+  }
+
+  Future<void> _toggleFavoriteRestaurant(int restaurantId) async {
+    await _setFavoriteRestaurant(
+      restaurantId,
+      !_isFavoriteRestaurant(restaurantId),
+    );
   }
 
   Future<List<UserCoupon>> _fetchIssuedCoupons() async {
@@ -705,6 +749,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             restaurant: restaurant,
             coupons: initialCoupons,
             requiresLogin: _requiresLogin,
+            isFavorite: _isFavoriteRestaurant(restaurant.id),
+            onFavoriteChanged: (isFavorite) {
+              _setFavoriteRestaurant(restaurant.id, isFavorite);
+            },
             initialStampStatus: _stampStatuses[restaurant.id],
             onStampStatusUpdated: (status) =>
                 _handleStampStatusUpdated(restaurant.id, status),
@@ -1062,21 +1110,29 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        IconButton(
+                          onPressed: () => _toggleFavoriteRestaurant(restaurant.id),
+                          splashRadius: 18,
+                          constraints: const BoxConstraints(
+                            minWidth: 32,
+                            minHeight: 32,
+                          ),
+                          icon: Icon(
+                            _isFavoriteRestaurant(restaurant.id)
+                                ? Icons.favorite
+                                : Icons.favorite_border,
+                            size: 20,
+                            color: _isFavoriteRestaurant(restaurant.id)
+                                ? const Color(0xFFE11D48)
+                                : const Color(0xFF9CA3AF),
+                          ),
+                          tooltip: _isFavoriteRestaurant(restaurant.id) ? '찜 해제' : '찜하기',
+                        ),
                         const Icon(
                           Icons.keyboard_arrow_right,
                           color: Color(0xFF9CA3AF),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      restaurant.address.isNotEmpty
-                          ? restaurant.address
-                          : '주소 정보를 불러오지 못했어요.',
-                      style: const TextStyle(
-                          fontSize: 13, color: Color(0xFF6B7280)),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 6),
                     Wrap(
@@ -1092,26 +1148,6 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTag(String label,
-      {Color background = const Color(0xFFEEF2FF),
-      Color textColor = const Color(0xFF312E81)}) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: textColor,
-          fontWeight: FontWeight.w600,
-          fontSize: 12,
         ),
       ),
     );
@@ -1203,6 +1239,8 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
     required this.restaurant,
     required this.coupons,
     required this.requiresLogin,
+    required this.isFavorite,
+    required this.onFavoriteChanged,
     this.initialStampStatus,
     required this.onStampStatusUpdated,
     required this.onCouponRedeemed,
@@ -1212,6 +1250,8 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
   final AffiliateRestaurantSummary restaurant;
   final List<UserCoupon> coupons;
   final bool requiresLogin;
+  final bool isFavorite;
+  final void Function(bool isFavorite) onFavoriteChanged;
   final StampStatus? initialStampStatus;
   final void Function(StampStatus status) onStampStatusUpdated;
   final void Function(String couponCode) onCouponRedeemed;
@@ -1335,6 +1375,7 @@ class _AffiliateRestaurantDetailSheetState
   String? _processingCouponCode;
   final PageController _imagePageController = PageController();
   int _currentImageIndex = 0;
+  late bool _isFavorite;
 
   String? _stampBenefitFor(int threshold) {
     final restaurantName = widget.restaurant.name.trim();
@@ -1346,6 +1387,7 @@ class _AffiliateRestaurantDetailSheetState
   @override
   void initState() {
     super.initState();
+    _isFavorite = widget.isFavorite;
     _coupons = List<UserCoupon>.from(widget.coupons);
     _sortCoupons();
     _stampStatus = widget.initialStampStatus ??
@@ -1364,6 +1406,13 @@ class _AffiliateRestaurantDetailSheetState
         _stampError = '로그인 후 스탬프 정보를 확인할 수 있어요.';
       }
     }
+  }
+
+  void _toggleFavorite() {
+    setState(() {
+      _isFavorite = !_isFavorite;
+    });
+    widget.onFavoriteChanged(_isFavorite);
   }
 
   @override
@@ -1939,6 +1988,34 @@ class _AffiliateRestaurantDetailSheetState
               color: Color(0xFF1F2937),
             ),
           ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Padding(
+                padding: EdgeInsets.only(top: 1),
+                child: Icon(
+                  Icons.location_on_outlined,
+                  size: 16,
+                  color: Color(0xFF6B7280),
+                ),
+              ),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Text(
+                  restaurant.address.isNotEmpty
+                      ? restaurant.address
+                      : '주소 정보를 불러오지 못했어요.',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF6B7280),
+                    fontWeight: FontWeight.w500,
+                    height: 1.25,
+                  ),
+                ),
+              ),
+            ],
+          ),
           if (restaurant.category.isNotEmpty || restaurant.zone.isNotEmpty) ...[
             const SizedBox(height: 12),
             Row(
@@ -1955,6 +2032,16 @@ class _AffiliateRestaurantDetailSheetState
                         _buildInfoChip(restaurant.zone),
                     ],
                   ),
+                ),
+                IconButton(
+                  onPressed: _toggleFavorite,
+                  icon: Icon(
+                    _isFavorite ? Icons.favorite : Icons.favorite_border,
+                  ),
+                  tooltip: _isFavorite ? '찜 해제' : '찜하기',
+                  color: _isFavorite
+                      ? const Color(0xFFE11D48)
+                      : const Color(0xFF6B7280),
                 ),
                 if (restaurant.url != null && restaurant.url!.isNotEmpty)
                   IconButton(

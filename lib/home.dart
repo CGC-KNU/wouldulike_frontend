@@ -65,6 +65,8 @@ class _HomeContentState extends State<HomeContent> {
   static const String _kWelcomeCouponDismissedKey =
       'welcome_coupon_dialog_dismissed';
   static const String _kPopupDismissedPrefix = 'home_popup_dismissed';
+  static const String _kFavoriteRestaurantIdsKey =
+      'affiliate_favorite_restaurant_ids';
   static const List<String> _kWelcomeCouponKeywords = <String>[
     '신규가입',
     '회원가입',
@@ -100,6 +102,7 @@ class _HomeContentState extends State<HomeContent> {
   bool _popupPromptScheduled = false;
   bool _suppressWelcomeCoupon = false;
   bool _isOpeningAffiliateDetail = false;
+  Set<int> _favoriteRestaurantIds = <int>{};
   Timer? _bannerAutoScrollTimer;
   static const Duration _bannerAutoScrollDuration = Duration(seconds: 3);
 
@@ -116,10 +119,36 @@ class _HomeContentState extends State<HomeContent> {
     prefs = await SharedPreferences.getInstance();
     _suppressWelcomeCoupon =
         prefs.getBool(_kWelcomeCouponDismissedKey) ?? false;
+    final rawFavoriteIds =
+        prefs.getStringList(_kFavoriteRestaurantIdsKey) ?? const <String>[];
+    _favoriteRestaurantIds = rawFavoriteIds
+        .map((value) => int.tryParse(value))
+        .whereType<int>()
+        .toSet();
     _scheduleHomePopupCheck();
     if (!_suppressWelcomeCoupon) {
       await _checkWelcomeCouponStatus();
     }
+  }
+
+  bool _isFavoriteRestaurant(int restaurantId) {
+    return _favoriteRestaurantIds.contains(restaurantId);
+  }
+
+  Future<void> _setFavoriteRestaurant(int restaurantId, bool isFavorite) async {
+    final next = Set<int>.from(_favoriteRestaurantIds);
+    if (isFavorite) {
+      next.add(restaurantId);
+    } else {
+      next.remove(restaurantId);
+    }
+    _favoriteRestaurantIds = next;
+    await prefs.setStringList(
+      _kFavoriteRestaurantIdsKey,
+      _favoriteRestaurantIds.map((id) => id.toString()).toList(),
+    );
+    if (!mounted) return;
+    setState(() {});
   }
 
   void _scheduleHomePopupCheck() {
@@ -449,6 +478,10 @@ class _HomeContentState extends State<HomeContent> {
             restaurant: restaurant,
             coupons: _couponsForAffiliate(restaurant.id),
             requiresLogin: _affiliateRequiresLogin,
+            isFavorite: _isFavoriteRestaurant(restaurant.id),
+            onFavoriteChanged: (isFavorite) {
+              _setFavoriteRestaurant(restaurant.id, isFavorite);
+            },
             initialStampStatus: _affiliateStampStatuses[restaurant.id],
             onStampStatusUpdated: (status) =>
                 _handleAffiliateStampStatusUpdated(restaurant.id, status),

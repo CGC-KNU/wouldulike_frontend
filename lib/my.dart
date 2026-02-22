@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/profile_setup_screen.dart';
+import 'package:new1/favorite_restaurants_screen.dart';
 
 import 'coupon_list_screen.dart';
 import 'services/api_client.dart';
@@ -352,6 +353,14 @@ class _MyScreenState extends State<MyScreen> {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => const CouponListScreen(source: 'my'),
+      ),
+    );
+  }
+
+  void _openFavoriteRestaurants() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => const FavoriteRestaurantsScreen(),
       ),
     );
   }
@@ -768,6 +777,12 @@ class _MyScreenState extends State<MyScreen> {
             leading: const Text('쿠폰 사용 내역', style: _kItemTitleStyle),
             trailing: _buildChevron(),
             onTap: _openCouponList,
+            indent: _kItemIndent,
+          ),
+          _buildMenuRow(
+            leading: const Text('찜한 식당 모아보기', style: _kItemTitleStyle),
+            trailing: _buildChevron(),
+            onTap: _openFavoriteRestaurants,
             indent: _kItemIndent,
           ),
           const SizedBox(height: 24),
