@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
+import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'affiliate_benefits_screen.dart';
 import 'coupon_list_screen.dart';
@@ -86,8 +89,10 @@ class _HomeContentState extends State<HomeContent> {
   bool _isAffiliateLoading = false;
   String? _affiliateError;
   List<UserCoupon> _affiliateCoupons = [];
+  List<UserCoupon> _homeCouponShowcase = const [];
   Map<int, StampStatus> _affiliateStampStatuses = {};
   bool _affiliateRequiresLogin = false;
+  String _affiliateSource = 'all';
   Future<void>? _affiliateUserDataFuture;
   bool get _hasAffiliateContent =>
       _isAffiliateLoading ||
@@ -102,6 +107,7 @@ class _HomeContentState extends State<HomeContent> {
   bool _popupPromptScheduled = false;
   bool _suppressWelcomeCoupon = false;
   bool _isOpeningAffiliateDetail = false;
+  String? _processingHomeCouponCode;
   Set<int> _favoriteRestaurantIds = <int>{};
   Timer? _bannerAutoScrollTimer;
   static const Duration _bannerAutoScrollDuration = Duration(seconds: 3);
@@ -146,6 +152,21 @@ class _HomeContentState extends State<HomeContent> {
     await prefs.setStringList(
       _kFavoriteRestaurantIdsKey,
       _favoriteRestaurantIds.map((id) => id.toString()).toList(),
+    );
+    String restaurantName = '';
+    for (final r in _affiliateRestaurants) {
+      if (r.id == restaurantId) {
+        restaurantName = r.name;
+        break;
+      }
+    }
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantFavoriteToggle,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: restaurantId,
+        AnalyticsEvents.paramRestaurantName: restaurantName,
+        AnalyticsEvents.paramAction: isFavorite ? 'add' : 'remove',
+      },
     );
     if (!mounted) return;
     setState(() {});
@@ -320,11 +341,32 @@ class _HomeContentState extends State<HomeContent> {
       _affiliateError = null;
     });
     try {
-      final restaurants = await AffiliateService.fetchRestaurants();
+      List<AffiliateRestaurantSummary> restaurants;
+      String source = 'all';
+      bool requiresLogin = false;
+      try {
+        final response = await AffiliateService.fetchActiveRestaurants();
+        restaurants = response.restaurants;
+        source = response.source;
+      } on ApiAuthException {
+        // 로그인 전에는 active API를 사용할 수 없어 전체 목록으로 폴백한다.
+        restaurants = await AffiliateService.fetchRestaurants();
+        source = 'all';
+        requiresLogin = true;
+      }
       if (!mounted) return;
       setState(() {
         _affiliateRestaurants = restaurants;
+        _affiliateSource = source;
+        _affiliateRequiresLogin = requiresLogin;
+        if (requiresLogin) {
+          _affiliateCoupons = const <UserCoupon>[];
+          _affiliateStampStatuses = const <int, StampStatus>{};
+        }
       });
+      if (!requiresLogin) {
+        await _loadAffiliateProgressData();
+      }
     } on ApiNetworkException catch (e) {
       debugPrint('Failed to load affiliate restaurants: $e');
       if (!mounted) return;
@@ -350,6 +392,44 @@ class _HomeContentState extends State<HomeContent> {
         _isAffiliateLoading = false;
       });
     }
+  }
+
+  Future<void> _loadAffiliateProgressData() async {
+    try {
+      final results = await Future.wait<dynamic>([
+        CouponService.fetchMyCoupons(status: CouponStatus.issued),
+        CouponService.fetchAllStampStatuses(),
+      ]);
+      if (!mounted) return;
+      final coupons = results[0] as List<UserCoupon>;
+      final stampCollection = results[1] as StampStatusCollection;
+      final showcaseCoupons = _shuffleCouponsForHome(coupons);
+      setState(() {
+        _affiliateCoupons = coupons;
+        _homeCouponShowcase = showcaseCoupons;
+        _affiliateStampStatuses = stampCollection.statuses;
+        _affiliateRequiresLogin = false;
+      });
+    } on ApiAuthException {
+      if (!mounted) return;
+      setState(() {
+        _affiliateRequiresLogin = true;
+        _affiliateCoupons = const <UserCoupon>[];
+        _homeCouponShowcase = const <UserCoupon>[];
+        _affiliateStampStatuses = const <int, StampStatus>{};
+      });
+    } catch (e, stackTrace) {
+      debugPrint('Failed to load affiliate progress data: $e');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  List<UserCoupon> _shuffleCouponsForHome(List<UserCoupon> coupons) {
+    final issued = coupons
+        .where((coupon) => coupon.status == CouponStatus.issued)
+        .toList();
+    issued.shuffle(math.Random());
+    return issued;
   }
 
   Future<void> _ensureAffiliateUserData() async {
@@ -380,6 +460,7 @@ class _HomeContentState extends State<HomeContent> {
       if (!mounted) return;
       setState(() {
         _affiliateCoupons = coupons;
+        _homeCouponShowcase = _shuffleCouponsForHome(coupons);
         _affiliateRequiresLogin = false;
       });
     } on ApiAuthException catch (e) {
@@ -387,6 +468,7 @@ class _HomeContentState extends State<HomeContent> {
       setState(() {
         _affiliateRequiresLogin = true;
         _affiliateCoupons = const <UserCoupon>[];
+        _homeCouponShowcase = const <UserCoupon>[];
       });
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(content: Text(e.message)),
@@ -414,6 +496,78 @@ class _HomeContentState extends State<HomeContent> {
         .toList();
   }
 
+  int _issuedCouponCountForAffiliate(int restaurantId) {
+    if (_affiliateCoupons.isEmpty) return 0;
+    final now = DateTime.now();
+    return _affiliateCoupons.where((coupon) {
+      if (coupon.restaurantId != restaurantId) return false;
+      if (coupon.status != CouponStatus.issued) return false;
+      final expiresAt = coupon.expiresAt;
+      return expiresAt == null || !expiresAt.isBefore(now);
+    }).length;
+  }
+
+  StampStatus _resolvedStampStatusForAffiliate(AffiliateRestaurantSummary restaurant) {
+    final fromServer = _affiliateStampStatuses[restaurant.id];
+    if (fromServer != null) return fromServer;
+    return StampStatus(
+      current: restaurant.stampCurrent,
+      target: restaurant.stampTarget,
+    );
+  }
+
+  bool _isAffiliateInProgress(AffiliateRestaurantSummary restaurant) {
+    final issuedCoupons = _issuedCouponCountForAffiliate(restaurant.id);
+    final stampStatus = _resolvedStampStatusForAffiliate(restaurant);
+    return issuedCoupons > 0 || (!_affiliateRequiresLogin && stampStatus.current > 0);
+  }
+
+  String _buildHomeStampLabel(AffiliateRestaurantSummary restaurant) {
+    if (_affiliateRequiresLogin) return '스탬프 확인은 로그인 필요';
+    final stamp = _resolvedStampStatusForAffiliate(restaurant);
+    if (stamp.target > 0) return '스탬프 ${stamp.current}/${stamp.target}';
+    if (stamp.current > 0) return '스탬프 ${stamp.current}개';
+    return '스탬프 적립 없음';
+  }
+
+  String _buildHomeCouponLabel(int restaurantId) {
+    if (_affiliateRequiresLogin) return '쿠폰 확인은 로그인 필요';
+    final issued = _issuedCouponCountForAffiliate(restaurantId);
+    if (issued <= 0) return '사용 가능 쿠폰 없음';
+    return '사용 가능 쿠폰 ${issued}장';
+  }
+
+  List<AffiliateRestaurantSummary> get _sortedAffiliateRestaurants {
+    if (_affiliateRestaurants.isEmpty) return const <AffiliateRestaurantSummary>[];
+    final sorted = List<AffiliateRestaurantSummary>.from(_affiliateRestaurants);
+    sorted.sort((a, b) {
+      final aInProgress = _isAffiliateInProgress(a);
+      final bInProgress = _isAffiliateInProgress(b);
+      if (aInProgress != bInProgress) return aInProgress ? -1 : 1;
+      return a.name.compareTo(b.name);
+    });
+    return sorted;
+  }
+
+  List<AffiliateRestaurantSummary> get _displayAffiliateRestaurants {
+    if (_affiliateSource == 'all') return _affiliateRestaurants;
+    return _sortedAffiliateRestaurants;
+  }
+
+  String? _formatCouponExpiry(DateTime? expiresAt) {
+    if (expiresAt == null) return null;
+    final now = DateTime.now();
+    final difference = expiresAt.difference(now);
+    if (difference.isNegative) return '만료됨';
+    if (difference.inHours < 24) {
+      if (difference.inHours > 0) return '${difference.inHours}시간 남음';
+      if (difference.inMinutes > 0) return '${difference.inMinutes}분 남음';
+      return '곧 만료';
+    }
+    if (difference.inDays < 7) return '${difference.inDays}일 남음';
+    return '${expiresAt.year}.${expiresAt.month.toString().padLeft(2, '0')}.${expiresAt.day.toString().padLeft(2, '0')}까지';
+  }
+
   void _handleAffiliateCouponRedeemed(String couponCode, int restaurantId) {
     if (!mounted) return;
     setState(() {
@@ -435,6 +589,7 @@ class _HomeContentState extends State<HomeContent> {
             code: code,
             status: CouponStatus.issued,
             restaurantId: restaurantId,
+            issueKey: 'STAMP_REWARD:reward',
           ),
         )
         .toList();
@@ -686,6 +841,344 @@ class _HomeContentState extends State<HomeContent> {
         builder: (_) => const CouponListScreen(source: 'home'),
       ),
     );
+  }
+
+  void _showHomeSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  String? _extractDetailMessage(String body) {
+    if (body.isEmpty) return null;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        const keys = ['detail', 'message', 'error'];
+        for (final key in keys) {
+          final value = decoded[key];
+          if (value is String && value.isNotEmpty) return value;
+          if (value is List && value.isNotEmpty) {
+            final first = value.first;
+            if (first is String && first.isNotEmpty) return first;
+          }
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<String?> _promptForCouponPin({
+    required String title,
+    required String confirmLabel,
+    String? notes,
+  }) async {
+    final controller = TextEditingController();
+    String? error;
+    final hasNotes = notes != null && notes.isNotEmpty;
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Container(
+                  width: 358,
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                  decoration: ShapeDecoration(
+                    color: const Color(0xFFF2F2F2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: const TextStyle(
+                            color: Color(0xFF39393E),
+                            fontSize: 19,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w800,
+                            height: 1.21,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        const SizedBox(
+                          width: 330,
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
+                                  style: TextStyle(
+                                    color: Color(0xFF39393E),
+                                    fontSize: 15,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.20,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: ' 즉시 사용처리',
+                                  style: TextStyle(
+                                    color: Color(0xFF39393E),
+                                    fontSize: 15,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.20,
+                                  ),
+                                ),
+                                TextSpan(
+                                  text: ' 됩니다.',
+                                  style: TextStyle(
+                                    color: Color(0xFF39393E),
+                                    fontSize: 15,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.20,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (hasNotes) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Color(0xFFE5E5E5),
+                                width: 1,
+                              ),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '사용 조건',
+                                  style: TextStyle(
+                                    color: Color(0xFF797979),
+                                    fontSize: 12,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  notes,
+                                  style: const TextStyle(
+                                    color: Color(0xFF39393E),
+                                    fontSize: 14,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                    const SizedBox(
+                      width: 55,
+                      height: 40,
+                      child: Text(
+                        '비밀번호',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Color(0xFF797979),
+                          fontSize: 15,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      width: double.infinity,
+                      height: 40,
+                      decoration: ShapeDecoration(
+                        color: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          side: const BorderSide(
+                            width: 2,
+                            color: Color(0xFFD9D9D9),
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.center,
+                      child: TextField(
+                        controller: controller,
+                        keyboardType: TextInputType.number,
+                        obscureText: true,
+                        maxLength: 4,
+                        style: const TextStyle(
+                          color: Color(0xFF39393E),
+                          fontSize: 16,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
+                        ),
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          border: InputBorder.none,
+                          counterText: '',
+                          errorText: error,
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(4),
+                        ],
+                      ),
+                    ),
+                    if (error != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        error!,
+                        style: const TextStyle(
+                          color: Color(0xFFEF4444),
+                          fontSize: 12,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              foregroundColor: const Color(0xFF39393E),
+                              side: const BorderSide(color: Color(0xFFBABAC0)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              textStyle: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            child: const Text('취소'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              final value = controller.text.trim();
+                              if (value.length != 4) {
+                                setState(() {
+                                  error = 'PIN은 4자리 숫자여야 합니다.';
+                                });
+                                return;
+                              }
+                              Navigator.of(dialogContext).pop(value);
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1C203C),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              textStyle: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                letterSpacing: -0.32,
+                              ),
+                            ),
+                            child: Text(confirmLabel),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+    );
+  }
+
+  Future<void> _handleHomeCouponUse(UserCoupon coupon) async {
+    if (_processingHomeCouponCode == coupon.code) return;
+    final restaurantId = coupon.restaurantId;
+    if (restaurantId == null) {
+      _showHomeSnack('이 쿠폰은 사용 가능한 매장 정보가 없어요.');
+      return;
+    }
+
+    final pin = await _promptForCouponPin(
+      title: '쿠폰 사용',
+      confirmLabel: '사용하기',
+      notes: coupon.benefit?.notesText,
+    );
+    if (pin == null) return;
+
+    if (!mounted) return;
+    setState(() => _processingHomeCouponCode = coupon.code);
+    try {
+      await CouponService.redeemCoupon(
+        couponCode: coupon.code,
+        restaurantId: restaurantId,
+        pin: pin,
+      );
+      if (!mounted) return;
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.couponRedeemed,
+        parameters: {
+          AnalyticsEvents.paramCouponCode: coupon.code,
+          AnalyticsEvents.paramRestaurantId: restaurantId,
+          AnalyticsEvents.paramRestaurantName:
+              coupon.benefit?.restaurantNameText ?? '',
+          AnalyticsEvents.paramCouponIssueSource:
+              getCouponIssuanceSource(coupon.issueKey),
+        },
+      );
+      setState(() {
+        _affiliateCoupons = _affiliateCoupons
+            .where((element) => element.code != coupon.code)
+            .toList();
+        _homeCouponShowcase = _homeCouponShowcase
+            .where((element) => element.code != coupon.code)
+            .toList();
+        _processingHomeCouponCode = null;
+      });
+      _showHomeSnack('쿠폰을 사용했어요.');
+    } on ApiAuthException catch (e) {
+      _showHomeSnack(e.message);
+    } on ApiHttpException catch (e) {
+      _showHomeSnack(_extractDetailMessage(e.body) ?? '쿠폰 사용에 실패했어요.');
+    } on ApiNetworkException catch (e) {
+      _showHomeSnack('네트워크 오류: $e');
+    } catch (e) {
+      _showHomeSnack('알 수 없는 오류: $e');
+    } finally {
+      if (mounted && _processingHomeCouponCode == coupon.code) {
+        setState(() => _processingHomeCouponCode = null);
+      }
+    }
   }
 
   // URL 열기 함수
@@ -1069,13 +1562,60 @@ class _HomeContentState extends State<HomeContent> {
             scrollDirection: Axis.horizontal,
             padding: EdgeInsets.zero,
             physics: const BouncingScrollPhysics(),
-            itemCount: _affiliateRestaurants.length,
+            itemCount: _displayAffiliateRestaurants.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
             itemBuilder: (context, index) {
-              final restaurant = _affiliateRestaurants[index];
+              final restaurant = _displayAffiliateRestaurants[index];
+              final showProgressInfo = _affiliateSource != 'all';
               return _AffiliateRestaurantCard(
                 restaurant: restaurant,
+                stampLabel: _buildHomeStampLabel(restaurant),
+                couponLabel: _buildHomeCouponLabel(restaurant.id),
+                isInProgress: _isAffiliateInProgress(restaurant),
+                showProgressInfo: showProgressInfo,
                 onTap: () => _openAffiliateRestaurantDetail(restaurant),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHomeCouponsSection() {
+    if (_affiliateRequiresLogin || _homeCouponShowcase.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '보유 쿠폰',
+          style: TextStyle(
+            color: Color(0xFF111827),
+            fontSize: 18,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 126,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.zero,
+            itemCount: _homeCouponShowcase.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final coupon = _homeCouponShowcase[index];
+              return _HomeCouponCard(
+                coupon: coupon,
+                expiryText: _formatCouponExpiry(coupon.expiresAt),
+                isProcessing: _processingHomeCouponCode == coupon.code,
+                onUsePressed: () => _handleHomeCouponUse(coupon),
               );
             },
           ),
@@ -1188,7 +1728,10 @@ class _HomeContentState extends State<HomeContent> {
                 SizedBox(height: padding * 1.5),
                 if (_hasAffiliateContent) ...[
                   _buildAffiliateRestaurantsSection(),
-                  SizedBox(height: padding * 0.8),
+                  if (!_affiliateRequiresLogin && _homeCouponShowcase.isNotEmpty) ...[
+                    SizedBox(height: padding * 1.2),
+                    _buildHomeCouponsSection(),
+                  ],
                 ],
               ],
             ),
@@ -1202,10 +1745,18 @@ class _HomeContentState extends State<HomeContent> {
 class _AffiliateRestaurantCard extends StatelessWidget {
   const _AffiliateRestaurantCard({
     required this.restaurant,
+    required this.stampLabel,
+    required this.couponLabel,
+    required this.isInProgress,
+    required this.showProgressInfo,
     required this.onTap,
   });
 
   final AffiliateRestaurantSummary restaurant;
+  final String stampLabel;
+  final String couponLabel;
+  final bool isInProgress;
+  final bool showProgressInfo;
   final VoidCallback onTap;
 
   String get _description {
@@ -1220,102 +1771,149 @@ class _AffiliateRestaurantCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final imageUrl =
         restaurant.imageUrls.isNotEmpty ? restaurant.imageUrls.first : null;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Container(
-          width: 140,
-          height: 256,
-          decoration: ShapeDecoration(
-            color: const Color(0xFFECEDEF),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                width: 128,
-                height: 121,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: _buildImage(imageUrl),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: 104,
-                child: Text(
-                  restaurant.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 12.6,
-                    fontFamily: 'Pretendard Variable',
-                    fontWeight: FontWeight.w700,
-                    height: 1.3,
-                    letterSpacing: -0.5,
+    return Stack(
+      children: [
+        Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 140,
+              height: 256,
+              decoration: ShapeDecoration(
+                color: const Color(0xFFECEDEF),
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(
+                    color: showProgressInfo && isInProgress
+                        ? const Color(0xFF6366F1)
+                        : Colors.transparent,
+                    width: showProgressInfo && isInProgress ? 1.5 : 0,
                   ),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              const SizedBox(height: 6),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.topLeft,
-                  child: SizedBox(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
                     width: 128,
+                    height: 121,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(10),
+                      child: _buildImage(imageUrl),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: 104,
                     child: Text(
-                      _description,
-                      maxLines: 3,
+                      restaurant.name,
+                      maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF585555),
-                        fontSize: 11.5,
+                        color: Colors.black,
+                        fontSize: 12.6,
                         fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w400,
+                        fontWeight: FontWeight.w700,
                         height: 1.3,
                         letterSpacing: -0.5,
                       ),
                     ),
                   ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                height: 22,
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    padding: EdgeInsets.zero,
-                    backgroundColor: const Color(0xFF312E81),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(6),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: SizedBox(
+                      width: 128,
+                      child: showProgressInfo
+                          ? Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _StatusChip(
+                                  icon: Icons.local_activity_outlined,
+                                  text: stampLabel,
+                                ),
+                                const SizedBox(height: 4),
+                                _StatusChip(
+                                  icon: Icons.confirmation_num_outlined,
+                                  text: couponLabel,
+                                ),
+                              ],
+                            )
+                          : Align(
+                              alignment: Alignment.topLeft,
+                              child: Text(
+                                _description,
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Color(0xFF585555),
+                                  fontSize: 11.5,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w400,
+                                  height: 1.3,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                            ),
                     ),
                   ),
-                  onPressed: onTap,
-                  child: const Text(
-                    '자세히 보기 >',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10.3,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w800,
-                      height: 1.46,
-                      letterSpacing: -0.5,
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 22,
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        backgroundColor: const Color(0xFF312E81),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      onPressed: onTap,
+                      child: const Text(
+                        '자세히 보기 >',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10.3,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w800,
+                          height: 1.46,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
                     ),
                   ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
-      ),
+        if (showProgressInfo && isInProgress)
+          Positioned(
+            top: 4,
+            right: 4,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFF6366F1),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text(
+                '진행중',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -1337,6 +1935,193 @@ class _AffiliateRestaurantCard extends StatelessWidget {
       height: 121,
       fit: BoxFit.cover,
       errorBuilder: (_, __, ___) => fallback,
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip({
+    required this.icon,
+    required this.text,
+  });
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF4FF),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 11,
+            color: const Color(0xFF4F46E5),
+          ),
+          const SizedBox(width: 4),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Color(0xFF1F2937),
+                fontSize: 10.2,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.15,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HomeCouponCard extends StatelessWidget {
+  const _HomeCouponCard({
+    required this.coupon,
+    required this.expiryText,
+    required this.isProcessing,
+    required this.onUsePressed,
+  });
+
+  final UserCoupon coupon;
+  final String? expiryText;
+  final bool isProcessing;
+  final VoidCallback onUsePressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final benefit = coupon.benefit;
+    final title = benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
+    final subtitle = benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
+    final restaurantName = benefit?.restaurantNameText;
+    final restaurantLabel = (restaurantName != null && restaurantName.isNotEmpty)
+        ? restaurantName
+        : (coupon.restaurantId != null ? '적용 매장 ID: ${coupon.restaurantId}' : null);
+
+    return Container(
+      width: 268,
+      padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          colors: [Color(0xFF0B1033), Color(0xFF1C2470)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (restaurantLabel != null) ...[
+            Text(
+              restaurantLabel,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFCBD5FF),
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: 16,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 13,
+              color: Color(0xFFD1D6FF),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          const Spacer(),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: expiryText != null
+                    ? Row(
+                        children: [
+                          const Icon(
+                            Icons.access_time,
+                            size: 14,
+                            color: Color.fromARGB(255, 185, 183, 247),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              expiryText!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                color: Color.fromARGB(255, 185, 183, 247),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : const SizedBox.shrink(),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 28,
+                child: ElevatedButton(
+                  onPressed: isProcessing ? null : onUsePressed,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF0B1033),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 0,
+                    ),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: isProcessing
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF0B1033),
+                          ),
+                        )
+                      : const Text('사용'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

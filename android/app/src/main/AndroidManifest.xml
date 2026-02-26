@@ -79,6 +79,11 @@
             android:name="com.kakao.sdk.AppKey"
             android:value="@string/kakao_app_key" />
 
+        <!-- AdMob 앱 ID (우주라이크 Android) -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="ca-app-pub-7506586411141442~4217309465"/>
+
         <!-- Kakao 인증은 CustomTabsActivity가 직접 딥링크를 받도록 설정 -->
 
         <!-- Ensure CustomTabs activity can directly receive kakao://oauth redirect -->

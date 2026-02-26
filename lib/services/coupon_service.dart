@@ -49,6 +49,7 @@ class UserCoupon {
     this.restaurantId,
     this.benefit,
     this.expiresAt,
+    this.issueKey,
   });
 
   factory UserCoupon.fromJson(Map<String, dynamic> json) {
@@ -66,6 +67,10 @@ class UserCoupon {
     final benefit = _parseCouponBenefit(json);
     final resolvedRestaurantId =
         parseRestaurant(json['restaurant_id']) ?? benefit?.restaurantId;
+    final rawIssueKey = json['issue_key'];
+    final issueKey = (rawIssueKey is String && rawIssueKey.trim().isNotEmpty)
+        ? rawIssueKey.trim()
+        : null;
 
     return UserCoupon(
       code: json['code']?.toString() ?? '',
@@ -73,6 +78,7 @@ class UserCoupon {
       restaurantId: resolvedRestaurantId,
       benefit: benefit,
       expiresAt: _parseDate(json['expires_at']),
+      issueKey: issueKey,
     );
   }
 
@@ -81,6 +87,24 @@ class UserCoupon {
   final int? restaurantId;
   final CouponBenefitInfo? benefit;
   final DateTime? expiresAt;
+  /// 쿠폰 발급 경로 식별 (APP_OPEN:, STAMP_REWARD:, FLASH:, FINAL_EXAM: 등)
+  final String? issueKey;
+}
+
+/// issue_key prefix로 쿠폰 발급 경로 반환
+/// @see wouldulike_backend/docs/쿠폰_issue_key_프론트엔드_가이드.md
+String getCouponIssuanceSource(String? issueKey) {
+  if (issueKey == null || issueKey.isEmpty) return 'unknown';
+  if (issueKey.startsWith('APP_OPEN:')) return 'app_open';
+  if (issueKey.startsWith('AMBASSADOR:')) return 'bulk';
+  if (issueKey.startsWith('REFERRAL_REFERRER:')) return 'referrer';
+  if (issueKey.startsWith('REFERRAL_REFEREE:')) return 'referee';
+  if (issueKey.startsWith('EVENT_REWARD:')) return 'event_referral';
+  if (issueKey.startsWith('SIGNUP:')) return 'signup';
+  if (issueKey.startsWith('STAMP_REWARD:')) return 'stamp';
+  if (issueKey.startsWith('FLASH:')) return 'flash';
+  if (issueKey.startsWith('FINAL_EXAM:')) return 'final_exam';
+  return 'other';
 }
 
 class CouponBenefitInfo {
@@ -88,6 +112,7 @@ class CouponBenefitInfo {
     this.title,
     this.subtitle,
     this.description,
+    this.notes,
     this.restaurantId,
     this.restaurantName,
   });
@@ -107,6 +132,7 @@ class CouponBenefitInfo {
       description: details != null
           ? _normalizeString(details['description'])
           : _normalizeString(json['description']),
+      notes: _normalizeString(json['notes']),
       restaurantId: _parseOptionalInt(json['restaurant_id']),
       restaurantName: _normalizeString(json['restaurant_name']),
     );
@@ -115,6 +141,7 @@ class CouponBenefitInfo {
   final String? title;
   final String? subtitle;
   final String? description;
+  final String? notes;
   final int? restaurantId;
   final String? restaurantName;
 
@@ -128,6 +155,10 @@ class CouponBenefitInfo {
 
   String? get descriptionText =>
       (description != null && description!.isNotEmpty) ? description : null;
+
+  /// 쿠폰 사용 조건 (예: "최소 주문 1만원", "음료만 사용 가능", "1인 1회 한정")
+  String? get notesText =>
+      (notes != null && notes!.isNotEmpty) ? notes : null;
 
   String? get restaurantNameText =>
       (restaurantName != null && restaurantName!.isNotEmpty)
@@ -168,12 +199,58 @@ class StampRewardCoupon {
   final String couponType;
 }
 
+/// GET 스탬프 현황 API의 rewards 배열 항목 (N개 적립 시 ~ 혜택 표시용)
+class StampReward {
+  const StampReward({
+    this.stamps,
+    this.visitRange,
+    this.minVisit,
+    this.maxVisit,
+    this.title,
+    this.subtitle,
+    this.notes,
+    this.benefit,
+    this.couponTypeCode,
+  });
+
+  factory StampReward.fromJson(Map<String, dynamic> json) {
+    return StampReward(
+      stamps: _parseOptionalInt(json['stamps']),
+      visitRange: _normalizeString(json['visit_range']),
+      minVisit: _parseOptionalInt(json['min_visit']),
+      maxVisit: _parseOptionalInt(json['max_visit']),
+      title: _normalizeString(json['title']),
+      subtitle: _normalizeString(json['subtitle']),
+      notes: _normalizeString(json['notes']),
+      benefit: json['benefit'],
+      couponTypeCode: json['coupon_type_code']?.toString(),
+    );
+  }
+
+  /// THRESHOLD 패턴: stamps 개수 도달 시 발급
+  final int? stamps;
+  /// VISIT 패턴: visit_range (예: "1_4")
+  final String? visitRange;
+  final int? minVisit;
+  final int? maxVisit;
+  final String? title;
+  final String? subtitle;
+  final String? notes;
+  final dynamic benefit;
+  final String? couponTypeCode;
+
+  /// THRESHOLD 패턴: stamps 값. VISIT 패턴이면 null
+  int? get threshold => stamps;
+  bool get isVisitPattern => visitRange != null && visitRange!.isNotEmpty;
+}
+
 class StampStatus {
   const StampStatus({
     required this.current,
     required this.target,
     this.updatedAt,
     this.rewardCoupons = const [],
+    this.rewards = const [],
   });
 
   factory StampStatus.fromJson(Map<String, dynamic> json) {
@@ -197,11 +274,31 @@ class StampStatus {
       return const [];
     }
 
+    List<StampReward> parseRewards() {
+      final dynamic value = json['rewards'];
+      if (value is List) {
+        return value
+            .map((item) {
+              if (item is Map<String, dynamic>) {
+                return StampReward.fromJson(item);
+              }
+              if (item is Map) {
+                return StampReward.fromJson(Map<String, dynamic>.from(item));
+              }
+              return null;
+            })
+            .whereType<StampReward>()
+            .toList();
+      }
+      return const [];
+    }
+
     return StampStatus(
       current: _parseInt(json['current']),
       target: _parseInt(json['target']),
       updatedAt: _parseDate(json['updated_at']),
       rewardCoupons: parseRewardCoupons(),
+      rewards: parseRewards(),
     );
   }
 
@@ -209,6 +306,8 @@ class StampStatus {
   final int target;
   final DateTime? updatedAt;
   final List<StampRewardCoupon> rewardCoupons;
+  /// GET 스탬프 현황 API의 rewards 배열 (식당별 N개 적립 시 ~ 혜택 목록)
+  final List<StampReward> rewards;
 }
 
 class StampStatusCollection {

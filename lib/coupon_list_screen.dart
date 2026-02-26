@@ -3,10 +3,18 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
 import 'services/api_client.dart';
-import 'services/coupon_service.dart';
+import 'services/coupon_service.dart'
+    show
+        CouponService,
+        CouponStatus,
+        UserCoupon,
+        getCouponIssuanceSource,
+        kCouponBenefitFallbackTitle,
+        kCouponBenefitFallbackSubtitle;
 
 class CouponListScreen extends StatefulWidget {
   const CouponListScreen({super.key, this.source});
@@ -76,6 +84,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
         const Duration(seconds: 10),
       );
       if (!mounted) return;
+      _logCouponIssueBreakdown(coupons);
       setState(() {
         _coupons = _sortedCoupons(coupons);
         _isLoading = false;
@@ -119,6 +128,25 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _isLoading = false;
         _coupons = const [];
       });
+    }
+  }
+
+  void _logCouponIssueBreakdown(List<UserCoupon> coupons) {
+    final counts = <String, int>{};
+    for (final c in coupons) {
+      final source = getCouponIssuanceSource(c.issueKey);
+      counts[source] = (counts[source] ?? 0) + 1;
+    }
+    for (final entry in counts.entries) {
+      if (entry.value > 0) {
+        AnalyticsLogger.logEvent(
+          AnalyticsEvents.couponIssueBreakdown,
+          parameters: {
+            AnalyticsEvents.paramIssueSource: entry.key,
+            AnalyticsEvents.paramCount: entry.value,
+          },
+        );
+      }
     }
   }
 
@@ -213,6 +241,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
     final pin = await _promptForPin(
       title: '쿠폰 사용',
       confirmLabel: '사용하기',
+      notes: coupon.benefit?.notesText,
     );
     if (pin == null) return;
 
@@ -224,6 +253,17 @@ class _CouponListScreenState extends State<CouponListScreen> {
         pin: pin,
       );
       if (!mounted) return;
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.couponRedeemed,
+        parameters: {
+          AnalyticsEvents.paramCouponCode: coupon.code,
+          AnalyticsEvents.paramRestaurantId: restaurantId,
+          AnalyticsEvents.paramRestaurantName:
+              coupon.benefit?.restaurantNameText ?? '',
+          AnalyticsEvents.paramCouponIssueSource:
+              getCouponIssuanceSource(coupon.issueKey),
+        },
+      );
       setState(() {
         _coupons =
             _coupons.where((element) => element.code != coupon.code).toList();
@@ -248,9 +288,11 @@ class _CouponListScreenState extends State<CouponListScreen> {
   Future<String?> _promptForPin({
     required String title,
     required String confirmLabel,
+    String? notes,
   }) async {
     final controller = TextEditingController();
     String? error;
+    final hasNotes = notes != null && notes.isNotEmpty;
     return showDialog<String>(
       context: context,
       builder: (dialogContext) {
@@ -267,61 +309,102 @@ class _CouponListScreenState extends State<CouponListScreen> {
                   borderRadius: BorderRadius.circular(15),
                 ),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      color: Color(0xFF39393E),
-                      fontSize: 19,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w800,
-                      height: 1.21,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: 330,
-                    child: Text.rich(
-                      TextSpan(
-                        children: [
-                          const TextSpan(
-                            text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
-                            style: TextStyle(
-                              color: Color(0xFF39393E),
-                              fontSize: 15,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w500,
-                              height: 1.20,
-                            ),
-                          ),
-                          const TextSpan(
-                            text: ' 즉시 사용처리',
-                            style: TextStyle(
-                              color: Color(0xFF39393E),
-                              fontSize: 15,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w700,
-                              height: 1.20,
-                            ),
-                          ),
-                          const TextSpan(
-                            text: ' 됩니다.',
-                            style: TextStyle(
-                              color: Color(0xFF39393E),
-                              fontSize: 15,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w500,
-                              height: 1.20,
-                            ),
-                          ),
-                        ],
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Color(0xFF39393E),
+                          fontSize: 19,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w800,
+                          height: 1.21,
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 20),
+                      const SizedBox(height: 16),
+                      SizedBox(
+                        width: 330,
+                        child: Text.rich(
+                          TextSpan(
+                            children: [
+                              const TextSpan(
+                                text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
+                                style: TextStyle(
+                                  color: Color(0xFF39393E),
+                                  fontSize: 15,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.20,
+                                ),
+                              ),
+                              const TextSpan(
+                                text: ' 즉시 사용처리',
+                                style: TextStyle(
+                                  color: Color(0xFF39393E),
+                                  fontSize: 15,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.20,
+                                ),
+                              ),
+                              const TextSpan(
+                                text: ' 됩니다.',
+                                style: TextStyle(
+                                  color: Color(0xFF39393E),
+                                  fontSize: 15,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.20,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      if (hasNotes) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFFE5E5E5),
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '사용 조건',
+                                style: TextStyle(
+                                  color: Color(0xFF797979),
+                                  fontSize: 12,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                notes,
+                                style: const TextStyle(
+                                  color: Color(0xFF39393E),
+                                  fontSize: 14,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
                   const SizedBox(
                     width: 55,
                     height: 40,
@@ -442,11 +525,13 @@ class _CouponListScreenState extends State<CouponListScreen> {
                       ),
                     ],
                   ),
-                ],
+                  ],
+                ),
               ),
             ),
           );
-        });
+        },
+        );
       },
     );
   }

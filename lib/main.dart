@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'services/api_client.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'login_screen.dart';
 import 'profile_setup_screen.dart';
@@ -15,7 +16,9 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/services.dart';
 import 'firebase_options.dart';
+import 'config/analytics_events.dart';
 import 'utils/analytics_logger.dart';
+import 'utils/analytics_navigator_observer.dart';
 import 'services/auth_service.dart';
 import 'services/user_service.dart';
 
@@ -27,6 +30,7 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  await MobileAds.instance.initialize();
   KakaoSdk.init(nativeAppKey: kakaoNativeAppKey, loggingEnabled: true);
   try {
     final origin = await KakaoSdk.origin;
@@ -126,16 +130,58 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.dispose();
   }
 
+  static const String _kLastAppPauseTsKey = 'last_app_pause_ts';
+  static const int _kRevisitThresholdMinutes = 30;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
+      _logAppSessionOrRevisit();
       // 앱이 포그라운드로 돌아올 때 토큰 상태 확인 및 타이머 재설정
       _checkTokenWhenResumed();
     } else if (state == AppLifecycleState.paused) {
+      _savePauseTimestamp();
       // 백그라운드로 갈 때 타이머 취소 (배터리 절약)
       ApiClient.cancelTokenRefreshTimer();
     }
+  }
+
+  Future<void> _savePauseTimestamp() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(
+        _kLastAppPauseTsKey,
+        DateTime.now().millisecondsSinceEpoch,
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _logAppSessionOrRevisit() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final lastPause = prefs.getInt(_kLastAppPauseTsKey) ?? 0;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final inactiveMinutes =
+          lastPause > 0 ? (now - lastPause) ~/ (60 * 1000) : 0;
+      final isReturning =
+          lastPause > 0 && inactiveMinutes >= _kRevisitThresholdMinutes;
+
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.appSessionStart,
+        parameters: {
+          AnalyticsEvents.paramIsReturning: isReturning,
+        },
+      );
+      if (isReturning) {
+        AnalyticsLogger.logEvent(
+          AnalyticsEvents.appRevisit,
+          parameters: {
+            AnalyticsEvents.paramInactiveMinutes: inactiveMinutes,
+          },
+        );
+      }
+    } catch (_) {}
   }
 
   /// 앱 시작 시 토큰 상태 확인
@@ -185,9 +231,13 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      theme: ThemeData(
+        fontFamily: 'Pretendard',
+      ),
       home: AppEntryScreen(isLoggedIn: widget.isLoggedIn),
       navigatorObservers: [
         FirebaseAnalyticsObserver(analytics: _analytics),
+        AnalyticsNavigatorObserver(),
       ],
       routes: {
         '/main': (context) => const MainScreen(),
@@ -228,6 +278,7 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
 
     final profile = await UserService.fetchCurrentUserProfile();
     if (!mounted) return;
+    AnalyticsLogger.setUserPropertiesFromProfile(profile);
     setState(() {
       _profile = profile;
       _isProfileIncomplete = UserService.isRequiredProfileIncomplete(profile);
@@ -296,6 +347,7 @@ class MainScreenState extends State<MainScreen> {
     }
 
     final profile = await UserService.fetchCurrentUserProfile();
+    AnalyticsLogger.setUserPropertiesFromProfile(profile);
     final profileIncomplete = UserService.isRequiredProfileIncomplete(profile);
     if (!mounted) return;
 

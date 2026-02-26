@@ -50,10 +50,12 @@ dependencies:
   firebase_messaging: ^14.7.2
   app_links: ^3.5.0
   app_settings: ^5.1.1
+  google_mobile_ads: ^7.0.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_launcher_icons: ^0.14.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
@@ -125,6 +127,13 @@ flutter:
     - assets/icons/
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icons/app_icon.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true  # App Store에서 알파 채널 아이콘 불가
 
 #flutter_native_splash:
   #color: "#FFFFFF"

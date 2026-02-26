@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'question_screen.dart'; // QuizScreen 임포트
 
 class StartSurveyScreen extends StatefulWidget {
@@ -50,7 +50,7 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
               child: const Text(
                 '입맛 유형 테스트',
                 style: TextStyle(
-                  fontFamily: "Pretendard-Bold",
+                  fontFamily: 'Pretendard',
                   fontWeight: FontWeight.w700,
                   fontSize: 36,
                   color: Color(0xFF1E2761),
@@ -71,6 +71,7 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
                       '무엇을 먹을지 고민이라면?',
                       textAlign: TextAlign.center,
                       style: TextStyle(
+                        fontFamily: 'Pretendard',
                         fontSize: 16,
                         letterSpacing: -0.5, // 글자 간격 줄이기
                         color: Color(0xFF666666),
@@ -85,6 +86,7 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
                       '당신의 음식 취향 유형을 탐험해보세요!',
                       textAlign: TextAlign.center,
                       style: TextStyle(
+                        fontFamily: 'Pretendard',
                         fontSize: 16,
                         letterSpacing: -0.5, // 글자 간격 줄이기
                         color: Color(0xFF666666),
@@ -127,7 +129,7 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
                       Text(
                         '테스트 시작하기',
                         style: TextStyle(
-                          fontFamily: "Pretendard-SemiBold",
+                          fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w600,
                           fontSize: 18,
                           color: Colors.white,
@@ -137,7 +139,7 @@ class _StartSurveyScreenState extends State<StartSurveyScreen> {
                       Text(
                         '2분 만에 나의 음식 취향 확인하기',
                         style: TextStyle(
-                          fontFamily: "Pretendard-Regular",
+                          fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w400,
                           fontSize: 12,
                           color: Colors.white,

@@ -399,7 +399,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: TextStyle(
                                     color: const Color(0xFF1C203C),
                                     fontSize: 16,
-                                    fontFamily: 'Inter',
+                                    fontFamily: 'Pretendard',
                                     fontWeight: FontWeight.w400,
                                     height: 3.75,
                                     letterSpacing: -0.50,

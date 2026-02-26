@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import 'config/analytics_events.dart';
 import 'data/knu_profile_options.dart';
 import 'services/api_client.dart';
+import 'utils/analytics_logger.dart';
 import 'services/user_service.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
@@ -109,6 +111,18 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         departmentName: department.name,
       );
       if (!mounted) return;
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.userSignupCompleted,
+        parameters: {
+          AnalyticsEvents.paramSchoolCode: school.code,
+          AnalyticsEvents.paramCollegeCode: college.code,
+          AnalyticsEvents.paramDepartmentCode: department.code,
+        },
+      );
+      AnalyticsLogger.setUserPropertiesFromProfile({
+        'college_code': college.code,
+        'department_code': department.code,
+      });
       widget.onCompleted?.call();
       if (!widget.isRequiredFlow && Navigator.of(context).canPop()) {
         Navigator.of(context).pop(true);

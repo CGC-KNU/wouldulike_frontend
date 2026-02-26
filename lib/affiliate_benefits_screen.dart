@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -6,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
 import 'services/affiliate_service.dart';
@@ -62,6 +64,9 @@ const Map<String, _CategoryMeta> _kCategoryMeta = {
   'SNACK': _CategoryMeta('분식', 'assets/images/snack.png'),
   'PUB': _CategoryMeta('술집', 'assets/images/pub.png'),
   'CAFE': _CategoryMeta('카페', 'assets/images/cafe.png'),
+  'DONKATSU': _CategoryMeta('돈가스', 'assets/images/donkatsu.png'),
+  'HAMBURGER': _CategoryMeta('햄버거', 'assets/images/hamburger.png'),
+  'ETC': _CategoryMeta('기타', 'assets/images/total.png'),
 };
 
 const Map<String, String> _kCategoryAlias = {
@@ -69,6 +74,7 @@ const Map<String, String> _kCategoryAlias = {
   '전체': 'ALL',
   'KOREAN': 'KOREAN',
   '한식': 'KOREAN',
+  '고기/구이': 'KOREAN',
   'CHINESE': 'CHINESE',
   '중식': 'CHINESE',
   'JAPANESE': 'JAPANESE',
@@ -82,6 +88,13 @@ const Map<String, String> _kCategoryAlias = {
   '술집': 'PUB',
   'CAFE': 'CAFE',
   '카페': 'CAFE',
+  'DONKATSU': 'DONKATSU',
+  '돈가스': 'DONKATSU',
+  'HAMBURGER': 'HAMBURGER',
+  '햄버거': 'HAMBURGER',
+  'ETC': 'ETC',
+  '기타': 'ETC',
+  '아시안': 'ETC',
 };
 
 const List<String> _kCategoryOrder = [
@@ -93,6 +106,9 @@ const List<String> _kCategoryOrder = [
   'SNACK',
   'PUB',
   'CAFE',
+  'DONKATSU',
+  'HAMBURGER',
+  'ETC',
 ];
 
 class _CouponCounts {
@@ -105,29 +121,47 @@ class _CouponCounts {
 }
 
 class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
-  List<AffiliateRestaurantSummary> _restaurants = [];
+  static const String _kFavoriteAffiliateRestaurantIdsKey =
+      'affiliate_favorite_restaurant_ids';
+  static const String _kFavoriteGeneralRestaurantKeysKey =
+      'general_favorite_restaurant_keys';
+  static const String _kFavoriteGeneralRestaurantItemsKey =
+      'general_favorite_restaurant_items';
+  static const int _kGeneralRestaurantPageSize = 20;
+
+  List<AffiliateRestaurantSummary> _affiliateRestaurants = [];
+  List<GeneralRestaurantSummary> _generalRestaurants = [];
   List<UserCoupon> _issuedCoupons = [];
   Map<int, int> _couponCounts = {};
   Map<int, _CouponCounts> _couponCountsDetailed = {};
   Map<int, StampStatus> _stampStatuses = {};
   bool _isLoading = false;
+  bool _isAppending = false;
+  bool _hasMoreGeneralRestaurants = false;
+  int? _nextGeneralOffset;
   String? _error;
   bool _requiresLogin = false;
   String _selectedCategory = 'ALL';
   List<String> _categories = const ['ALL'];
   bool _isOpeningDetail = false;
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  Timer? _searchDebounce;
   String _searchQuery = '';
-  Set<int> _favoriteRestaurantIds = <int>{};
+  Set<int> _favoriteAffiliateRestaurantIds = <int>{};
+  Set<String> _favoriteGeneralRestaurantKeys = <String>{};
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_handleScroll);
     _load();
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+    _scrollController.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -139,46 +173,71 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     });
 
     try {
-      final favoriteIds = await _loadFavoriteRestaurantIds();
-      final restaurants = await AffiliateService.fetchRestaurants();
+      final favoriteState = await _loadFavoriteState();
+      final response = await AffiliateService.fetchTabRestaurants(
+        query: _searchQuery.trim().isEmpty ? null : _searchQuery.trim(),
+        limit: _kGeneralRestaurantPageSize,
+        offset: 0,
+        includeAffiliates: true,
+      );
+      final affiliateRestaurants = response.affiliateRestaurants;
+      final generalRestaurants = response.generalRestaurants;
       final issuedCoupons = await _fetchIssuedCoupons();
       final allCoupons = await _fetchAllCoupons();
 
       final categories = <String>{'ALL'};
-      for (final restaurant in restaurants) {
-        if (restaurant.category.isNotEmpty) {
-          categories.add(restaurant.category);
+      for (final restaurant in affiliateRestaurants) {
+        final normalizedCategory = _normalizedCategoryForState(
+          restaurant.category,
+        );
+        if (normalizedCategory.isNotEmpty) {
+          categories.add(normalizedCategory);
+        }
+      }
+      for (final restaurant in generalRestaurants) {
+        final normalizedCategory = _normalizedCategoryForState(
+          restaurant.category,
+        );
+        if (normalizedCategory.isNotEmpty) {
+          categories.add(normalizedCategory);
         }
       }
 
       if (!mounted) return;
       setState(() {
-        _restaurants = restaurants;
+        _affiliateRestaurants = affiliateRestaurants;
+        _generalRestaurants = generalRestaurants;
         _issuedCoupons = _sortCouponsByStatus(issuedCoupons);
         _couponCounts = _buildCouponCounts(issuedCoupons);
         _couponCountsDetailed = _buildDetailedCouponCounts(allCoupons);
         _stampStatuses = {};
-        _categories = categories.toList();
-        _selectedCategory = 'ALL';
-        _favoriteRestaurantIds = favoriteIds;
+        _categories = _sortCategories(categories);
+        if (!_categories.contains(_selectedCategory)) {
+          _selectedCategory = 'ALL';
+        }
+        _favoriteAffiliateRestaurantIds = favoriteState.$1;
+        _favoriteGeneralRestaurantKeys = favoriteState.$2;
+        _hasMoreGeneralRestaurants = response.generalPagination.hasMore;
+        _nextGeneralOffset = response.generalPagination.nextOffset;
       });
 
       if (_requiresLogin || !mounted) return;
 
       try {
-        final statuses = await _fetchStampStatuses(restaurants);
+        final statuses = await _fetchStampStatuses(affiliateRestaurants);
         if (!mounted) return;
         setState(() {
           _stampStatuses = statuses;
-          _restaurants = _applyStampStatuses(_restaurants, statuses);
+          _affiliateRestaurants =
+              _applyStampStatuses(_affiliateRestaurants, statuses);
         });
       } on ApiAuthException catch (e) {
         if (!mounted) return;
         setState(() {
           _requiresLogin = true;
-          _error = e.message;
           _stampStatuses = {};
         });
+        _showSnack(e.message);
       } on ApiNetworkException catch (_) {
         // Silently ignore stamp sync failures caused by transient connectivity issues.
       } on ApiHttpException catch (_) {
@@ -195,48 +254,164 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       setState(() => _error = e.toString());
     } finally {
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _isLoading = false;
+          _isAppending = false;
+        });
       }
     }
   }
 
-  Future<Set<int>> _loadFavoriteRestaurantIds() async {
+  Future<(Set<int>, Set<String>)> _loadFavoriteState() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getStringList('affiliate_favorite_restaurant_ids') ?? const <String>[];
-    return raw
+    final rawAffiliate =
+        prefs.getStringList(_kFavoriteAffiliateRestaurantIdsKey) ??
+            const <String>[];
+    final rawGeneral =
+        prefs.getStringList(_kFavoriteGeneralRestaurantKeysKey) ??
+            const <String>[];
+    final affiliateIds = rawAffiliate
         .map((value) => int.tryParse(value))
         .whereType<int>()
         .toSet();
+    final generalKeys = rawGeneral
+        .map((value) => value.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    return (affiliateIds, generalKeys);
   }
 
-  Future<void> _persistFavoriteRestaurantIds() async {
+  Future<void> _persistFavoriteState() async {
     final prefs = await SharedPreferences.getInstance();
-    final values = _favoriteRestaurantIds.map((id) => id.toString()).toList();
-    await prefs.setStringList('affiliate_favorite_restaurant_ids', values);
+    final affiliateValues =
+        _favoriteAffiliateRestaurantIds.map((id) => id.toString()).toList();
+    final generalValues = _favoriteGeneralRestaurantKeys.toList();
+    await prefs.setStringList(
+        _kFavoriteAffiliateRestaurantIdsKey, affiliateValues);
+    await prefs.setStringList(
+        _kFavoriteGeneralRestaurantKeysKey, generalValues);
   }
 
-  bool _isFavoriteRestaurant(int restaurantId) {
-    return _favoriteRestaurantIds.contains(restaurantId);
+  bool _isFavoriteAffiliateRestaurant(int restaurantId) {
+    return _favoriteAffiliateRestaurantIds.contains(restaurantId);
   }
 
-  Future<void> _setFavoriteRestaurant(int restaurantId, bool isFavorite) async {
+  String _generalRestaurantFavoriteKey(GeneralRestaurantSummary restaurant) {
+    if (restaurant.id > 0) {
+      return 'id:${restaurant.id}';
+    }
+    final normalizedUrl = restaurant.url.trim();
+    if (normalizedUrl.isNotEmpty) {
+      return 'url:$normalizedUrl';
+    }
+    return 'name:${restaurant.name.trim()}|addr:${restaurant.address.trim()}';
+  }
+
+  bool _isFavoriteGeneralRestaurant(GeneralRestaurantSummary restaurant) {
+    return _favoriteGeneralRestaurantKeys
+        .contains(_generalRestaurantFavoriteKey(restaurant));
+  }
+
+  Future<void> _setFavoriteAffiliateRestaurant(
+    int restaurantId,
+    bool isFavorite,
+  ) async {
+    String restaurantName = '';
+    for (final r in _affiliateRestaurants) {
+      if (r.id == restaurantId) {
+        restaurantName = r.name;
+        break;
+      }
+    }
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantFavoriteToggle,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: restaurantId,
+        AnalyticsEvents.paramRestaurantName: restaurantName,
+        AnalyticsEvents.paramAction: isFavorite ? 'add' : 'remove',
+      },
+    );
     if (!mounted) return;
     setState(() {
-      final next = Set<int>.from(_favoriteRestaurantIds);
+      final next = Set<int>.from(_favoriteAffiliateRestaurantIds);
       if (isFavorite) {
         next.add(restaurantId);
       } else {
         next.remove(restaurantId);
       }
-      _favoriteRestaurantIds = next;
+      _favoriteAffiliateRestaurantIds = next;
     });
-    await _persistFavoriteRestaurantIds();
+    await _persistFavoriteState();
   }
 
-  Future<void> _toggleFavoriteRestaurant(int restaurantId) async {
-    await _setFavoriteRestaurant(
+  Future<void> _setFavoriteGeneralRestaurant(
+    GeneralRestaurantSummary restaurant,
+    bool isFavorite,
+  ) async {
+    final key = _generalRestaurantFavoriteKey(restaurant);
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantFavoriteToggle,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: restaurant.id,
+        AnalyticsEvents.paramRestaurantName: restaurant.name,
+        AnalyticsEvents.paramAction: isFavorite ? 'add' : 'remove',
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      final next = Set<String>.from(_favoriteGeneralRestaurantKeys);
+      if (isFavorite) {
+        next.add(key);
+      } else {
+        next.remove(key);
+      }
+      _favoriteGeneralRestaurantKeys = next;
+    });
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kFavoriteGeneralRestaurantItemsKey);
+    final snapshots = <String, dynamic>{};
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) {
+          snapshots.addAll(decoded);
+        }
+      } catch (_) {}
+    }
+    if (isFavorite) {
+      snapshots[key] = <String, dynamic>{
+        'restaurant_id': restaurant.id,
+        'name': restaurant.name,
+        'description': restaurant.description,
+        'address': restaurant.address,
+        'category': restaurant.category,
+        'zone': restaurant.zone,
+        'phone_number': restaurant.phoneNumber,
+        'url': restaurant.url,
+      };
+    } else {
+      snapshots.remove(key);
+    }
+    await _persistFavoriteState();
+    await prefs.setString(
+      _kFavoriteGeneralRestaurantItemsKey,
+      jsonEncode(snapshots),
+    );
+  }
+
+  Future<void> _toggleFavoriteAffiliateRestaurant(int restaurantId) async {
+    await _setFavoriteAffiliateRestaurant(
       restaurantId,
-      !_isFavoriteRestaurant(restaurantId),
+      !_isFavoriteAffiliateRestaurant(restaurantId),
+    );
+  }
+
+  Future<void> _toggleFavoriteGeneralRestaurant(
+    GeneralRestaurantSummary restaurant,
+  ) async {
+    await _setFavoriteGeneralRestaurant(
+      restaurant,
+      !_isFavoriteGeneralRestaurant(restaurant),
     );
   }
 
@@ -246,29 +421,24 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         status: CouponStatus.issued,
       );
       if (mounted) {
-        setState(() => _requiresLogin = false);
+        setState(() {
+          _requiresLogin = false;
+        });
       }
       return coupons;
     } on ApiAuthException catch (e) {
       if (mounted) {
         setState(() {
           _requiresLogin = true;
-          _error = e.message;
         });
       }
+      _showSnack(e.message);
       return const [];
     } on ApiHttpException catch (e) {
-      if (mounted) {
-        setState(() {
-          _requiresLogin = false;
-          _error = 'HTTP ${e.statusCode}: ${e.body}';
-        });
-      }
+      debugPrint('Coupon API error: HTTP ${e.statusCode}');
       return const [];
     } catch (e) {
-      if (mounted) {
-        setState(() => _error = e.toString());
-      }
+      debugPrint('Coupon API unexpected error: $e');
       return const [];
     }
   }
@@ -427,31 +597,30 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         .toList();
   }
 
-  List<AffiliateRestaurantSummary> get _filteredRestaurants {
-    final categoryFiltered = _selectedCategory == 'ALL'
-        ? _restaurants
-        : _restaurants
-            .where((restaurant) => restaurant.category == _selectedCategory)
-            .toList();
-
-    final normalizedQuery = _normalizeForSearch(_searchQuery);
-    if (normalizedQuery.isEmpty) return categoryFiltered;
-
-    final scored = <MapEntry<AffiliateRestaurantSummary, int>>[];
-    for (final restaurant in categoryFiltered) {
-      final score = _searchMatchScore(restaurant, normalizedQuery);
-      if (score != null) {
-        scored.add(MapEntry(restaurant, score));
-      }
+  List<AffiliateRestaurantSummary> get _filteredAffiliateRestaurants {
+    if (_selectedCategory == 'ALL') {
+      return _affiliateRestaurants;
     }
+    return _affiliateRestaurants
+        .where(
+          (restaurant) =>
+              _normalizedCategoryForState(restaurant.category) ==
+              _selectedCategory,
+        )
+        .toList();
+  }
 
-    scored.sort((a, b) {
-      final scoreCompare = a.value.compareTo(b.value);
-      if (scoreCompare != 0) return scoreCompare;
-      return a.key.name.compareTo(b.key.name);
-    });
-
-    return scored.map((entry) => entry.key).toList();
+  List<GeneralRestaurantSummary> get _filteredGeneralRestaurants {
+    if (_selectedCategory == 'ALL') {
+      return _generalRestaurants;
+    }
+    return _generalRestaurants
+        .where(
+          (restaurant) =>
+              _normalizedCategoryForState(restaurant.category) ==
+              _selectedCategory,
+        )
+        .toList();
   }
 
   void _selectCategory(String category) {
@@ -466,95 +635,85 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     setState(() => _selectedCategory = category);
   }
 
+  void _handleSearchChanged(String value) {
+    setState(() => _searchQuery = value);
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      _load();
+    });
+  }
+
+  void _handleSearchSubmitted(String value) {
+    _searchDebounce?.cancel();
+    setState(() => _searchQuery = value);
+    _load();
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final position = _scrollController.position;
+    if (position.pixels >= position.maxScrollExtent - 280) {
+      _appendGeneralRestaurants();
+    }
+  }
+
+  Future<void> _appendGeneralRestaurants() async {
+    if (_isLoading || _isAppending || !_hasMoreGeneralRestaurants) return;
+    final nextOffset = _nextGeneralOffset;
+    if (nextOffset == null) return;
+
+    setState(() {
+      _isAppending = true;
+    });
+
+    try {
+      final response = await AffiliateService.fetchTabRestaurants(
+        query: _searchQuery.trim().isEmpty ? null : _searchQuery.trim(),
+        limit: _kGeneralRestaurantPageSize,
+        offset: nextOffset,
+        includeAffiliates: false,
+      );
+      if (!mounted) return;
+
+      final existingKeys =
+          _generalRestaurants.map(_generalRestaurantFavoriteKey).toSet();
+      final incoming = response.generalRestaurants.where((restaurant) {
+        return !existingKeys
+            .contains(_generalRestaurantFavoriteKey(restaurant));
+      }).toList();
+
+      setState(() {
+        _generalRestaurants = List<GeneralRestaurantSummary>.from(
+          _generalRestaurants,
+        )..addAll(incoming);
+        _hasMoreGeneralRestaurants = response.generalPagination.hasMore;
+        _nextGeneralOffset = response.generalPagination.nextOffset;
+        _categories = _sortCategories({
+          ..._categories,
+          ..._generalRestaurants
+              .map((restaurant) =>
+                  _normalizedCategoryForState(restaurant.category))
+              .where((category) => category.trim().isNotEmpty),
+        });
+      });
+    } on ApiNetworkException catch (e) {
+      _showSnack('일반 식당을 더 불러오지 못했어요. (${e.cause})');
+    } on ApiHttpException catch (e) {
+      _showSnack('일반 식당을 더 불러오지 못했어요. (HTTP ${e.statusCode})');
+    } catch (_) {
+      _showSnack('일반 식당을 더 불러오지 못했어요.');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isAppending = false;
+        });
+      }
+    }
+  }
+
   String _normalizeForSearch(String value) {
-    return value.toLowerCase().replaceAll(RegExp(r'\s+'), '').trim();
-  }
-
-  int? _searchMatchScore(
-    AffiliateRestaurantSummary restaurant,
-    String normalizedQuery,
-  ) {
-    final normalizedName = _normalizeForSearch(restaurant.name);
-    if (normalizedName.isEmpty) return null;
-
-    if (normalizedName == normalizedQuery) {
-      return 0;
-    }
-
-    if (normalizedName.startsWith(normalizedQuery)) {
-      return 10;
-    }
-
-    if (normalizedName.contains(normalizedQuery)) {
-      return 20;
-    }
-
-    var wordPrefixMatched = false;
-    final queryLen = normalizedQuery.length;
-    final words = restaurant.name
-        .toLowerCase()
-        .split(RegExp(r'\s+'))
-        .where((word) => word.isNotEmpty)
-        .map(_normalizeForSearch);
-    for (final word in words) {
-      if (word.startsWith(normalizedQuery)) {
-        wordPrefixMatched = true;
-        break;
-      }
-    }
-    if (wordPrefixMatched) {
-      return 30;
-    }
-
-    final fullPrefix = normalizedName.length >= queryLen
-        ? normalizedName.substring(0, queryLen)
-        : normalizedName;
-    final baseTolerance = queryLen <= 3 ? 1 : 2;
-    final fullDistance = _levenshteinDistance(normalizedQuery, fullPrefix);
-    if (fullDistance <= baseTolerance) {
-      return 40 + fullDistance;
-    }
-
-    var bestWordDistance = 999;
-    for (final word in words) {
-      final wordPrefix =
-          word.length >= queryLen ? word.substring(0, queryLen) : word;
-      final distance = _levenshteinDistance(normalizedQuery, wordPrefix);
-      if (distance < bestWordDistance) {
-        bestWordDistance = distance;
-      }
-    }
-    if (bestWordDistance <= 1) {
-      return 50 + bestWordDistance;
-    }
-
-    return null;
-  }
-
-  int _levenshteinDistance(String a, String b) {
-    final aLen = a.length;
-    final bLen = b.length;
-    if (aLen == 0) return bLen;
-    if (bLen == 0) return aLen;
-
-    var previous = List<int>.generate(bLen + 1, (i) => i);
-    var current = List<int>.filled(bLen + 1, 0);
-
-    for (var i = 1; i <= aLen; i++) {
-      current[0] = i;
-      for (var j = 1; j <= bLen; j++) {
-        final cost = a[i - 1] == b[j - 1] ? 0 : 1;
-        final deletion = previous[j] + 1;
-        final insertion = current[j - 1] + 1;
-        final substitution = previous[j - 1] + cost;
-        current[j] = math.min(math.min(deletion, insertion), substitution);
-      }
-      final temp = previous;
-      previous = current;
-      current = temp;
-    }
-
-    return previous[bLen];
+    return value.trim().toLowerCase();
   }
 
   List<String> _sortCategories(Iterable<String> source) {
@@ -583,6 +742,16 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         normalized;
   }
 
+  String _normalizedCategoryForState(String category) {
+    final trimmed = category.trim();
+    if (trimmed.isEmpty) return '';
+    final key = _normalizeCategoryKey(trimmed);
+    if (_kCategoryMeta.containsKey(key)) {
+      return key;
+    }
+    return trimmed;
+  }
+
   _CategoryMeta _resolveCategoryMeta(String category) {
     final key = _normalizeCategoryKey(category);
     final meta = _kCategoryMeta[key];
@@ -590,8 +759,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       return meta;
     }
     final trimmed = category.trim();
-    final label = trimmed.isEmpty ? '카페' : (category == 'ALL' ? '전체' : trimmed);
-    return _CategoryMeta(label, _kCategoryMeta['CAFE']!.assetPath);
+    final label = trimmed.isEmpty ? '기타' : (category == 'ALL' ? '전체' : trimmed);
+    return _CategoryMeta(label, _kCategoryMeta['ALL']!.assetPath);
   }
 
   List<UserCoupon> _couponsForRestaurant(int restaurantId) {
@@ -652,6 +821,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             code: code,
             status: CouponStatus.issued,
             restaurantId: restaurantId,
+            issueKey: 'STAMP_REWARD:reward',
           ),
         )
         .toList();
@@ -684,15 +854,16 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     setState(() {
       _stampStatuses = Map<int, StampStatus>.from(_stampStatuses)
         ..[restaurantId] = status;
-      final index = _restaurants
+      final index = _affiliateRestaurants
           .indexWhere((restaurant) => restaurant.id == restaurantId);
       if (index != -1) {
         final updated = _copyRestaurantWithStampStatus(
-          _restaurants[index],
+          _affiliateRestaurants[index],
           status,
         );
-        _restaurants = List<AffiliateRestaurantSummary>.from(_restaurants)
-          ..[index] = updated;
+        _affiliateRestaurants =
+            List<AffiliateRestaurantSummary>.from(_affiliateRestaurants)
+              ..[index] = updated;
       }
     });
   }
@@ -749,9 +920,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             restaurant: restaurant,
             coupons: initialCoupons,
             requiresLogin: _requiresLogin,
-            isFavorite: _isFavoriteRestaurant(restaurant.id),
+            isFavorite: _isFavoriteAffiliateRestaurant(restaurant.id),
             onFavoriteChanged: (isFavorite) {
-              _setFavoriteRestaurant(restaurant.id, isFavorite);
+              _setFavoriteAffiliateRestaurant(restaurant.id, isFavorite);
             },
             initialStampStatus: _stampStatuses[restaurant.id],
             onStampStatusUpdated: (status) =>
@@ -773,13 +944,6 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: Center(child: CircularProgressIndicator()),
-      );
-    }
 
     final appBar = AppBar(
       backgroundColor: const Color(0xFF172133),
@@ -845,6 +1009,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         strokeWidth: 2,
         onRefresh: _load,
         child: ListView(
+          controller: _scrollController,
           padding: const EdgeInsets.only(
             top: 16,
             // 마지막 식당 카드 한 블록 정도의 여백은 두어서
@@ -856,25 +1021,80 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             const SizedBox(height: 12),
             _buildCategoryFilter(),
             const SizedBox(height: 12),
-            if (_filteredRestaurants.isEmpty)
+            if (_filteredAffiliateRestaurants.isEmpty &&
+                _filteredGeneralRestaurants.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(24),
                 child: Center(
-                  child: Text(
-                    _normalizeForSearch(_searchQuery).isEmpty
-                        ? '표시할 제휴 매장이 없어요.'
-                        : '검색 결과가 없어요.',
-                  ),
+                  child: _isLoading
+                      ? const Text(
+                          '불러오는 중...',
+                          style: TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 14,
+                          ),
+                        )
+                      : Text(
+                          _normalizeForSearch(_searchQuery).isEmpty
+                              ? '표시할 식당이 없어요.'
+                              : '검색 결과가 없어요.',
+                        ),
                 ),
               )
-            else
-              ..._filteredRestaurants
-                  .map((restaurant) => Padding(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 4),
-                        child: _buildRestaurantCard(restaurant),
-                      ))
-                  ,
+            else ...[
+              if (_filteredAffiliateRestaurants.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
+                  child: Text(
+                    '제휴 식당',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF4B5563),
+                    ),
+                  ),
+                ),
+                ..._filteredAffiliateRestaurants.map(
+                  (restaurant) => Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: _buildAffiliateRestaurantCard(restaurant),
+                  ),
+                ),
+              ],
+              if (_filteredGeneralRestaurants.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
+                  child: Text(
+                    '일반 식당',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF4B5563),
+                    ),
+                  ),
+                ),
+                ..._filteredGeneralRestaurants.map(
+                  (restaurant) => Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: _buildGeneralRestaurantCard(restaurant),
+                  ),
+                ),
+                if (_isAppending)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ],
           ],
         ),
       ),
@@ -903,9 +1123,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             fontFamily: 'Pretendard',
             fontWeight: FontWeight.w600,
           ),
-          onChanged: (value) {
-            setState(() => _searchQuery = value);
-          },
+          onChanged: _handleSearchChanged,
+          onSubmitted: _handleSearchSubmitted,
           decoration: InputDecoration(
             border: InputBorder.none,
             isCollapsed: true,
@@ -918,18 +1137,19 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
               fontFamily: 'Pretendard',
               fontWeight: FontWeight.w500,
             ),
-            prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
+            prefixIcon:
+                const Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
             suffixIcon: _normalizeForSearch(_searchQuery).isEmpty
                 ? null
                 : IconButton(
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                    icon: const Icon(Icons.close, size: 18),
-                    color: const Color(0xFF6B7280),
-                    splashRadius: 18,
-                  ),
+                        onPressed: () {
+                          _searchController.clear();
+                          _handleSearchSubmitted('');
+                        },
+                        icon: const Icon(Icons.close, size: 18),
+                        color: const Color(0xFF6B7280),
+                        splashRadius: 18,
+                      ),
           ),
         ),
       ),
@@ -1002,7 +1222,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     );
   }
 
-  Widget _buildRestaurantCard(AffiliateRestaurantSummary restaurant) {
+  Widget _buildAffiliateRestaurantCard(AffiliateRestaurantSummary restaurant) {
     final couponCounts = _couponCountsDetailed[restaurant.id];
     final hasImage = restaurant.imageUrls.isNotEmpty;
     final String? thumbnailUrl = hasImage ? restaurant.imageUrls.first : null;
@@ -1111,22 +1331,25 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                           ),
                         ),
                         IconButton(
-                          onPressed: () => _toggleFavoriteRestaurant(restaurant.id),
+                          onPressed: () =>
+                              _toggleFavoriteAffiliateRestaurant(restaurant.id),
                           splashRadius: 18,
                           constraints: const BoxConstraints(
                             minWidth: 32,
                             minHeight: 32,
                           ),
                           icon: Icon(
-                            _isFavoriteRestaurant(restaurant.id)
+                            _isFavoriteAffiliateRestaurant(restaurant.id)
                                 ? Icons.favorite
                                 : Icons.favorite_border,
                             size: 20,
-                            color: _isFavoriteRestaurant(restaurant.id)
+                            color: _isFavoriteAffiliateRestaurant(restaurant.id)
                                 ? const Color(0xFFE11D48)
                                 : const Color(0xFF9CA3AF),
                           ),
-                          tooltip: _isFavoriteRestaurant(restaurant.id) ? '찜 해제' : '찜하기',
+                          tooltip: _isFavoriteAffiliateRestaurant(restaurant.id)
+                              ? '찜 해제'
+                              : '찜하기',
                         ),
                         const Icon(
                           Icons.keyboard_arrow_right,
@@ -1150,6 +1373,171 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildGeneralRestaurantCard(GeneralRestaurantSummary restaurant) {
+    final isLiked = _isFavoriteGeneralRestaurant(restaurant);
+    final hasUrl = restaurant.url.trim().isNotEmpty;
+    final categoryLabel =
+        _resolveCategoryMeta(_normalizedCategoryForState(restaurant.category))
+            .label;
+    final locationLabel = restaurant.zone.trim().isNotEmpty
+        ? restaurant.zone.trim()
+        : (restaurant.address.trim().isNotEmpty
+            ? restaurant.address.trim()
+            : '위치 정보 없음');
+
+    return InkWell(
+      onTap: hasUrl ? () => _openGeneralRestaurantUrl(restaurant.url) : null,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: double.infinity,
+        decoration: ShapeDecoration(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            side: const BorderSide(width: 1, color: Color(0xFFE5E7EB)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.storefront_outlined,
+                    size: 17,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    restaurant.name.isNotEmpty
+                        ? restaurant.name
+                        : '매장 정보를 찾을 수 없어요',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1F2937),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _toggleFavoriteGeneralRestaurant(restaurant),
+                  splashRadius: 18,
+                  constraints:
+                      const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    isLiked ? Icons.favorite : Icons.favorite_border,
+                    size: 20,
+                    color: isLiked
+                        ? const Color(0xFFE11D48)
+                        : const Color(0xFF9CA3AF),
+                  ),
+                  tooltip: isLiked ? '찜 해제' : '찜하기',
+                ),
+                Icon(
+                  Icons.keyboard_arrow_right,
+                  color: hasUrl
+                      ? const Color(0xFF9CA3AF)
+                      : const Color(0xFFD1D5DB),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 42),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    size: 14,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      locationLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2.5,
+                    ),
+                    decoration: ShapeDecoration(
+                      color: const Color(0xFFEEF2FF),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    child: Text(
+                      categoryLabel,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1F2937),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openGeneralRestaurantUrl(String rawUrl) async {
+    final url = rawUrl.trim();
+    if (url.isEmpty) {
+      _showSnack('이 식당은 이동할 링크가 없어요.');
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
+      _showSnack('유효한 링크가 아니에요.');
+      return;
+    }
+    try {
+      final launched = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!launched) {
+        _showSnack('링크를 열 수 없어요.');
+      }
+    } catch (_) {
+      _showSnack('링크를 열 수 없어요.');
+    }
+  }
+
+  void _showSnack(String message) {
+    if (message.isEmpty || !mounted) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
@@ -1262,111 +1650,16 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
       _AffiliateRestaurantDetailSheetState();
 }
 
+/// rewards가 비어 있을 때 사용하는 레거시 fallback (5개, 10개 기준)
+List<StampReward> _fallbackRewardsForEmpty() {
+  return const [
+    StampReward(stamps: 5, title: '5개 보상', subtitle: '3,000원 할인'),
+    StampReward(stamps: 10, title: '10개 보상', subtitle: '10,000원 할인'),
+  ];
+}
+
 class _AffiliateRestaurantDetailSheetState
     extends State<AffiliateRestaurantDetailSheet> {
-  static const Map<String, Map<int, String>> _kStampBenefitMessages = {
-    '정든밤': {
-      5: '감자튀김 서비스',
-      10: '메인메뉴 택 1',
-    },
-    '구구포차': {
-      5: '치킨/통닭 랜덤 한마리(~23시)',
-      10: '치킨/통닭 랜덤 한마리(~23시)',
-    },
-    '깨꼬닭': {
-      5: '닭껍질 튀김',
-      10: '후라이드 똥집',
-    },
-    '깨꼬닭 본점': {
-      5: '닭껍질 튀김',
-      10: '후라이드 똥집',
-    },
-    '한끼갈비': {
-      5: '납작만두',
-      10: '납작만두',
-    },
-    '고니식탁': {
-      5: '계란말이 서비스',
-      10: '찌개 1인분 서비스',
-    },
-    '테이크어바이트': {
-      5: '음료 또는 5% 할인 쿠폰',
-      10: '파스타 중 1개 무료',
-    },
-    '스톡홀롬샐러드정문점': {
-      5: '아메리카노 교환권',
-      10: '샐러드 50% 할인(최대 5,000원)',
-    },
-    '스톡홀름샐러드 정문점': {
-      5: '아메리카노 교환권',
-      10: '샐러드 50% 할인(최대 5,000원)',
-    },
-    '마름모식당': {
-      5: '미니우동 또는 미니 냉우동',
-      10: '들기름우동 서비스',
-    },
-    '벨로': {
-      5: '현금 결제 시 20% 할인 쿠폰',
-      10: '현금 결제 시 20% 할인 쿠폰',
-    },
-    '팀스쿠치나': {
-      5: '안티파스토 샐러드 서비스',
-      10: '새우 오로라 크림파스타 또는 트러플 새우 카펠리니',
-    },
-    '팀스 쿠치나': {
-      5: '안티파스토 샐러드 서비스',
-      10: '새우 오로라 크림파스타 또는 트러플 새우 카펠리니',
-    },
-    '대부': {
-      5: '교자만두 서비스',
-      10: '새우튀김 샐러드 서비스',
-    },
-    '대부 대왕유부초밥 경대점': {
-      5: '교자만두 서비스',
-      10: '새우튀김 샐러드 서비스',
-    },
-    '부리또': {
-      5: '치즈스틱 서비스',
-      10: '치킨부리또 1개 서비스',
-    },
-    '부리또익스프레스': {
-      5: '치즈스틱 서비스',
-      10: '치킨부리또 1개 서비스',
-    },
-    '다이와스시': {
-      5: '타코야끼 10개 서비스',
-      10: '모듬초밥 5pcs 서비스',
-    },
-    '라보': {
-      5: '탕수육 M 서비스',
-      10: '탕수육 L 서비스',
-    },
-    '닭동가리 경북대점': {
-      5: '사이드메뉴',
-      10: '순살치킨',
-    },
-    '포차1번지먹새통 경북대점': {
-      5: '사이드메뉴',
-      10: '메인메뉴',
-    },
-    'Better': {
-      5: '튀김쥐포',
-      10: '감자튀김',
-    },
-    '통통주먹구이 경북대점': {
-      5: '껍데기 1인분',
-      10: '순살치킨',
-    },
-    '주비두루 향기롭다': {
-      5: '아메리카노',
-      10: '전 음료 메뉴 중 택 1',
-    },
-    '구르메': {
-      5: '트러플 감자튀김',
-      10: '치즈 감자튀김',
-    },
-  };
-
   late List<UserCoupon> _coupons;
   StampStatus? _stampStatus;
   bool _isStampLoading = true;
@@ -1374,14 +1667,101 @@ class _AffiliateRestaurantDetailSheetState
   String? _stampError;
   String? _processingCouponCode;
   final PageController _imagePageController = PageController();
+  final ScrollController _scrollController = ScrollController();
   int _currentImageIndex = 0;
   late bool _isFavorite;
+  double _lastLoggedScrollOffset = 0;
 
+  /// API rewards 또는 레거시 fallback에서 threshold별 혜택 문구 반환 (THRESHOLD 패턴용)
   String? _stampBenefitFor(int threshold) {
-    final restaurantName = widget.restaurant.name.trim();
-    if (restaurantName.isEmpty) return null;
-    final benefits = _kStampBenefitMessages[restaurantName];
-    return benefits?[threshold];
+    final status = _stampStatus;
+    if (status == null) return null;
+    final apiRewards = status.rewards.isNotEmpty
+        ? status.rewards
+        : _fallbackRewardsForEmpty();
+    for (final r in apiRewards) {
+      if (r.stamps == threshold) {
+        return (r.subtitle != null && r.subtitle!.isNotEmpty)
+            ? r.subtitle!
+            : r.title;
+      }
+    }
+    if (status.rewards.isEmpty) {
+      if (threshold == 5) return '3,000원 할인';
+      if (threshold == 10) return '10,000원 할인';
+    }
+    return null;
+  }
+
+  /// StampReward의 혜택 문구 반환 (subtitle 또는 title)
+  String _benefitTextFor(StampReward r) {
+    return (r.subtitle != null && r.subtitle!.isNotEmpty)
+        ? r.subtitle!
+        : (r.title ?? '리워드 쿠폰');
+  }
+
+  /// 앞으로 받을 수 있는 가장 가까운 혜택 (THRESHOLD: stamps>current, VISIT: minVisit>current)
+  StampReward? _getNextReward() {
+    final status = _stampStatus;
+    if (status == null) return null;
+    final apiRewards = status.rewards.isNotEmpty
+        ? status.rewards
+        : _fallbackRewardsForEmpty();
+    final current = status.current;
+
+    final thresholdRewards = apiRewards
+        .where((r) => r.stamps != null && r.stamps! > 0)
+        .toList();
+    final visitRewards = apiRewards
+        .where((r) => r.isVisitPattern && r.minVisit != null)
+        .toList();
+
+    if (thresholdRewards.isNotEmpty) {
+      thresholdRewards.sort((a, b) => (a.stamps ?? 0).compareTo(b.stamps ?? 0));
+      for (final r in thresholdRewards) {
+        if ((r.stamps ?? 0) > current) return r;
+      }
+    }
+    if (visitRewards.isNotEmpty) {
+      visitRewards.sort(
+          (a, b) => (a.minVisit ?? 0).compareTo(b.minVisit ?? 0));
+      for (final r in visitRewards) {
+        if ((r.minVisit ?? 0) > current) return r;
+      }
+    }
+    return null;
+  }
+
+  /// 다음 혜택에 대한 헤드라인 문구 생성
+  String _formatRewardHeadline(StampReward r) {
+    final benefit = _benefitTextFor(r);
+    if (r.isVisitPattern && r.minVisit != null && r.maxVisit != null) {
+      return '스탬프 ${r.minVisit}~${r.maxVisit}개 적립 시 $benefit 제공';
+    }
+    if (r.stamps != null) {
+      return '스탬프 ${r.stamps}개 적립 시 $benefit 제공';
+    }
+    return '스탬프 적립 시 $benefit 제공';
+  }
+
+  /// API rewards 또는 fallback에서 threshold 목록 반환 (정렬됨, 그리드 milestone용)
+  List<int> _stampThresholds() {
+    final status = _stampStatus;
+    if (status == null) return const [5, 10];
+    final apiRewards = status.rewards.isNotEmpty
+        ? status.rewards
+        : _fallbackRewardsForEmpty();
+    final list = <int>[];
+    for (final r in apiRewards) {
+      if (r.stamps != null && r.stamps! > 0) {
+        list.add(r.stamps!);
+      } else if (r.isVisitPattern && r.minVisit != null) {
+        list.add(r.minVisit!);
+      }
+    }
+    list.sort();
+    final unique = list.toSet().toList()..sort();
+    return unique.isNotEmpty ? unique : [5, 10];
   }
 
   @override
@@ -1390,6 +1770,7 @@ class _AffiliateRestaurantDetailSheetState
     _isFavorite = widget.isFavorite;
     _coupons = List<UserCoupon>.from(widget.coupons);
     _sortCoupons();
+    _scrollController.addListener(_onScroll);
     _stampStatus = widget.initialStampStatus ??
         StampStatus(
           current: widget.restaurant.stampCurrent,
@@ -1417,8 +1798,25 @@ class _AffiliateRestaurantDetailSheetState
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _imagePageController.dispose();
     super.dispose();
+  }
+
+  void _onScroll() {
+    final offset = _scrollController.offset;
+    if (offset > _lastLoggedScrollOffset + 100) {
+      _lastLoggedScrollOffset = offset;
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.restaurantDetailScroll,
+        parameters: {
+          AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+          AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+          AnalyticsEvents.paramScrollDepth: offset.round(),
+        },
+      );
+    }
   }
 
   Future<void> _loadStampStatus({bool showLoading = true}) async {
@@ -1511,6 +1909,14 @@ class _AffiliateRestaurantDetailSheetState
         pin: pin,
       );
       if (!mounted) return;
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.stampIssued,
+        parameters: {
+          AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+          AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+          AnalyticsEvents.paramStampCountAfter: result.status.current,
+        },
+      );
       setState(() {
         _stampStatus = result.status;
       });
@@ -1548,6 +1954,15 @@ class _AffiliateRestaurantDetailSheetState
               _sortCoupons();
             });
             final newCodes = newCoupons.map((coupon) => coupon.code).toList();
+            AnalyticsLogger.logEvent(
+              AnalyticsEvents.stampRewardCouponIssued,
+              parameters: {
+                AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+                AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+                AnalyticsEvents.paramCouponCount: newCodes.length,
+                AnalyticsEvents.paramIssueSource: 'stamp',
+              },
+            );
             widget.onRewardCouponsIssued(newCodes);
           }
 
@@ -1571,15 +1986,25 @@ class _AffiliateRestaurantDetailSheetState
               _coupons = List<UserCoupon>.from(_coupons)
                 ..addAll(
                   newCodes.map(
-                    (code) => UserCoupon(
-                      code: code,
-                      status: CouponStatus.issued,
-                      restaurantId: widget.restaurant.id,
-                    ),
+                  (code) => UserCoupon(
+                    code: code,
+                    status: CouponStatus.issued,
+                    restaurantId: widget.restaurant.id,
+                    issueKey: 'STAMP_REWARD:reward',
+                  ),
                   ),
                 );
               _sortCoupons();
             });
+            AnalyticsLogger.logEvent(
+              AnalyticsEvents.stampRewardCouponIssued,
+              parameters: {
+                AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+                AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+                AnalyticsEvents.paramCouponCount: newCodes.length,
+                AnalyticsEvents.paramIssueSource: 'stamp',
+              },
+            );
             widget.onRewardCouponsIssued(newCodes);
           }
           final buffer = StringBuffer();
@@ -1651,6 +2076,7 @@ class _AffiliateRestaurantDetailSheetState
           ),
         ),
       ],
+      notes: coupon.benefit?.notesText,
     );
     if (pin == null) return;
 
@@ -1662,6 +2088,16 @@ class _AffiliateRestaurantDetailSheetState
         pin: pin,
       );
       if (!mounted) return;
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.couponRedeemed,
+        parameters: {
+          AnalyticsEvents.paramCouponCode: coupon.code,
+          AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+          AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+          AnalyticsEvents.paramCouponIssueSource:
+              getCouponIssuanceSource(coupon.issueKey),
+        },
+      );
       setState(() {
         _coupons = _coupons.where((item) => item.code != coupon.code).toList();
       });
@@ -1687,9 +2123,11 @@ class _AffiliateRestaurantDetailSheetState
     required String title,
     required String confirmLabel,
     required List<TextSpan> description,
+    String? notes,
   }) async {
     final controller = TextEditingController();
     String? error;
+    final hasNotes = notes != null && notes.isNotEmpty;
     return showDialog<String>(
       context: context,
       builder: (dialogContext) {
@@ -1698,7 +2136,10 @@ class _AffiliateRestaurantDetailSheetState
             backgroundColor: Colors.transparent,
             insetPadding: const EdgeInsets.symmetric(horizontal: 16),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 360),
+              constraints: BoxConstraints(
+                maxWidth: 360,
+                maxHeight: MediaQuery.of(dialogContext).size.height * 0.75,
+              ),
               child: Container(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
                 decoration: ShapeDecoration(
@@ -1707,27 +2148,68 @@ class _AffiliateRestaurantDetailSheetState
                     borderRadius: BorderRadius.circular(15),
                   ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Color(0xFF39393E),
-                        fontSize: 19,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w800,
-                        height: 1.21,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Color(0xFF39393E),
+                          fontSize: 19,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w800,
+                          height: 1.21,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 22),
-                    Text.rich(
-                      TextSpan(children: description),
-                    ),
-                    const SizedBox(height: 26),
-                    const Text(
-                      '비밀번호',
+                      const SizedBox(height: 22),
+                      Text.rich(
+                        TextSpan(children: description),
+                      ),
+                      if (hasNotes) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: const Color(0xFFE5E5E5),
+                              width: 1,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                '사용 조건',
+                                style: TextStyle(
+                                  color: Color(0xFF797979),
+                                  fontSize: 12,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                notes,
+                                style: const TextStyle(
+                                  color: Color(0xFF39393E),
+                                  fontSize: 14,
+                                  fontFamily: 'Pretendard',
+                                  fontWeight: FontWeight.w500,
+                                  height: 1.4,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 26),
+                      const Text(
+                        '비밀번호',
                       style: TextStyle(
                         color: Color(0xFF797979),
                         fontSize: 15,
@@ -1845,8 +2327,10 @@ class _AffiliateRestaurantDetailSheetState
                 ),
               ),
             ),
+          ),
           );
-        });
+        },
+        );
       },
     );
   }
@@ -1873,6 +2357,7 @@ class _AffiliateRestaurantDetailSheetState
             Padding(
               padding: EdgeInsets.only(bottom: bottomInset),
               child: SingleChildScrollView(
+                controller: _scrollController,
                 child: Padding(
                   padding: const EdgeInsets.only(top: 16, bottom: 24),
                   child: Column(
@@ -1979,9 +2464,7 @@ class _AffiliateRestaurantDetailSheetState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            restaurant.name.isNotEmpty
-                ? restaurant.name
-                : '매장 정보를 찾을 수 없어요',
+            restaurant.name.isNotEmpty ? restaurant.name : '매장 정보를 찾을 수 없어요',
             style: const TextStyle(
               fontSize: 22,
               fontWeight: FontWeight.w700,
@@ -2151,6 +2634,15 @@ class _AffiliateRestaurantDetailSheetState
             )
           else ...[
             _buildStampProgress(),
+            const SizedBox(height: 12),
+            const Text(
+              '하루 최대 3회 적립 가능',
+              style: TextStyle(
+                color: Colors.white70,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
             const SizedBox(height: 20),
             SizedBox(
               width: double.infinity,
@@ -2215,36 +2707,39 @@ class _AffiliateRestaurantDetailSheetState
         style: TextStyle(color: Colors.white70),
       );
     }
-    final rewardThresholds = status.rewardCoupons
-        .map((reward) => reward.threshold)
-        .where((threshold) => threshold > 0)
-        .toSet()
-        .toList()
-      ..sort();
+    final rewardThresholds = _stampThresholds();
     final total = math.max(
       status.target,
       rewardThresholds.isNotEmpty ? rewardThresholds.last : 10,
     );
     final filled = math.min(status.current, total);
-    final milestoneSet =
-        rewardThresholds.isNotEmpty ? rewardThresholds.toSet() : <int>{5, 10};
+    final milestoneSet = rewardThresholds.isNotEmpty
+        ? rewardThresholds.toSet()
+        : <int>{5, 10};
 
-    // 메인 리워드 요약 문구: "스탬프 ~개 적립 시 ~ 제공"
+    // 메인 리워드 요약 문구: 앞으로 받을 수 있는 가장 가까운 혜택 표시
+    // (THRESHOLD: 1,3,5,7,10 / VISIT: 1~4, 5~9, 10 등 식당별 상이)
     String? headline;
-    final primaryThreshold =
-        status.target > 0 ? status.target : (rewardThresholds.isNotEmpty ? rewardThresholds.last : 0);
-    if (primaryThreshold > 0) {
-      final benefit = _stampBenefitFor(primaryThreshold);
-      if (benefit != null) {
-        headline = '스탬프 ${primaryThreshold}개 적립 시 $benefit 제공';
-      } else {
-        headline = '스탬프 ${primaryThreshold}개 적립 시 리워드 쿠폰 제공';
-      }
+    final nextReward = _getNextReward();
+    if (nextReward != null) {
+      headline = _formatRewardHeadline(nextReward);
+    } else if (rewardThresholds.isNotEmpty ||
+        (status.rewards.isNotEmpty || status.target > 0)) {
+      headline = '준비된 리워드 혜택을 모두 받았어요!';
     }
 
-    final remainingToTarget = math.max(total - status.current, 0);
-    final remainingText = remainingToTarget > 0
-        ? '리워드 획득까지 ${remainingToTarget}개 남았어요!'
+    // 다음 혜택까지 남은 스탬프 수 (10개 도달 시 0으로 초기화되는 사이클)
+    int remainingToNext = 0;
+    if (nextReward != null) {
+      if (nextReward.stamps != null) {
+        remainingToNext = math.max(nextReward.stamps! - status.current, 0);
+      } else if (nextReward.minVisit != null) {
+        remainingToNext =
+            math.max(nextReward.minVisit! - status.current, 0);
+      }
+    }
+    final remainingText = remainingToNext > 0
+        ? '리워드 획득까지 ${remainingToNext}개 남았어요!'
         : '리워드 획득 조건을 달성했어요!';
 
     // 5x2 그리드로 스탬프 배치
@@ -2396,15 +2891,12 @@ class _AffiliateRestaurantDetailSheetState
     if (status == null) {
       return const SizedBox.shrink();
     }
-    final rewards = status.rewardCoupons.toList()
-      ..sort((a, b) => a.threshold.compareTo(b.threshold));
-
-    final List<Widget> items = [];
-    final reachedRewards =
-        rewards.where((reward) => status.current >= reward.threshold).toList();
-    final pendingRewards =
-        rewards.where((reward) => status.current < reward.threshold).toList();
-    final thresholds = rewards.map((reward) => reward.threshold).toSet();
+    final thresholds = _stampThresholds();
+    final reachedThresholds =
+        thresholds.where((t) => status.current >= t).toList();
+    final pendingThresholds =
+        thresholds.where((t) => status.current < t).toList();
+    final thresholdSet = thresholds.toSet();
 
     const baseStyle = TextStyle(
       color: Colors.white70,
@@ -2448,20 +2940,15 @@ class _AffiliateRestaurantDetailSheetState
       ], baseStyle);
     }
 
-    for (final reward in reachedRewards) {
-      final benefit = _stampBenefitFor(reward.threshold);
+    final List<Widget> items = [];
+    for (final threshold in reachedThresholds) {
+      final benefit = _stampBenefitFor(threshold);
       if (benefit != null) {
         items.add(buildReachedMessage(benefit));
       } else {
-        final label = _rewardCouponLabel(reward);
-        final code = reward.couponCode.trim();
-        final buffer = StringBuffer('$label을 이미 받았어요.');
-        if (code.isNotEmpty) {
-          buffer.write(' (코드: $code)');
-        }
         items.add(
           Text(
-            buffer.toString(),
+            '스탬프 ${threshold}개 리워드 쿠폰을 이미 받았어요.',
             style: baseStyle,
           ),
         );
@@ -2470,7 +2957,7 @@ class _AffiliateRestaurantDetailSheetState
 
     Widget? nextMessageWidget;
     if (status.current < 5 &&
-        (thresholds.contains(5) || rewards.isEmpty || status.target <= 5)) {
+        (thresholdSet.contains(5) || thresholds.isEmpty || status.target <= 5)) {
       final benefit = _stampBenefitFor(5);
       nextMessageWidget = benefit != null
           ? buildUpcomingMessage(5, benefit)
@@ -2479,7 +2966,7 @@ class _AffiliateRestaurantDetailSheetState
               style: upcomingStyle,
             );
     } else if (status.current < 10 &&
-        (thresholds.contains(10) || rewards.isEmpty || status.target <= 10)) {
+        (thresholdSet.contains(10) || thresholds.isEmpty || status.target <= 10)) {
       final benefit = _stampBenefitFor(10);
       nextMessageWidget = benefit != null
           ? buildUpcomingMessage(10, benefit)
@@ -2487,21 +2974,20 @@ class _AffiliateRestaurantDetailSheetState
               '스탬프 10개까지 적립시 두 번째 리워드 쿠폰 제공',
               style: upcomingStyle,
             );
-    } else if (pendingRewards.isNotEmpty) {
-      final reward = pendingRewards.first;
-      final benefit = _stampBenefitFor(reward.threshold);
+    } else if (pendingThresholds.isNotEmpty) {
+      final threshold = pendingThresholds.first;
+      final benefit = _stampBenefitFor(threshold);
       if (benefit != null) {
         nextMessageWidget = buildRichText([
-          TextSpan(text: '스탬프 ${reward.threshold}개 적립 시 '),
+          TextSpan(text: '스탬프 ${threshold}개 적립 시 '),
           TextSpan(text: benefit, style: highlightStyle),
           const TextSpan(text: ' 제공'),
         ], upcomingStyle);
       } else {
-        final remaining = math.max(reward.threshold - status.current, 0);
         final text = _pendingRewardMessage(
-          reward.threshold,
+          threshold,
           status.current,
-          remaining,
+          math.max(threshold - status.current, 0),
         );
         nextMessageWidget = Text(
           text,
@@ -2570,19 +3056,19 @@ class _AffiliateRestaurantDetailSheetState
   }
 
   String _pendingRewardMessage(int threshold, int current, int remaining) {
-      final benefit = _stampBenefitFor(threshold);
-      // 공통 포맷: "스탬프 ~개 적립 시 ~ 제공"
-      if (benefit != null) {
-        return '스탬프 ${threshold}개 적립 시 $benefit 제공';
-      }
-      if (threshold == 5 && current < 5) {
-        return '스탬프 5개 적립 시 첫 번째 리워드 쿠폰 제공';
-      }
-      if (threshold == 10 && current >= 5 && current < 10) {
-        return '스탬프 10개 적립 시 두 번째 리워드 쿠폰 제공';
-      }
-      final milestoneName = _milestoneLabel(threshold);
-      return '스탬프 ${threshold}개 적립 시 $milestoneName 제공';
+    final benefit = _stampBenefitFor(threshold);
+    // 공통 포맷: "스탬프 ~개 적립 시 ~ 제공"
+    if (benefit != null) {
+      return '스탬프 ${threshold}개 적립 시 $benefit 제공';
+    }
+    if (threshold == 5 && current < 5) {
+      return '스탬프 5개 적립 시 첫 번째 리워드 쿠폰 제공';
+    }
+    if (threshold == 10 && current >= 5 && current < 10) {
+      return '스탬프 10개 적립 시 두 번째 리워드 쿠폰 제공';
+    }
+    final milestoneName = _milestoneLabel(threshold);
+    return '스탬프 ${threshold}개 적립 시 $milestoneName 제공';
   }
 
   String _milestoneLabel(int threshold) {
@@ -2904,8 +3390,7 @@ class _AffiliateRestaurantDetailSheetState
               right: 12,
               bottom: 12,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: Colors.black.withOpacity(0.4),
                   borderRadius: BorderRadius.circular(999),

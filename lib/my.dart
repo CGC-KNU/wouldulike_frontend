@@ -307,6 +307,7 @@ class _MyScreenState extends State<MyScreen> {
     final result = await showModalBottomSheet<ReferralSheetResult>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -1035,13 +1036,15 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildHandle(),
-        const SizedBox(height: 16),
+        const SizedBox(height: 20),
         const Text(
           '추천 코드 입력하기',
           style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF111827),
+            fontSize: 19,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF39393E),
+            fontFamily: 'Pretendard',
+            height: 1.21,
           ),
         ),
         const SizedBox(height: 8),
@@ -1049,46 +1052,98 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
           '추천 코드를 입력하면 쿠폰 보상을 바로 받을 수 있어요!',
           style: TextStyle(
             fontSize: 14,
-            color: Color(0xFF6B7280),
+            color: Color(0xFF797979),
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w500,
+            height: 1.29,
           ),
         ),
         const SizedBox(height: 20),
-        TextField(
-          controller: _controller,
-          enabled: !_isSubmitting,
-          textInputAction: TextInputAction.done,
-          textCapitalization: TextCapitalization.characters,
-          autocorrect: false,
-          keyboardType: TextInputType.text,
-          decoration: InputDecoration(
-            labelText: '추천 코드',
-            hintText: '예: FRIEND1234',
-            errorText: _inputError,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFF312E81)),
+        const Text(
+          '추천 코드',
+          style: TextStyle(
+            color: Color(0xFF797979),
+            fontSize: 15,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w700,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          width: double.infinity,
+          constraints: const BoxConstraints(minHeight: 48),
+          decoration: ShapeDecoration(
+            color: Colors.white,
+            shape: RoundedRectangleBorder(
+              side: BorderSide(
+                width: 2,
+                color: _inputError != null
+                    ? const Color(0xFFEF4444)
+                    : const Color(0xFFD9D9D9),
+              ),
+              borderRadius: BorderRadius.circular(10),
             ),
           ),
-          onChanged: (_) {
-            setState(() {
-              _inputError = null;
-            });
-          },
-          onSubmitted: (_) {
-            if (canSubmit) {
-              _submit();
-            }
-          },
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          alignment: Alignment.centerLeft,
+          child: TextField(
+            controller: _controller,
+            enabled: !_isSubmitting,
+            textInputAction: TextInputAction.done,
+            textCapitalization: TextCapitalization.characters,
+            autocorrect: false,
+            keyboardType: TextInputType.text,
+            style: const TextStyle(
+              color: Color(0xFF39393E),
+              fontSize: 16,
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w600,
+            ),
+            decoration: const InputDecoration(
+              hintText: '예: FRIEND1234',
+              hintStyle: TextStyle(
+                color: Color(0xFFBABAC0),
+                fontSize: 16,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w500,
+              ),
+              isCollapsed: true,
+              border: InputBorder.none,
+              contentPadding: EdgeInsets.zero,
+            ),
+            onChanged: (_) {
+              setState(() {
+                _inputError = null;
+              });
+            },
+            onSubmitted: (_) {
+              if (canSubmit) {
+                _submit();
+              }
+            },
+          ),
         ),
-        const SizedBox(height: 4),
+        if (_inputError != null) ...[
+          const SizedBox(height: 6),
+          Text(
+            _inputError!,
+            style: const TextStyle(
+              color: Color(0xFFEF4444),
+              fontSize: 12,
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+        const SizedBox(height: 8),
         const Text(
           '※ 추천 코드는 대소문자를 구분하지 않아요.',
           style: TextStyle(
             fontSize: 12,
             color: Color(0xFF9CA3AF),
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w500,
           ),
         ),
         const SizedBox(height: 24),
@@ -1097,11 +1152,20 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
           child: ElevatedButton(
             onPressed: canSubmit ? _submit : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF312E81),
+              backgroundColor: const Color(0xFF1C203C),
+              disabledBackgroundColor: const Color(0xFFD9D9D9),
               foregroundColor: Colors.white,
+              disabledForegroundColor: const Color(0xFF9CA3AF),
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              elevation: 0,
+              textStyle: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+                letterSpacing: -0.32,
               ),
             ),
             child: AnimatedSwitcher(
@@ -1119,25 +1183,32 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
                   : const Text(
                       '쿠폰 받기',
                       key: ValueKey('label'),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
                     ),
             ),
           ),
         ),
-        TextButton(
-          onPressed: _isSubmitting
-              ? null
-              : () {
-                  Navigator.of(context).pop(
-                    const ReferralSheetResult(
-                      status: ReferralSheetStatus.dismissed,
-                    ),
-                  );
-                },
-          child: const Text('나중에 할게요'),
+        const SizedBox(height: 12),
+        Center(
+          child: TextButton(
+            onPressed: _isSubmitting
+                ? null
+                : () {
+                    Navigator.of(context).pop(
+                      const ReferralSheetResult(
+                        status: ReferralSheetStatus.dismissed,
+                      ),
+                    );
+                  },
+            style: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF797979),
+              textStyle: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w500,
+                fontSize: 14,
+              ),
+            ),
+            child: const Text('나중에 할게요'),
+          ),
         ),
       ],
     );
@@ -1286,7 +1357,8 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF111827),
+            color: Color(0xFF39393E),
+            fontFamily: 'Pretendard',
           ),
         ),
         const SizedBox(height: 24),
@@ -1295,20 +1367,21 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
           child: ElevatedButton(
             onPressed: _completeLocked,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF312E81),
+              backgroundColor: const Color(0xFF1C203C),
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 14),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(15),
               ),
-            ),
-            child: const Text(
-              '확인',
-              style: TextStyle(
-                fontSize: 16,
+              elevation: 0,
+              textStyle: const TextStyle(
+                fontFamily: 'Pretendard',
                 fontWeight: FontWeight.w700,
+                fontSize: 16,
+                letterSpacing: -0.32,
               ),
             ),
+            child: const Text('확인'),
           ),
         ),
       ],

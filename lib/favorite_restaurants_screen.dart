@@ -1,15 +1,23 @@
 import 'dart:math' as math;
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'affiliate_benefits_screen.dart';
+import 'config/analytics_events.dart';
 import 'services/affiliate_service.dart';
+import 'utils/analytics_logger.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
 
 const String _kFavoriteRestaurantIdsKey = 'affiliate_favorite_restaurant_ids';
+const String _kFavoriteGeneralRestaurantKeysKey =
+    'general_favorite_restaurant_keys';
+const String _kFavoriteGeneralRestaurantItemsKey =
+    'general_favorite_restaurant_items';
 
 class _CouponCounts {
   const _CouponCounts({
@@ -37,6 +45,9 @@ const Map<String, _CategoryMeta> _kCategoryMeta = {
   'SNACK': _CategoryMeta('분식', 'assets/images/snack.png'),
   'PUB': _CategoryMeta('술집', 'assets/images/pub.png'),
   'CAFE': _CategoryMeta('카페', 'assets/images/cafe.png'),
+  'DONKATSU': _CategoryMeta('돈가스', 'assets/images/donkatsu.png'),
+  'HAMBURGER': _CategoryMeta('햄버거', 'assets/images/hamburger.png'),
+  'ETC': _CategoryMeta('기타', 'assets/images/total.png'),
 };
 
 const Map<String, String> _kCategoryAlias = {
@@ -44,6 +55,7 @@ const Map<String, String> _kCategoryAlias = {
   '전체': 'ALL',
   'KOREAN': 'KOREAN',
   '한식': 'KOREAN',
+  '고기/구이': 'KOREAN',
   'CHINESE': 'CHINESE',
   '중식': 'CHINESE',
   'JAPANESE': 'JAPANESE',
@@ -57,6 +69,13 @@ const Map<String, String> _kCategoryAlias = {
   '술집': 'PUB',
   'CAFE': 'CAFE',
   '카페': 'CAFE',
+  'DONKATSU': 'DONKATSU',
+  '돈가스': 'DONKATSU',
+  'HAMBURGER': 'HAMBURGER',
+  '햄버거': 'HAMBURGER',
+  'ETC': 'ETC',
+  '기타': 'ETC',
+  '아시안': 'ETC',
 };
 
 bool _isValidNetworkImageUrl(String? value) {
@@ -72,14 +91,17 @@ class FavoriteRestaurantsScreen extends StatefulWidget {
   const FavoriteRestaurantsScreen({super.key});
 
   @override
-  State<FavoriteRestaurantsScreen> createState() => _FavoriteRestaurantsScreenState();
+  State<FavoriteRestaurantsScreen> createState() =>
+      _FavoriteRestaurantsScreenState();
 }
 
 class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
   final TextEditingController _searchController = TextEditingController();
 
   List<AffiliateRestaurantSummary> _restaurants = [];
+  List<GeneralRestaurantSummary> _generalRestaurants = [];
   Set<int> _favoriteIds = <int>{};
+  Set<String> _favoriteGeneralKeys = <String>{};
   Map<int, StampStatus> _stampStatuses = {};
   Map<int, _CouponCounts> _couponCountsDetailed = {};
   List<String> _categories = const ['ALL'];
@@ -111,12 +133,82 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
       final prefs = await SharedPreferences.getInstance();
       final rawFavoriteIds =
           prefs.getStringList(_kFavoriteRestaurantIdsKey) ?? const <String>[];
+      final rawGeneralKeys =
+          prefs.getStringList(_kFavoriteGeneralRestaurantKeysKey) ??
+              const <String>[];
+      final rawGeneralItems =
+          prefs.getString(_kFavoriteGeneralRestaurantItemsKey);
       final favoriteIds = rawFavoriteIds
           .map((value) => int.tryParse(value))
           .whereType<int>()
           .toSet();
+      final favoriteGeneralKeys = rawGeneralKeys
+          .map((value) => value.trim())
+          .where((value) => value.isNotEmpty)
+          .toSet();
+      final generalSnapshotMap = <String, dynamic>{};
+      if (rawGeneralItems != null && rawGeneralItems.isNotEmpty) {
+        try {
+          final decoded = jsonDecode(rawGeneralItems);
+          if (decoded is Map<String, dynamic>) {
+            generalSnapshotMap.addAll(decoded);
+          }
+        } catch (_) {}
+      }
       final all = await AffiliateService.fetchRestaurants();
-      final favorites = all.where((restaurant) => favoriteIds.contains(restaurant.id)).toList();
+      final favorites = all
+          .where((restaurant) => favoriteIds.contains(restaurant.id))
+          .toList();
+      final generalFavorites = favoriteGeneralKeys
+          .map((key) {
+            final raw = generalSnapshotMap[key];
+            if (raw is Map<String, dynamic>) {
+              return GeneralRestaurantSummary.fromJson(raw);
+            }
+            if (raw is Map) {
+              return GeneralRestaurantSummary.fromJson(
+                Map<String, dynamic>.from(raw),
+              );
+            }
+            return null;
+          })
+          .whereType<GeneralRestaurantSummary>()
+          .toList();
+      if (generalFavorites.length < favoriteGeneralKeys.length) {
+        try {
+          final response = await AffiliateService.fetchTabRestaurants(
+            limit: 50,
+            offset: 0,
+            includeAffiliates: true,
+          );
+          final resolved = response.generalRestaurants.where((restaurant) {
+            final key = _generalFavoriteKey(restaurant);
+            return favoriteGeneralKeys.contains(key) &&
+                !generalFavorites.any(
+                  (item) => _generalFavoriteKey(item) == key,
+                );
+          }).toList();
+          if (resolved.isNotEmpty) {
+            generalFavorites.addAll(resolved);
+            for (final item in resolved) {
+              generalSnapshotMap[_generalFavoriteKey(item)] = <String, dynamic>{
+                'restaurant_id': item.id,
+                'name': item.name,
+                'description': item.description,
+                'address': item.address,
+                'category': item.category,
+                'zone': item.zone,
+                'phone_number': item.phoneNumber,
+                'url': item.url,
+              };
+            }
+            await prefs.setString(
+              _kFavoriteGeneralRestaurantItemsKey,
+              jsonEncode(generalSnapshotMap),
+            );
+          }
+        } catch (_) {}
+      }
       List<UserCoupon> allCoupons = const <UserCoupon>[];
       try {
         allCoupons = await CouponService.fetchMyCoupons();
@@ -126,12 +218,19 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
       } catch (_) {}
       final categories = <String>{'ALL'};
       for (final restaurant in favorites) {
-        if (restaurant.category.isNotEmpty) categories.add(restaurant.category);
+        final norm = _normalizedCategoryForState(restaurant.category);
+        if (norm.isNotEmpty) categories.add(norm);
+      }
+      for (final restaurant in generalFavorites) {
+        final norm = _normalizedCategoryForState(restaurant.category);
+        if (norm.isNotEmpty) categories.add(norm);
       }
       if (!mounted) return;
       setState(() {
         _favoriteIds = favoriteIds;
+        _favoriteGeneralKeys = favoriteGeneralKeys;
         _restaurants = favorites;
+        _generalRestaurants = generalFavorites;
         _couponCountsDetailed = _buildDetailedCouponCounts(allCoupons);
         _stampStatuses = {};
         _categories = categories.toList();
@@ -184,13 +283,112 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
       _kFavoriteRestaurantIdsKey,
       next.map((e) => e.toString()).toList(),
     );
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantFavoriteToggle,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: id,
+        AnalyticsEvents.paramRestaurantName: restaurant.name,
+        AnalyticsEvents.paramAction: shouldFavorite ? 'add' : 'remove',
+      },
+    );
     if (!mounted) return;
     setState(() {
       _favoriteIds = next;
-      _restaurants = _restaurants.where((item) => next.contains(item.id)).toList();
+      _restaurants =
+          _restaurants.where((item) => next.contains(item.id)).toList();
       final categories = <String>{'ALL'};
       for (final item in _restaurants) {
-        if (item.category.isNotEmpty) categories.add(item.category);
+        final norm = _normalizedCategoryForState(item.category);
+        if (norm.isNotEmpty) categories.add(norm);
+      }
+      for (final item in _generalRestaurants) {
+        final norm = _normalizedCategoryForState(item.category);
+        if (norm.isNotEmpty) categories.add(norm);
+      }
+      _categories = categories.toList();
+      if (!_categories.contains(_selectedCategory)) {
+        _selectedCategory = 'ALL';
+      }
+    });
+  }
+
+  String _generalFavoriteKey(GeneralRestaurantSummary restaurant) {
+    if (restaurant.id > 0) {
+      return 'id:${restaurant.id}';
+    }
+    final normalizedUrl = restaurant.url.trim();
+    if (normalizedUrl.isNotEmpty) {
+      return 'url:$normalizedUrl';
+    }
+    return 'name:${restaurant.name.trim()}|addr:${restaurant.address.trim()}';
+  }
+
+  Future<void> _toggleGeneralFavorite(
+      GeneralRestaurantSummary restaurant) async {
+    final key = _generalFavoriteKey(restaurant);
+    final next = Set<String>.from(_favoriteGeneralKeys);
+    final shouldFavorite = !next.contains(key);
+    if (shouldFavorite) {
+      next.add(key);
+    } else {
+      next.remove(key);
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(
+        _kFavoriteGeneralRestaurantKeysKey, next.toList());
+
+    final rawGeneralItems =
+        prefs.getString(_kFavoriteGeneralRestaurantItemsKey);
+    final generalSnapshotMap = <String, dynamic>{};
+    if (rawGeneralItems != null && rawGeneralItems.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawGeneralItems);
+        if (decoded is Map<String, dynamic>) {
+          generalSnapshotMap.addAll(decoded);
+        }
+      } catch (_) {}
+    }
+    if (shouldFavorite) {
+      generalSnapshotMap[key] = <String, dynamic>{
+        'restaurant_id': restaurant.id,
+        'name': restaurant.name,
+        'description': restaurant.description,
+        'address': restaurant.address,
+        'category': restaurant.category,
+        'zone': restaurant.zone,
+        'phone_number': restaurant.phoneNumber,
+        'url': restaurant.url,
+      };
+    } else {
+      generalSnapshotMap.remove(key);
+    }
+    await prefs.setString(
+      _kFavoriteGeneralRestaurantItemsKey,
+      jsonEncode(generalSnapshotMap),
+    );
+
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantFavoriteToggle,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: restaurant.id,
+        AnalyticsEvents.paramRestaurantName: restaurant.name,
+        AnalyticsEvents.paramAction: shouldFavorite ? 'add' : 'remove',
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _favoriteGeneralKeys = next;
+      _generalRestaurants = _generalRestaurants
+          .where((item) => next.contains(_generalFavoriteKey(item)))
+          .toList();
+      final categories = <String>{'ALL'};
+      for (final item in _restaurants) {
+        final norm = _normalizedCategoryForState(item.category);
+        if (norm.isNotEmpty) categories.add(norm);
+      }
+      for (final item in _generalRestaurants) {
+        final norm = _normalizedCategoryForState(item.category);
+        if (norm.isNotEmpty) categories.add(norm);
       }
       _categories = categories.toList();
       if (!_categories.contains(_selectedCategory)) {
@@ -268,24 +466,27 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
     if (current == null) return;
     if (current.issued <= 0) return;
     setState(() {
-      _couponCountsDetailed = Map<int, _CouponCounts>.from(_couponCountsDetailed)
-        ..[restaurantId] = _CouponCounts(
-          total: current.total,
-          issued: current.issued - 1,
-        );
+      _couponCountsDetailed =
+          Map<int, _CouponCounts>.from(_couponCountsDetailed)
+            ..[restaurantId] = _CouponCounts(
+              total: current.total,
+              issued: current.issued - 1,
+            );
     });
   }
 
   void _handleRewardCouponsIssued(List<String> couponCodes, int restaurantId) {
-    final issuedCount = couponCodes.where((code) => code.trim().isNotEmpty).length;
+    final issuedCount =
+        couponCodes.where((code) => code.trim().isNotEmpty).length;
     if (issuedCount <= 0) return;
     final current = _couponCountsDetailed[restaurantId];
     setState(() {
-      _couponCountsDetailed = Map<int, _CouponCounts>.from(_couponCountsDetailed)
-        ..[restaurantId] = _CouponCounts(
-          total: (current?.total ?? 0) + issuedCount,
-          issued: (current?.issued ?? 0) + issuedCount,
-        );
+      _couponCountsDetailed =
+          Map<int, _CouponCounts>.from(_couponCountsDetailed)
+            ..[restaurantId] = _CouponCounts(
+              total: (current?.total ?? 0) + issuedCount,
+              issued: (current?.issued ?? 0) + issuedCount,
+            );
     });
   }
 
@@ -295,10 +496,13 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
     final coupons = await CouponService.fetchMyCoupons(
       status: CouponStatus.issued,
     );
-    return coupons.where((coupon) => coupon.restaurantId == restaurantId).toList();
+    return coupons
+        .where((coupon) => coupon.restaurantId == restaurantId)
+        .toList();
   }
 
-  Future<void> _openRestaurantDetail(AffiliateRestaurantSummary restaurant) async {
+  Future<void> _openRestaurantDetail(
+      AffiliateRestaurantSummary restaurant) async {
     if (_isOpeningDetail) return;
     setState(() => _isOpeningDetail = true);
 
@@ -369,14 +573,44 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
     final categoryFiltered = _selectedCategory == 'ALL'
         ? _restaurants
         : _restaurants
-            .where((restaurant) => restaurant.category == _selectedCategory)
+            .where((restaurant) =>
+                _normalizedCategoryForState(restaurant.category) ==
+                _selectedCategory)
             .toList();
     final normalizedQuery = _normalizeForSearch(_searchQuery);
     if (normalizedQuery.isEmpty) return categoryFiltered;
 
     final scored = <MapEntry<AffiliateRestaurantSummary, int>>[];
     for (final restaurant in categoryFiltered) {
-      final score = _searchMatchScore(restaurant, normalizedQuery);
+      final score = _searchMatchScore(restaurant.name, normalizedQuery);
+      if (score != null) {
+        scored.add(MapEntry(restaurant, score));
+      }
+    }
+
+    scored.sort((a, b) {
+      final scoreCompare = a.value.compareTo(b.value);
+      if (scoreCompare != 0) return scoreCompare;
+      return a.key.name.compareTo(b.key.name);
+    });
+
+    return scored.map((entry) => entry.key).toList();
+  }
+
+  List<GeneralRestaurantSummary> get _filteredGeneralRestaurants {
+    final categoryFiltered = _selectedCategory == 'ALL'
+        ? _generalRestaurants
+        : _generalRestaurants
+            .where((restaurant) =>
+                _normalizedCategoryForState(restaurant.category) ==
+                _selectedCategory)
+            .toList();
+    final normalizedQuery = _normalizeForSearch(_searchQuery);
+    if (normalizedQuery.isEmpty) return categoryFiltered;
+
+    final scored = <MapEntry<GeneralRestaurantSummary, int>>[];
+    for (final restaurant in categoryFiltered) {
+      final score = _searchMatchScore(restaurant.name, normalizedQuery);
       if (score != null) {
         scored.add(MapEntry(restaurant, score));
       }
@@ -395,11 +629,8 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
     return value.toLowerCase().replaceAll(RegExp(r'\s+'), '').trim();
   }
 
-  int? _searchMatchScore(
-    AffiliateRestaurantSummary restaurant,
-    String normalizedQuery,
-  ) {
-    final normalizedName = _normalizeForSearch(restaurant.name);
+  int? _searchMatchScore(String restaurantName, String normalizedQuery) {
+    final normalizedName = _normalizeForSearch(restaurantName);
     if (normalizedName.isEmpty) return null;
 
     if (normalizedName == normalizedQuery) return 0;
@@ -408,7 +639,7 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
 
     var wordPrefixMatched = false;
     final queryLen = normalizedQuery.length;
-    final words = restaurant.name
+    final words = restaurantName
         .toLowerCase()
         .split(RegExp(r'\s+'))
         .where((word) => word.isNotEmpty)
@@ -430,7 +661,8 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
 
     var bestWordDistance = 999;
     for (final word in words) {
-      final wordPrefix = word.length >= queryLen ? word.substring(0, queryLen) : word;
+      final wordPrefix =
+          word.length >= queryLen ? word.substring(0, queryLen) : word;
       final distance = _levenshteinDistance(normalizedQuery, wordPrefix);
       if (distance < bestWordDistance) {
         bestWordDistance = distance;
@@ -465,7 +697,19 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
 
   String _normalizeCategoryKey(String category) {
     final normalized = category.trim().toUpperCase();
-    return _kCategoryAlias[normalized] ?? _kCategoryAlias[category.trim()] ?? normalized;
+    return _kCategoryAlias[normalized] ??
+        _kCategoryAlias[category.trim()] ??
+        normalized;
+  }
+
+  String _normalizedCategoryForState(String category) {
+    final trimmed = category.trim();
+    if (trimmed.isEmpty) return '';
+    final key = _normalizeCategoryKey(trimmed);
+    if (_kCategoryMeta.containsKey(key)) {
+      return key;
+    }
+    return trimmed;
   }
 
   _CategoryMeta _resolveCategoryMeta(String category) {
@@ -473,7 +717,8 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
     final meta = _kCategoryMeta[key];
     if (meta != null) return meta;
     final trimmed = category.trim();
-    return _CategoryMeta(trimmed.isEmpty ? '기타' : trimmed, _kCategoryMeta['CAFE']!.assetPath);
+    return _CategoryMeta(
+        trimmed.isEmpty ? '기타' : trimmed, _kCategoryMeta['ALL']!.assetPath);
   }
 
   @override
@@ -501,13 +746,6 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
       ),
     );
 
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: appBar,
-        body: const Center(child: CircularProgressIndicator()),
-      );
-    }
     if (_error != null) {
       return Scaffold(
         backgroundColor: Colors.white,
@@ -543,24 +781,69 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
             const SizedBox(height: 12),
             _buildCategoryFilter(),
             const SizedBox(height: 12),
-            if (_filteredRestaurants.isEmpty)
+            if (_filteredRestaurants.isEmpty &&
+                _filteredGeneralRestaurants.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(24),
                 child: Center(
-                  child: Text(
-                    _normalizeForSearch(_searchQuery).isEmpty
-                        ? '찜한 식당이 없습니다.'
-                        : '검색 결과가 없어요.',
-                  ),
+                  child: _isLoading
+                      ? const Text(
+                          '불러오는 중...',
+                          style: TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontSize: 14,
+                          ),
+                        )
+                      : Text(
+                          _normalizeForSearch(_searchQuery).isEmpty
+                              ? '찜한 식당이 없습니다.'
+                              : '검색 결과가 없어요.',
+                        ),
                 ),
               )
-            else
-              ..._filteredRestaurants.map((restaurant) {
-                return Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                  child: _buildRestaurantCard(restaurant),
-                );
-              }),
+            else ...[
+              if (_filteredRestaurants.isNotEmpty) ...[
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
+                  child: Text(
+                    '제휴 식당',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF4B5563),
+                    ),
+                  ),
+                ),
+                ..._filteredRestaurants.map((restaurant) {
+                  return Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: _buildRestaurantCard(restaurant),
+                  );
+                }),
+              ],
+              if (_filteredGeneralRestaurants.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
+                  child: Text(
+                    '일반 식당',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF4B5563),
+                    ),
+                  ),
+                ),
+                ..._filteredGeneralRestaurants.map((restaurant) {
+                  return Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: _buildGeneralRestaurantCard(restaurant),
+                  );
+                }),
+              ],
+            ],
           ],
         ),
       ),
@@ -595,7 +878,8 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
           decoration: InputDecoration(
             border: InputBorder.none,
             isCollapsed: true,
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             hintText: '식당명을 검색해보세요',
             hintStyle: const TextStyle(
               color: Color(0xFF9CA3AF),
@@ -603,18 +887,19 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
               fontFamily: 'Pretendard',
               fontWeight: FontWeight.w500,
             ),
-            prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
+            prefixIcon:
+                const Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
             suffixIcon: _normalizeForSearch(_searchQuery).isEmpty
                 ? null
                 : IconButton(
-                    onPressed: () {
-                      _searchController.clear();
-                      setState(() => _searchQuery = '');
-                    },
-                    icon: const Icon(Icons.close, size: 18),
-                    color: const Color(0xFF6B7280),
-                    splashRadius: 18,
-                  ),
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                        icon: const Icon(Icons.close, size: 18),
+                        color: const Color(0xFF6B7280),
+                        splashRadius: 18,
+                      ),
           ),
         ),
       ),
@@ -652,12 +937,15 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
               width: 52 * scale,
               height: 66 * scale,
               decoration: ShapeDecoration(
-                color: selected ? const Color(0x99C7CDD1) : const Color(0xFFF9FAFB),
+                color: selected
+                    ? const Color(0x99C7CDD1)
+                    : const Color(0xFFF9FAFB),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              padding: EdgeInsets.symmetric(horizontal: 6 * scale, vertical: 8 * scale),
+              padding: EdgeInsets.symmetric(
+                  horizontal: 6 * scale, vertical: 8 * scale),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -665,7 +953,8 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
                     child: Image.asset(meta.assetPath, fit: BoxFit.contain),
                   ),
                   SizedBox(height: 4 * scale),
-                  Text(meta.label, style: textStyle, textAlign: TextAlign.center),
+                  Text(meta.label,
+                      style: textStyle, textAlign: TextAlign.center),
                 ],
               ),
             ),
@@ -746,7 +1035,9 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
                         children: [
                           Expanded(
                             child: Text(
-                              restaurant.name.isNotEmpty ? restaurant.name : '매장 정보를 찾을 수 없어요',
+                              restaurant.name.isNotEmpty
+                                  ? restaurant.name
+                                  : '매장 정보를 찾을 수 없어요',
                               style: const TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w700,
@@ -795,6 +1086,168 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildGeneralRestaurantCard(GeneralRestaurantSummary restaurant) {
+    final isLiked =
+        _favoriteGeneralKeys.contains(_generalFavoriteKey(restaurant));
+    final hasUrl = restaurant.url.trim().isNotEmpty;
+    final categoryLabel = _resolveCategoryMeta(restaurant.category).label;
+    final locationLabel = restaurant.zone.trim().isNotEmpty
+        ? restaurant.zone.trim()
+        : (restaurant.address.trim().isNotEmpty
+            ? restaurant.address.trim()
+            : '위치 정보 없음');
+
+    return InkWell(
+      onTap: hasUrl ? () => _openGeneralRestaurantUrl(restaurant.url) : null,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: double.infinity,
+        decoration: ShapeDecoration(
+          color: Colors.white,
+          shape: RoundedRectangleBorder(
+            side: const BorderSide(width: 1, color: Color(0xFFE5E7EB)),
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE5E7EB),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.storefront_outlined,
+                    size: 17,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    restaurant.name.isNotEmpty
+                        ? restaurant.name
+                        : '매장 정보를 찾을 수 없어요',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF1F2937),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => _toggleGeneralFavorite(restaurant),
+                  splashRadius: 18,
+                  constraints:
+                      const BoxConstraints(minWidth: 32, minHeight: 32),
+                  icon: Icon(
+                    isLiked ? Icons.favorite : Icons.favorite_border,
+                    size: 20,
+                    color: isLiked
+                        ? const Color(0xFFE11D48)
+                        : const Color(0xFF9CA3AF),
+                  ),
+                  tooltip: isLiked ? '찜 해제' : '찜하기',
+                ),
+                Icon(
+                  Icons.keyboard_arrow_right,
+                  color: hasUrl
+                      ? const Color(0xFF9CA3AF)
+                      : const Color(0xFFD1D5DB),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.only(left: 42),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.location_on_outlined,
+                    size: 14,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      locationLabel,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF6B7280),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2.5,
+                    ),
+                    decoration: ShapeDecoration(
+                      color: const Color(0xFFEEF2FF),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    child: Text(
+                      categoryLabel,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1F2937),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openGeneralRestaurantUrl(String rawUrl) async {
+    final url = rawUrl.trim();
+    if (url.isEmpty) {
+      _showSnack('이 식당은 이동할 링크가 없어요.');
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri == null || !(uri.scheme == 'http' || uri.scheme == 'https')) {
+      _showSnack('유효한 링크가 아니에요.');
+      return;
+    }
+    try {
+      final launched =
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!launched) {
+        _showSnack('링크를 열 수 없어요.');
+      }
+    } catch (_) {
+      _showSnack('링크를 열 수 없어요.');
+    }
+  }
+
+  void _showSnack(String message) {
+    if (!mounted || message.isEmpty) return;
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(message)),
     );
   }
 
