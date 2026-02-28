@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'dart:convert';
 
@@ -78,6 +79,20 @@ const Map<String, String> _kCategoryAlias = {
   '아시안': 'ETC',
 };
 
+const List<String> _kCategoryOrder = [
+  'ALL',
+  'KOREAN',
+  'CHINESE',
+  'JAPANESE',
+  'WESTERN',
+  'SNACK',
+  'PUB',
+  'CAFE',
+  'DONKATSU',
+  'HAMBURGER',
+  'ETC',
+];
+
 bool _isValidNetworkImageUrl(String? value) {
   if (value == null) return false;
   final trimmed = value.trim();
@@ -97,6 +112,9 @@ class FavoriteRestaurantsScreen extends StatefulWidget {
 
 class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  Timer? _searchDebounce;
+  bool _isSearching = false;
 
   List<AffiliateRestaurantSummary> _restaurants = [];
   List<GeneralRestaurantSummary> _generalRestaurants = [];
@@ -115,13 +133,36 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
   @override
   void initState() {
     super.initState();
+    _searchFocusNode.addListener(() => setState(() {}));
     _load();
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _handleSearchChanged(String value) {
+    setState(() {
+      _searchQuery = value;
+      _isSearching = true;
+    });
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      if (!mounted) return;
+      setState(() => _isSearching = false);
+    });
+  }
+
+  void _handleSearchSubmitted(String value) {
+    _searchDebounce?.cancel();
+    setState(() {
+      _searchQuery = value;
+      _isSearching = false;
+    });
   }
 
   Future<void> _load() async {
@@ -233,7 +274,7 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
         _generalRestaurants = generalFavorites;
         _couponCountsDetailed = _buildDetailedCouponCounts(allCoupons);
         _stampStatuses = {};
-        _categories = categories.toList();
+        _categories = _sortCategories(categories);
         _selectedCategory = 'ALL';
       });
 
@@ -292,24 +333,24 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
       },
     );
     if (!mounted) return;
-    setState(() {
-      _favoriteIds = next;
-      _restaurants =
-          _restaurants.where((item) => next.contains(item.id)).toList();
-      final categories = <String>{'ALL'};
-      for (final item in _restaurants) {
-        final norm = _normalizedCategoryForState(item.category);
-        if (norm.isNotEmpty) categories.add(norm);
-      }
-      for (final item in _generalRestaurants) {
-        final norm = _normalizedCategoryForState(item.category);
-        if (norm.isNotEmpty) categories.add(norm);
-      }
-      _categories = categories.toList();
-      if (!_categories.contains(_selectedCategory)) {
-        _selectedCategory = 'ALL';
-      }
-    });
+      setState(() {
+        _favoriteIds = next;
+        _restaurants =
+            _restaurants.where((item) => next.contains(item.id)).toList();
+        final categories = <String>{'ALL'};
+        for (final item in _restaurants) {
+          final norm = _normalizedCategoryForState(item.category);
+          if (norm.isNotEmpty) categories.add(norm);
+        }
+        for (final item in _generalRestaurants) {
+          final norm = _normalizedCategoryForState(item.category);
+          if (norm.isNotEmpty) categories.add(norm);
+        }
+        _categories = _sortCategories(categories);
+        if (!_categories.contains(_selectedCategory)) {
+          _selectedCategory = 'ALL';
+        }
+      });
   }
 
   String _generalFavoriteKey(GeneralRestaurantSummary restaurant) {
@@ -376,25 +417,25 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
       },
     );
     if (!mounted) return;
-    setState(() {
-      _favoriteGeneralKeys = next;
-      _generalRestaurants = _generalRestaurants
-          .where((item) => next.contains(_generalFavoriteKey(item)))
-          .toList();
-      final categories = <String>{'ALL'};
-      for (final item in _restaurants) {
-        final norm = _normalizedCategoryForState(item.category);
-        if (norm.isNotEmpty) categories.add(norm);
-      }
-      for (final item in _generalRestaurants) {
-        final norm = _normalizedCategoryForState(item.category);
-        if (norm.isNotEmpty) categories.add(norm);
-      }
-      _categories = categories.toList();
-      if (!_categories.contains(_selectedCategory)) {
-        _selectedCategory = 'ALL';
-      }
-    });
+      setState(() {
+        _favoriteGeneralKeys = next;
+        _generalRestaurants = _generalRestaurants
+            .where((item) => next.contains(_generalFavoriteKey(item)))
+            .toList();
+        final categories = <String>{'ALL'};
+        for (final item in _restaurants) {
+          final norm = _normalizedCategoryForState(item.category);
+          if (norm.isNotEmpty) categories.add(norm);
+        }
+        for (final item in _generalRestaurants) {
+          final norm = _normalizedCategoryForState(item.category);
+          if (norm.isNotEmpty) categories.add(norm);
+        }
+        _categories = _sortCategories(categories);
+        if (!_categories.contains(_selectedCategory)) {
+          _selectedCategory = 'ALL';
+        }
+      });
   }
 
   Map<int, _CouponCounts> _buildDetailedCouponCounts(
@@ -702,6 +743,25 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
         normalized;
   }
 
+  int _categoryOrderIndex(String category) {
+    final normalized = _normalizeCategoryKey(category);
+    final index = _kCategoryOrder.indexOf(normalized);
+    return index == -1 ? _kCategoryOrder.length : index;
+  }
+
+  List<String> _sortCategories(Iterable<String> source) {
+    final list = source.toSet().toList();
+    list.sort((a, b) {
+      final orderA = _categoryOrderIndex(a);
+      final orderB = _categoryOrderIndex(b);
+      if (orderA != orderB) {
+        return orderA.compareTo(orderB);
+      }
+      return a.compareTo(b);
+    });
+    return list;
+  }
+
   String _normalizedCategoryForState(String category) {
     final trimmed = category.trim();
     if (trimmed.isEmpty) return '';
@@ -769,39 +829,48 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: appBar,
-      body: RefreshIndicator(
-        color: const Color(0xFF6366F1),
-        backgroundColor: Colors.white,
-        strokeWidth: 2,
-        onRefresh: _load,
-        child: ListView(
-          padding: const EdgeInsets.only(top: 16, bottom: 140),
-          children: [
-            _buildSearchBar(),
-            const SizedBox(height: 12),
-            _buildCategoryFilter(),
-            const SizedBox(height: 12),
-            if (_filteredRestaurants.isEmpty &&
-                _filteredGeneralRestaurants.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: _isLoading
-                      ? const Text(
-                          '불러오는 중...',
-                          style: TextStyle(
-                            color: Color(0xFF6B7280),
-                            fontSize: 14,
-                          ),
-                        )
-                      : Text(
-                          _normalizeForSearch(_searchQuery).isEmpty
-                              ? '찜한 식당이 없습니다.'
-                              : '검색 결과가 없어요.',
-                        ),
-                ),
-              )
-            else ...[
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: RefreshIndicator(
+          color: const Color(0xFF6366F1),
+          backgroundColor: Colors.white,
+          strokeWidth: 2,
+          onRefresh: _load,
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.only(top: 16, bottom: 140),
+            children: [
+              _buildSearchBar(),
+              const SizedBox(height: 12),
+              _buildCategoryFilter(),
+              const SizedBox(height: 12),
+              if (_isLoading || _isSearching)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: const Text(
+                      '불러오는 중...',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                )
+              else if (_filteredRestaurants.isEmpty &&
+                  _filteredGeneralRestaurants.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text(
+                      _normalizeForSearch(_searchQuery).isEmpty
+                          ? '찜한 식당이 없습니다.'
+                          : '검색 결과가 없어요.',
+                    ),
+                  ),
+                )
+              else ...[
               if (_filteredRestaurants.isNotEmpty) ...[
                 const Padding(
                   padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
@@ -846,6 +915,7 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
             ],
           ],
         ),
+        ),
       ),
     );
   }
@@ -865,6 +935,7 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
         alignment: Alignment.center,
         child: TextField(
           controller: _searchController,
+          focusNode: _searchFocusNode,
           textInputAction: TextInputAction.search,
           style: const TextStyle(
             color: Color(0xFF39393E),
@@ -872,9 +943,8 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
             fontFamily: 'Pretendard',
             fontWeight: FontWeight.w600,
           ),
-          onChanged: (value) {
-            setState(() => _searchQuery = value);
-          },
+          onChanged: _handleSearchChanged,
+          onSubmitted: _handleSearchSubmitted,
           decoration: InputDecoration(
             border: InputBorder.none,
             isCollapsed: true,
@@ -889,17 +959,33 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
             ),
             prefixIcon:
                 const Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
-            suffixIcon: _normalizeForSearch(_searchQuery).isEmpty
-                ? null
-                : IconButton(
-                        onPressed: () {
-                          _searchController.clear();
-                          setState(() => _searchQuery = '');
-                        },
-                        icon: const Icon(Icons.close, size: 18),
-                        color: const Color(0xFF6B7280),
-                        splashRadius: 18,
-                      ),
+            suffixIcon: _searchFocusNode.hasFocus ||
+                    !_normalizeForSearch(_searchQuery).isEmpty
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_searchFocusNode.hasFocus)
+                        IconButton(
+                          onPressed: () =>
+                              FocusScope.of(context).unfocus(),
+                          icon: const Icon(Icons.keyboard_hide, size: 20),
+                          color: const Color(0xFF6B7280),
+                          splashRadius: 18,
+                          tooltip: '키보드 내리기',
+                        ),
+                      if (!_normalizeForSearch(_searchQuery).isEmpty)
+                        IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            _handleSearchSubmitted('');
+                          },
+                          icon: const Icon(Icons.close, size: 18),
+                          color: const Color(0xFF6B7280),
+                          splashRadius: 18,
+                        ),
+                    ],
+                  )
+                : null,
           ),
         ),
       ),

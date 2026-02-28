@@ -3,6 +3,24 @@ import 'package:firebase_analytics/firebase_analytics.dart';
 class AnalyticsLogger {
   AnalyticsLogger._();
 
+  /// Firebase Analytics는 String, int, double만 허용. bool 등은 변환 필요.
+  static Map<String, Object>? _sanitizeParameters(Map<String, Object?>? params) {
+    if (params == null || params.isEmpty) return null;
+    final sanitized = <String, Object>{};
+    for (final e in params.entries) {
+      final v = e.value;
+      if (v == null) continue;
+      if (v is String || v is int || v is double) {
+        sanitized[e.key] = v;
+      } else if (v is bool) {
+        sanitized[e.key] = v ? 'true' : 'false';
+      } else {
+        sanitized[e.key] = v.toString();
+      }
+    }
+    return sanitized.isEmpty ? null : sanitized;
+  }
+
   static Future<void> logEvent(
     String name, {
     Map<String, Object?>? parameters,
@@ -10,7 +28,7 @@ class AnalyticsLogger {
     try {
       await FirebaseAnalytics.instance.logEvent(
         name: name,
-        parameters: parameters,
+        parameters: _sanitizeParameters(parameters),
       );
     } catch (_) {
       // Analytics failures shouldn't block user flows.

@@ -2,8 +2,14 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'dart:async'; // Added for TimeoutException
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:new1/config/analytics_events.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 import 'api_client.dart';
+
+const String _kSeenCouponCodesKey = 'coupon_analytics_seen_codes';
 
 const String kCouponBenefitFallbackTitle = '혜택 정보가 준비 중이에요';
 const String kCouponBenefitFallbackSubtitle = '쿠폰 상세 정보를 확인하려면 매장에 문의해 주세요.';
@@ -50,6 +56,7 @@ class UserCoupon {
     this.benefit,
     this.expiresAt,
     this.issueKey,
+    this.campaignCode,
   });
 
   factory UserCoupon.fromJson(Map<String, dynamic> json) {
@@ -71,6 +78,7 @@ class UserCoupon {
     final issueKey = (rawIssueKey is String && rawIssueKey.trim().isNotEmpty)
         ? rawIssueKey.trim()
         : null;
+    final campaignCode = _normalizeString(json['campaign_code']);
 
     return UserCoupon(
       code: json['code']?.toString() ?? '',
@@ -79,6 +87,7 @@ class UserCoupon {
       benefit: benefit,
       expiresAt: _parseDate(json['expires_at']),
       issueKey: issueKey,
+      campaignCode: campaignCode,
     );
   }
 
@@ -89,9 +98,15 @@ class UserCoupon {
   final DateTime? expiresAt;
   /// 쿠폰 발급 경로 식별 (APP_OPEN:, STAMP_REWARD:, FLASH:, FINAL_EXAM: 등)
   final String? issueKey;
+  /// 캠페인 코드 (기획전·발급 경로 구분, Firebase coupon_issue_source 우선 사용)
+  final String? campaignCode;
+
+  /// Firebase coupon_issue_source: campaign_code 우선, 없으면 issue_key 기반
+  String get couponIssueSource =>
+      campaignCode ?? resolveCouponIssueSource(issueKey);
 }
 
-/// issue_key prefix로 쿠폰 발급 경로 반환
+/// issue_key prefix로 쿠폰 발급 경로 반환 (레거시)
 /// @see wouldulike_backend/docs/쿠폰_issue_key_프론트엔드_가이드.md
 String getCouponIssuanceSource(String? issueKey) {
   if (issueKey == null || issueKey.isEmpty) return 'unknown';
@@ -104,6 +119,25 @@ String getCouponIssuanceSource(String? issueKey) {
   if (issueKey.startsWith('STAMP_REWARD:')) return 'stamp';
   if (issueKey.startsWith('FLASH:')) return 'flash';
   if (issueKey.startsWith('FINAL_EXAM:')) return 'final_exam';
+  return 'other';
+}
+
+/// Firebase coupon_issue_source: campaign_code 스타일 값 반환
+/// campaign_code 없을 때 issue_key를 campaign_code 값으로 매핑
+String resolveCouponIssueSource(String? issueKey) {
+  if (issueKey == null || issueKey.isEmpty) return 'unknown';
+  if (issueKey.startsWith('APP_OPEN:') || issueKey.startsWith('SIGNUP:')) {
+    return 'SIGNUP_WELCOME';
+  }
+  if (issueKey.startsWith('AMBASSADOR:')) return 'BULK_EVENT';
+  if (issueKey.startsWith('REFERRAL_REFERRER:') ||
+      issueKey.startsWith('REFERRAL_REFEREE:')) {
+    return 'REFERRAL';
+  }
+  if (issueKey.startsWith('EVENT_REWARD:')) return 'EVENT_REWARD_SIGNUP';
+  if (issueKey.startsWith('STAMP_REWARD:')) return 'STAMP_REWARD';
+  if (issueKey.startsWith('FLASH:')) return 'FLASH_8PM';
+  if (issueKey.startsWith('FINAL_EXAM:')) return 'FINAL_EXAM_EVENT';
   return 'other';
 }
 
@@ -406,21 +440,142 @@ class CouponRedeemResult {
   final String couponCode;
 }
 
+/// 백엔드 응답의 issued_coupons 항목 (쿠폰 발급 시 반환)
+class IssuedCouponInfo {
+  const IssuedCouponInfo({
+    required this.code,
+    this.restaurantId,
+    this.issueKey,
+    this.campaignCode,
+    this.couponTypeCode,
+  });
+
+  factory IssuedCouponInfo.fromJson(Map<String, dynamic> json) {
+    return IssuedCouponInfo(
+      code: json['code']?.toString() ?? '',
+      restaurantId: _parseOptionalInt(json['restaurant_id']),
+      issueKey: _normalizeString(json['issue_key']),
+      campaignCode: _normalizeString(json['campaign_code']),
+      couponTypeCode: _normalizeString(json['coupon_type_code']),
+    );
+  }
+
+  final String code;
+  final int? restaurantId;
+  final String? issueKey;
+  /// 캠페인 코드 (기획전·발급 경로 구분, coupon_issue_source 우선 사용)
+  final String? campaignCode;
+  final String? couponTypeCode;
+
+  /// coupon_issue_source 값: campaign_code 우선, 없으면 issue_key 기반
+  String get couponIssueSource =>
+      campaignCode ?? resolveCouponIssueSource(issueKey);
+}
+
 class ReferralAcceptResponse {
   const ReferralAcceptResponse({
     required this.ok,
     this.referralId,
+    this.issuedCoupons = const [],
   });
 
   factory ReferralAcceptResponse.fromJson(Map<String, dynamic> json) {
+    List<IssuedCouponInfo> parseIssuedCoupons() {
+      final value = json['issued_coupons'];
+      if (value is! List) return const [];
+      return value
+          .map((item) {
+            if (item is Map<String, dynamic>) {
+              return IssuedCouponInfo.fromJson(item);
+            }
+            if (item is Map) {
+              return IssuedCouponInfo.fromJson(
+                  Map<String, dynamic>.from(item));
+            }
+            return null;
+          })
+          .whereType<IssuedCouponInfo>()
+          .where((c) => c.code.isNotEmpty)
+          .toList();
+    }
+
     return ReferralAcceptResponse(
       ok: json['ok'] is bool ? json['ok'] as bool : true,
       referralId: _parseOptionalInt(json['referral_id']),
+      issuedCoupons: parseIssuedCoupons(),
     );
   }
 
   final bool ok;
   final int? referralId;
+  /// 백엔드가 발급된 쿠폰 목록을 반환할 때
+  final List<IssuedCouponInfo> issuedCoupons;
+}
+
+/// issued_coupons 파싱·로깅. 로깅한 코드 집합 반환 (diff 중복 방지용)
+Set<String> _logIssuedCouponsFromResponse(Map<String, dynamic> json) {
+  final value = json['issued_coupons'];
+  if (value is! List) return {};
+  final logged = <String>{};
+  for (final item in value) {
+    final map = item is Map<String, dynamic>
+        ? item
+        : (item is Map ? Map<String, dynamic>.from(item) : null);
+    if (map == null) continue;
+    final c = IssuedCouponInfo.fromJson(map);
+    if (c.code.isEmpty) continue;
+    final params = <String, Object>{
+      AnalyticsEvents.paramRestaurantId: c.restaurantId ?? 0,
+      AnalyticsEvents.paramCouponIssueSource: c.couponIssueSource,
+      AnalyticsEvents.paramCouponCode: c.code,
+    };
+    if (c.couponTypeCode != null && c.couponTypeCode!.isNotEmpty) {
+      params[AnalyticsEvents.paramCouponTypeCode] = c.couponTypeCode!;
+    }
+    AnalyticsLogger.logEvent(AnalyticsEvents.couponIssued, parameters: params);
+    logged.add(c.code);
+  }
+  return logged;
+}
+
+/// 조건 충족 시 자동 발급되는 쿠폰(플래시 등): fetch 시 이전 목록과 diff하여
+/// 새로 추가된 쿠폰에 대해 coupon_issued 로깅
+Future<void> _logNewCouponsFromDiff(
+  List<UserCoupon> coupons, {
+  Set<String> alreadyLogged = const {},
+}) async {
+  if (coupons.isEmpty) return;
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    final seenJson = prefs.getString(_kSeenCouponCodesKey);
+    final seen = seenJson != null
+        ? (jsonDecode(seenJson) as List<dynamic>?)
+            ?.map((e) => e.toString())
+            .where((s) => s.isNotEmpty)
+            .toSet() ??
+            <String>{}
+        : <String>{};
+
+    final excluded = seen.union(alreadyLogged);
+    final newCoupons = coupons.where(
+        (c) => c.code.isNotEmpty && !excluded.contains(c.code));
+
+    for (final c in newCoupons) {
+      final params = <String, Object>{
+        AnalyticsEvents.paramRestaurantId: c.restaurantId ?? 0,
+        AnalyticsEvents.paramCouponIssueSource: c.couponIssueSource,
+        AnalyticsEvents.paramCouponCode: c.code,
+      };
+      AnalyticsLogger.logEvent(AnalyticsEvents.couponIssued, parameters: params);
+    }
+
+    final currentCodes =
+        coupons.map((c) => c.code).where((s) => s.isNotEmpty).toSet();
+    final updated = excluded.union(currentCodes);
+    await prefs.setString(_kSeenCouponCodesKey, jsonEncode(updated.toList()));
+  } catch (_) {
+    // 로깅 실패는 쿠폰 조회를 막지 않음
+  }
 }
 
 class CouponService {
@@ -443,17 +598,27 @@ class CouponService {
       );
 
       final decoded = _decodeResponseBody(response);
+      List<UserCoupon> coupons;
+      Set<String> alreadyLogged = {};
       if (decoded is List) {
-        return decoded
+        coupons = decoded
             .map((item) => UserCoupon.fromJson(Map<String, dynamic>.from(item)))
             .toList();
+      } else if (decoded is Map<String, dynamic>) {
+        alreadyLogged = _logIssuedCouponsFromResponse(decoded);
+        if (decoded['results'] is List) {
+          coupons = (decoded['results'] as List)
+              .map((item) =>
+                  UserCoupon.fromJson(Map<String, dynamic>.from(item)))
+              .toList();
+        } else {
+          coupons = const [];
+        }
+      } else {
+        coupons = const [];
       }
-      if (decoded is Map<String, dynamic> && decoded['results'] is List) {
-        return (decoded['results'] as List)
-            .map((item) => UserCoupon.fromJson(Map<String, dynamic>.from(item)))
-            .toList();
-      }
-      return const [];
+      await _logNewCouponsFromDiff(coupons, alreadyLogged: alreadyLogged);
+      return coupons;
     } on TimeoutException catch (e) {
       // 쿠폰 전용 타임아웃은 10초로 제한하고, UI에서 새로고침을 안내하기 위해
       // 네트워크 예외로 변환해 상위에서 처리하도록 전달한다.
@@ -623,6 +788,86 @@ class CouponService {
       return ReferralAcceptResponse.fromJson(decoded);
     }
     return const ReferralAcceptResponse(ok: true);
+  }
+
+  /// POST /api/coupons/signup/complete/ - 회원가입 완료 시 쿠폰 발급
+  static Future<Map<String, dynamic>> signupComplete() async {
+    final response = await ApiClient.post(
+      '/api/coupons/signup/complete/',
+      body: <String, dynamic>{},
+    );
+    final decoded = _decodeResponseBody(response);
+    final map = decoded is Map<String, dynamic>
+        ? decoded
+        : <String, dynamic>{};
+    final logged = _logIssuedCouponsFromResponse(map);
+    await markCouponsAsSeen(logged);
+    return map;
+  }
+
+  /// POST /api/coupons/referrals/qualify/ - 친구초대 자격 확인 시 쿠폰 발급
+  static Future<Map<String, dynamic>> referralsQualify() async {
+    final response = await ApiClient.post(
+      '/api/coupons/referrals/qualify/',
+      body: <String, dynamic>{},
+    );
+    final decoded = _decodeResponseBody(response);
+    final map = decoded is Map<String, dynamic>
+        ? decoded
+        : <String, dynamic>{};
+    final logged = _logIssuedCouponsFromResponse(map);
+    await markCouponsAsSeen(logged);
+    return map;
+  }
+
+  /// POST /api/coupons/flash/claim/ - 플래시 쿠폰 수령
+  static Future<Map<String, dynamic>> flashClaim() async {
+    final response = await ApiClient.post(
+      '/api/coupons/flash/claim/',
+      body: <String, dynamic>{},
+    );
+    final decoded = _decodeResponseBody(response);
+    final map = decoded is Map<String, dynamic>
+        ? decoded
+        : <String, dynamic>{};
+    final logged = _logIssuedCouponsFromResponse(map);
+    await markCouponsAsSeen(logged);
+    return map;
+  }
+
+  /// POST /api/coupons/final-exam/claim/ - 기말고사 쿠폰 수령
+  static Future<Map<String, dynamic>> finalExamClaim() async {
+    final response = await ApiClient.post(
+      '/api/coupons/final-exam/claim/',
+      body: <String, dynamic>{},
+    );
+    final decoded = _decodeResponseBody(response);
+    final map = decoded is Map<String, dynamic>
+        ? decoded
+        : <String, dynamic>{};
+    final logged = _logIssuedCouponsFromResponse(map);
+    await markCouponsAsSeen(logged);
+    return map;
+  }
+
+  /// 다른 경로(추천인 입력 등)에서 coupon_issued 로깅한 코드를 등록.
+  /// 이후 fetchMyCoupons diff 시 중복 로깅 방지.
+  static Future<void> markCouponsAsSeen(Iterable<String> codes) async {
+    if (codes.isEmpty) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seenJson = prefs.getString(_kSeenCouponCodesKey);
+      final seen = seenJson != null
+          ? (jsonDecode(seenJson) as List<dynamic>?)
+              ?.map((e) => e.toString())
+              .where((s) => s.isNotEmpty)
+              .toSet() ??
+              <String>{}
+          : <String>{};
+      final updated =
+          seen.union(codes.where((s) => s.isNotEmpty).toSet());
+      await prefs.setString(_kSeenCouponCodesKey, jsonEncode(updated.toList()));
+    } catch (_) {}
   }
 
   static dynamic _decodeResponseBody(http.Response response) {

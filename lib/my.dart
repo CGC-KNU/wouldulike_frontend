@@ -49,7 +49,6 @@ class _MyScreenState extends State<MyScreen> {
   bool isKakaoLoggedIn = false;
   bool _isInviteLoading = false;
   bool _isShareInProgress = false;
-  bool _isKakaoLoginInProgress = false;
   bool _isKakaoLogoutInProgress = false;
   String? inviteCode;
   String? _inviteError;
@@ -57,6 +56,7 @@ class _MyScreenState extends State<MyScreen> {
   ReferralSheetStatus? _lastReferralStatus;
   String? _lastReferralMessage;
   String? _kakaoId;
+  String? _appleId;
 
   @override
   void initState() {
@@ -74,12 +74,16 @@ class _MyScreenState extends State<MyScreen> {
 
   Future<void> _refreshLoginState() async {
     final prefs = await SharedPreferences.getInstance();
-    final loggedIn = prefs.getBool('kakao_logged_in') ?? false;
+    final kakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
+    final appleLoggedIn = prefs.getBool('apple_logged_in') ?? false;
+    final loggedIn = kakaoLoggedIn || appleLoggedIn;
     final kakaoId = prefs.getString('user_kakao_id');
+    final appleId = prefs.getString('user_apple_id');
     if (!mounted) return;
     setState(() {
       isKakaoLoggedIn = loggedIn;
       _kakaoId = kakaoId;
+      _appleId = appleId;
       if (!loggedIn) {
         inviteCode = null;
         _inviteError = null;
@@ -87,6 +91,7 @@ class _MyScreenState extends State<MyScreen> {
         _lastReferralStatus = null;
         _lastReferralMessage = null;
         _kakaoId = null;
+        _appleId = null;
       }
     });
     if (loggedIn) {
@@ -94,44 +99,11 @@ class _MyScreenState extends State<MyScreen> {
     }
   }
 
-  Future<void> _handleKakaoLogin() async {
-    if (_isKakaoLoginInProgress) return;
+  /// 로그아웃 후 재로그인 시 반드시 로그인 화면을 거쳐 카카오/애플 선택 가능하도록 이동
+  Future<void> _navigateToLoginScreen() async {
+    await Navigator.of(context).pushNamed('/login');
     if (!mounted) return;
-    setState(() {
-      _isKakaoLoginInProgress = true;
-    });
-
-    try {
-      final installed = await isKakaoTalkInstalled();
-      final token = installed
-          ? await UserApi.instance.loginWithKakaoTalk()
-          : await UserApi.instance.loginWithKakaoAccount();
-      final prefs = await SharedPreferences.getInstance();
-      final guestUuid = prefs.getString('user_uuid');
-      await AuthService.loginWithKakao(token.accessToken, guestUuid: guestUuid);
-      await prefs.setBool('signup_coupon_checked', false);
-      await _refreshLoginState();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('카카오 로그인이 완료되었어요.')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      final message = e is ReloginRequiredException
-          ? '세션이 만료되어 다시 로그인이 필요해요.'
-          : '카카오 로그인에 실패했어요. $e';
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isKakaoLoginInProgress = false;
-        });
-      } else {
-        _isKakaoLoginInProgress = false;
-      }
-    }
+    await _refreshLoginState();
   }
 
   Future<void> _handleKakaoLogout() async {
@@ -142,10 +114,15 @@ class _MyScreenState extends State<MyScreen> {
     });
 
     String? errorMessage;
-    try {
-      await UserApi.instance.logout();
-    } catch (_) {
-      errorMessage ??= '카카오 로그아웃에 실패했어요. 다시 시도해주세요.';
+    final prefs = await SharedPreferences.getInstance();
+    final wasKakaoLoggedIn = prefs.getBool('kakao_logged_in') ?? false;
+    // 카카오 로그인 사용자만 카카오 SDK 로그아웃 호출 (애플 로그인 시 불필요)
+    if (wasKakaoLoggedIn) {
+      try {
+        await UserApi.instance.logout();
+      } catch (_) {
+        errorMessage ??= '카카오 로그아웃에 실패했어요. 다시 시도해주세요.';
+      }
     }
 
     try {
@@ -163,7 +140,7 @@ class _MyScreenState extends State<MyScreen> {
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(errorMessage ?? '카카오 로그아웃이 완료되었어요.'),
+        content: Text(errorMessage ?? '로그아웃이 완료되었어요.'),
       ),
     );
   }
@@ -381,17 +358,38 @@ class _MyScreenState extends State<MyScreen> {
   }
 
   Future<void> _openKakaoTalkInquiry() async {
-    const url = 'https://open.kakao.com/o/s09ikE1h';
-    final uri = Uri.parse(url);
     try {
+      final response = await ApiClient.get('/api/url/', authenticated: false);
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final url = data['url']?.toString() ?? '';
+
+      if (url.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('카카오톡 1대1 문의 URL이 설정되지 않았어요.')),
+        );
+        return;
+      }
+
+      final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('카카오톡 오픈채팅을 열 수 없어요.')),
+          const SnackBar(content: Text('카카오톡 1대1 문의를 열 수 없어요.')),
         );
       }
+    } on ApiHttpException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카카오톡 1대1 문의 URL을 불러오지 못했어요.')),
+      );
+    } on ApiNetworkException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('네트워크 오류: $e')),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -455,19 +453,13 @@ class _MyScreenState extends State<MyScreen> {
   }
 
   Widget _buildAccountTile() {
-    final isBusy = _isKakaoLoginInProgress || _isKakaoLogoutInProgress;
+    final isBusy = _isKakaoLogoutInProgress;
     final label = isKakaoLoggedIn ? '로그아웃' : '로그인';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildMenuRow(
-          leading: Row(
-            children: [
-              _buildKakaoBadge(),
-              const SizedBox(width: 12),
-              Text(label, style: _kItemTitleStyle),
-            ],
-          ),
+          leading: Text(label, style: _kItemTitleStyle),
           trailing: isBusy
               ? const SizedBox(
                   height: 20,
@@ -477,19 +469,21 @@ class _MyScreenState extends State<MyScreen> {
               : _buildChevron(),
           onTap: isBusy
               ? null
-              : (isKakaoLoggedIn ? _handleKakaoLogout : _handleKakaoLogin),
+              : (isKakaoLoggedIn ? _handleKakaoLogout : _navigateToLoginScreen),
           indent: _kItemIndent,
         ),
-        // 카카오 ID 표시 (로그인 상태일 때만)
-        if (isKakaoLoggedIn && _kakaoId != null && _kakaoId!.isNotEmpty)
+        // 우주라이크 ID 표시 (로그인 상태일 때만, 프로필 설정과 시작점 맞춤)
+        if (isKakaoLoggedIn &&
+            ((_kakaoId != null && _kakaoId!.isNotEmpty) ||
+                (_appleId != null && _appleId!.isNotEmpty)))
           Padding(
             padding: const EdgeInsets.only(
-              left: _kItemIndent + 44, // 아이콘 너비(32) + 간격(12) + 좌측 여백
+              left: _kItemIndent,
               top: 6,
               bottom: 6,
             ),
             child: Text(
-              '우주라이크 ID: $_kakaoId',
+              '우주라이크 ID: ${_kakaoId ?? _appleId ?? ''}',
               style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
@@ -686,37 +680,6 @@ class _MyScreenState extends State<MyScreen> {
     );
   }
 
-  Widget _buildKakaoBadge() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(16),
-      child: Image.asset(
-        'assets/images/KakaoTalklogo.png',
-        width: 32,
-        height: 32,
-        fit: BoxFit.cover,
-        errorBuilder: (context, error, stackTrace) {
-          return Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFE812),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            alignment: Alignment.center,
-            child: const Text(
-              '톡',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF3C1E1E),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (isLoading) {
@@ -832,7 +795,7 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.0.8', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.2.0', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],

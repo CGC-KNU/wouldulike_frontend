@@ -4,6 +4,8 @@ class AnalyticsEvents {
 
   // ========== 이벤트명 ==========
   static const String couponRedeemed = 'coupon_redeemed';
+  /// 쿠폰 발급 (전환율 계산용: restaurant_id, coupon_issue_source)
+  static const String couponIssued = 'coupon_issued';
   static const String backButtonClick = 'back_button_click';
   static const String appSessionStart = 'app_session_start';
   static const String appRevisit = 'app_revisit';
@@ -31,6 +33,8 @@ class AnalyticsEvents {
   static const String paramDepartmentCode = 'department_code';
   static const String paramIssueSource = 'issue_source';
   static const String paramCount = 'count';
-  /// 쿠폰 사용 시 발급 경로 (기획전 쿠폰 처리량 분석용)
+  /// 쿠폰 사용 시 발급 경로 (기획전 쿠폰 처리량 분석용, campaign_code 우선)
   static const String paramCouponIssueSource = 'coupon_issue_source';
+  /// 쿠폰 타입 코드 (WELCOME_3000 등)
+  static const String paramCouponTypeCode = 'coupon_type_code';
 }

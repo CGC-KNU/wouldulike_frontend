@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'config/analytics_events.dart';
 import 'data/knu_profile_options.dart';
 import 'services/api_client.dart';
+import 'services/coupon_service.dart';
 import 'utils/analytics_logger.dart';
 import 'services/user_service.dart';
 
@@ -110,6 +111,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         schoolName: school.name,
         departmentName: department.name,
       );
+      if (!mounted) return;
+      try {
+        await CouponService.signupComplete();
+      } catch (_) {
+        // 쿠폰 발급 실패는 프로필 저장 성공을 막지 않음
+      }
       if (!mounted) return;
       AnalyticsLogger.logEvent(
         AnalyticsEvents.userSignupCompleted,
@@ -273,20 +280,24 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   void _handleNicknameChanged(String value) {
     final nickname = value.trim();
     final localError = _localNicknameErrorMessage(nickname);
-    setState(() {
-      _isNicknameAvailable = false;
-      _isNicknameCheckSoftFailed = false;
-      _lastCheckedNickname = '';
-      if (nickname.isEmpty) {
-        _nicknameMessage = null;
-        _nicknameMessageIsError = false;
-      } else if (localError != null) {
-        _nicknameMessage = localError;
-        _nicknameMessageIsError = true;
-      } else {
-        _nicknameMessage = '중복 확인 버튼을 눌러 닉네임을 확인해 주세요';
-        _nicknameMessageIsError = false;
-      }
+    // 한글 조합 중 setState 호출 시 글자 중복 발생 → 프레임 종료 후 상태 갱신
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      setState(() {
+        _isNicknameAvailable = false;
+        _isNicknameCheckSoftFailed = false;
+        _lastCheckedNickname = '';
+        if (nickname.isEmpty) {
+          _nicknameMessage = null;
+          _nicknameMessageIsError = false;
+        } else if (localError != null) {
+          _nicknameMessage = localError;
+          _nicknameMessageIsError = true;
+        } else {
+          _nicknameMessage = '중복 확인 버튼을 눌러 닉네임을 확인해 주세요';
+          _nicknameMessageIsError = false;
+        }
+      });
     });
   }
 
@@ -408,6 +419,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         .showSnackBar(SnackBar(content: Text(message)));
   }
 
+  void _skipProfile() {
+    if (_isSaving) return;
+    widget.onCompleted?.call();
+    if (!widget.isRequiredFlow && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop(true);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final doneColor = _isFormSubmittable
@@ -422,9 +441,26 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         elevation: 0,
         scrolledUnderElevation: 0,
         automaticallyImplyLeading: false,
-        leadingWidth: 72,
+        leadingWidth: 100,
         leading: widget.isRequiredFlow
-            ? const SizedBox.shrink()
+            ? TextButton(
+                onPressed: _isSaving ? null : _skipProfile,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: const Text(
+                  '건너뛰기',
+                  style: TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  softWrap: false,
+                  overflow: TextOverflow.visible,
+                ),
+              )
             : TextButton(
                 onPressed: _isSaving ? null : () => Navigator.of(context).pop(),
                 child: const Text(
@@ -718,7 +754,6 @@ class _ProfileTextFieldRow extends StatelessWidget {
               focusNode: focusNode,
               enabled: enabled,
               onChanged: onChanged,
-              enableInteractiveSelection: false,
               textInputAction: TextInputAction.next,
               decoration: InputDecoration(
                 hintText: hintText,

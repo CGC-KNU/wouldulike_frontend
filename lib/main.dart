@@ -359,10 +359,12 @@ class MainScreenState extends State<MainScreen> {
             initialProfile: profile,
             isRequiredFlow: true,
             onCompleted: () {
-              Navigator.of(profileContext).pushReplacement(
+              // 스택을 완전히 비우고 MainAppScreen으로 이동 (건너뛰기 시 프로필 설정 재표시 방지)
+              Navigator.of(profileContext).pushAndRemoveUntil(
                 MaterialPageRoute<void>(
                   builder: (_) => const MainAppScreen(),
                 ),
+                (route) => false,
               );
             },
           ),
@@ -410,10 +412,11 @@ class MainScreenState extends State<MainScreen> {
     FirebaseMessaging messaging = FirebaseMessaging.instance;
 
     // 알림 권한 요청 (Android 13 이상)
+    // badge: false → 앱 아이콘 우측 상단 알림 수(배지) 표시 안 함
     NotificationSettings settings = await messaging.requestPermission(
       alert: true,
       announcement: false,
-      badge: true,
+      badge: false,
       carPlay: false,
       criticalAlert: false,
       provisional: false,

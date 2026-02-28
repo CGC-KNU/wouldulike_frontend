@@ -412,7 +412,11 @@ class ApiClient {
       if (refreshExpiresAt != null) {
         await prefs.setInt('refresh_expires_at', refreshExpiresAt);
       }
-      await prefs.setBool('kakao_logged_in', true);
+      // Apple 로그인 사용자는 kakao_logged_in을 덮어쓰지 않음
+      final appleLoggedIn = prefs.getBool('apple_logged_in') ?? false;
+      if (!appleLoggedIn) {
+        await prefs.setBool('kakao_logged_in', true);
+      }
       return true;
     } catch (_) {
       return false;
@@ -426,6 +430,10 @@ class ApiClient {
     await resolved.remove('access_expires_at');
     await resolved.remove('refresh_expires_at');
     await resolved.setBool('kakao_logged_in', false);
+    await resolved.setBool('apple_logged_in', false);
+    await resolved.remove('kakao_access_token');
+    await resolved.remove('user_kakao_id');
+    await resolved.remove('user_apple_id');
     // 타이머 취소
     _cancelTokenRefreshTimer();
   }

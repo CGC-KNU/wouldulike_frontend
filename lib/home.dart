@@ -1230,6 +1230,19 @@ class _HomeContentState extends State<HomeContent> {
     // 배너 비율: 가로:세로 = 5:2 → 세로 = 가로 * (2 / 5)
     final double bannerHeight = width <= 0 ? 0 : width * (2 / 5);
 
+    // 로딩 중에는 해상도 표시(placehold) 대신 빈 영역만 표시
+    if (_isTrendLoading && !hasRemoteData) {
+      return SizedBox(
+        height: bannerHeight,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(15),
+            color: Colors.grey.shade100,
+          ),
+        ),
+      );
+    }
+
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [

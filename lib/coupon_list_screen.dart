@@ -12,7 +12,6 @@ import 'services/coupon_service.dart'
         CouponService,
         CouponStatus,
         UserCoupon,
-        getCouponIssuanceSource,
         kCouponBenefitFallbackTitle,
         kCouponBenefitFallbackSubtitle;
 
@@ -134,7 +133,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   void _logCouponIssueBreakdown(List<UserCoupon> coupons) {
     final counts = <String, int>{};
     for (final c in coupons) {
-      final source = getCouponIssuanceSource(c.issueKey);
+      final source = c.couponIssueSource;
       counts[source] = (counts[source] ?? 0) + 1;
     }
     for (final entry in counts.entries) {
@@ -261,7 +260,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
           AnalyticsEvents.paramRestaurantName:
               coupon.benefit?.restaurantNameText ?? '',
           AnalyticsEvents.paramCouponIssueSource:
-              getCouponIssuanceSource(coupon.issueKey),
+              coupon.couponIssueSource,
         },
       );
       setState(() {

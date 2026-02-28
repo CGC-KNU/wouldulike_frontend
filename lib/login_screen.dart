@@ -1,8 +1,10 @@
+import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'services/auth_service.dart';
@@ -122,6 +124,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await prefs.setString('kakao_access_token', token.accessToken);
       await prefs.setBool('kakao_logged_in', true);
+      await prefs.setBool('apple_logged_in', false);
       await prefs.setString('jwt_access_token', data['token']['access']);
       await prefs.setString('jwt_refresh_token', data['token']['refresh']);
       await prefs.setInt('user_id', data['user']['id']);
@@ -169,8 +172,8 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         Navigator.of(context).pop(coupons ?? true);
       } else {
-        // 일반 진입(앱 시작 등)인 경우: 기존처럼 메인 화면으로 이동.
-        Navigator.pushReplacementNamed(context, '/main');
+        // 일반 진입(앱 시작 등) 또는 재로그인: 스택을 비우고 메인 화면으로 이동
+        Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);
       }
     } catch (e) {
       if (!mounted) return;
@@ -184,6 +187,73 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(content: Text(msg)),
       );
       debugPrint('[Kakao] login error: $e');
+    }
+  }
+
+  Future<void> _loginWithApple() async {
+    setState(() => _isLoggingIn = true);
+    try {
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+      final prefs = await SharedPreferences.getInstance();
+      final guestUuid = prefs.getString('user_uuid');
+      await AuthService.loginWithApple(
+        credential.identityToken ?? '',
+        authorizationCode: credential.authorizationCode,
+        userIdentifier: credential.userIdentifier,
+        email: credential.email,
+        guestUuid: guestUuid,
+      );
+
+      try {
+        await ApiClient.scheduleTokenRefresh();
+      } catch (e) {
+        debugPrint('[LoginScreen] Failed to schedule token refresh: $e');
+      }
+
+      if (!mounted) return;
+      setState(() => _isLoggingIn = false);
+      final route = ModalRoute.of(context);
+      final args = route?.settings.arguments;
+      String? redirect;
+      if (args is Map) {
+        final map = Map<String, dynamic>.from(args);
+        final value = map['redirect'];
+        if (value is String && value.isNotEmpty) redirect = value;
+      }
+      if (redirect == 'coupon_list') {
+        List<UserCoupon>? coupons;
+        try {
+          coupons = await CouponService.fetchMyCoupons();
+        } catch (_) {}
+        Navigator.of(context).pop(coupons ?? true);
+      } else {
+        Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);
+      }
+    } on SignInWithAppleAuthorizationException catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoggingIn = false);
+      if (e.code == AuthorizationErrorCode.canceled) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Apple 로그인 실패: ${e.message}')),
+      );
+    } on ReloginRequiredException {
+      if (!mounted) return;
+      setState(() => _isLoggingIn = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('세션이 만료되어 다시 로그인이 필요해요.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isLoggingIn = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Apple 로그인 실패: $e')),
+      );
+      debugPrint('[Apple] login error: $e');
     }
   }
 
@@ -384,6 +454,15 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                             ),
+                            if (!kIsWeb &&
+                                defaultTargetPlatform == TargetPlatform.iOS) ...[
+                              SizedBox(height: 12 * (screenHeight / 844)),
+                              SignInWithAppleButton(
+                                onPressed: _loginWithApple,
+                                height: 50,
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                            ],
                             SizedBox(height: 17 * (screenHeight / 844)),
                             GestureDetector(
                               onTap: () {

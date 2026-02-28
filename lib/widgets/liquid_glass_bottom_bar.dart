@@ -256,8 +256,8 @@ class _LiquidGlassBottomBarState extends State<LiquidGlassBottomBar>
                     builder: (context, constraints) {
                               final itemWidth =
                                   constraints.maxWidth / widget.tabs.length;
-                              // 기본 너비를 조금 더 넓게 두고, 스케일과 함께 배너를 크게 가로질러 보이도록 한다.
-                              final blobWidth = itemWidth * 0.7;
+                              // 기본 너비를 넓게 두어 '대학가 근처 식당' 등 긴 라벨이 선택영역에 충분히 감싸지도록 한다.
+                              final blobWidth = itemWidth * 0.92;
                               // 기본 높이는 배너와 동일하게 두고, 스케일로 배너를 넘어서도록 조정한다.
                               final blobHeight = widget.barHeight;
                       final centerY = widget.barHeight / 2;

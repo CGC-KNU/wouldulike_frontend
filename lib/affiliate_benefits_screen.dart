@@ -145,6 +145,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   List<String> _categories = const ['ALL'];
   bool _isOpeningDetail = false;
   final TextEditingController _searchController = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   Timer? _searchDebounce;
   String _searchQuery = '';
@@ -155,6 +156,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
+    _searchFocusNode.addListener(() => setState(() {}));
     _load();
   }
 
@@ -163,6 +165,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     _searchDebounce?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -1002,15 +1005,19 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: appBar,
-      body: RefreshIndicator(
-        // 화면 진입 시 로딩과 통일감 있게, 브랜드 컬러/두께를 맞춘 인디케이터 사용
-        color: const Color(0xFF6366F1),
-        backgroundColor: Colors.white,
-        strokeWidth: 2,
-        onRefresh: _load,
-        child: ListView(
-          controller: _scrollController,
-          padding: const EdgeInsets.only(
+      body: GestureDetector(
+        onTap: () => FocusScope.of(context).unfocus(),
+        behavior: HitTestBehavior.translucent,
+        child: RefreshIndicator(
+          // 화면 진입 시 로딩과 통일감 있게, 브랜드 컬러/두께를 맞춘 인디케이터 사용
+          color: const Color(0xFF6366F1),
+          backgroundColor: Colors.white,
+          strokeWidth: 2,
+          onRefresh: _load,
+          child: ListView(
+            controller: _scrollController,
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.only(
             top: 16,
             // 마지막 식당 카드 한 블록 정도의 여백은 두어서
             // 하단 바와 겹치지 않고 자연스럽게 보이도록 유지합니다.
@@ -1021,24 +1028,29 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             const SizedBox(height: 12),
             _buildCategoryFilter(),
             const SizedBox(height: 12),
-            if (_filteredAffiliateRestaurants.isEmpty &&
+            if (_isLoading)
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Center(
+                  child: const Text(
+                    '불러오는 중...',
+                    style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              )
+            else if (_filteredAffiliateRestaurants.isEmpty &&
                 _filteredGeneralRestaurants.isEmpty)
               Padding(
                 padding: const EdgeInsets.all(24),
                 child: Center(
-                  child: _isLoading
-                      ? const Text(
-                          '불러오는 중...',
-                          style: TextStyle(
-                            color: Color(0xFF6B7280),
-                            fontSize: 14,
-                          ),
-                        )
-                      : Text(
-                          _normalizeForSearch(_searchQuery).isEmpty
-                              ? '표시할 식당이 없어요.'
-                              : '검색 결과가 없어요.',
-                        ),
+                  child: Text(
+                    _normalizeForSearch(_searchQuery).isEmpty
+                        ? '표시할 식당이 없어요.'
+                        : '검색 결과가 없어요.',
+                  ),
                 ),
               )
             else ...[
@@ -1097,6 +1109,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             ],
           ],
         ),
+        ),
       ),
     );
   }
@@ -1116,6 +1129,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         alignment: Alignment.center,
         child: TextField(
           controller: _searchController,
+          focusNode: _searchFocusNode,
           textInputAction: TextInputAction.search,
           style: const TextStyle(
             color: Color(0xFF39393E),
@@ -1139,17 +1153,33 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             ),
             prefixIcon:
                 const Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
-            suffixIcon: _normalizeForSearch(_searchQuery).isEmpty
-                ? null
-                : IconButton(
-                        onPressed: () {
-                          _searchController.clear();
-                          _handleSearchSubmitted('');
-                        },
-                        icon: const Icon(Icons.close, size: 18),
-                        color: const Color(0xFF6B7280),
-                        splashRadius: 18,
-                      ),
+            suffixIcon: _searchFocusNode.hasFocus ||
+                    !_normalizeForSearch(_searchQuery).isEmpty
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (_searchFocusNode.hasFocus)
+                        IconButton(
+                          onPressed: () =>
+                              FocusScope.of(context).unfocus(),
+                          icon: const Icon(Icons.keyboard_hide, size: 20),
+                          color: const Color(0xFF6B7280),
+                          splashRadius: 18,
+                          tooltip: '키보드 내리기',
+                        ),
+                      if (!_normalizeForSearch(_searchQuery).isEmpty)
+                        IconButton(
+                          onPressed: () {
+                            _searchController.clear();
+                            _handleSearchSubmitted('');
+                          },
+                          icon: const Icon(Icons.close, size: 18),
+                          color: const Color(0xFF6B7280),
+                          splashRadius: 18,
+                        ),
+                    ],
+                  )
+                : null,
           ),
         ),
       ),
@@ -1930,7 +1960,50 @@ class _AffiliateRestaurantDetailSheetState
         rewardCodesSet.add(reward);
       }
       final rewardCodes = rewardCodesSet.toList();
+
+      // reward_coupons 기반 coupon_issued 로깅 (백엔드 형식)
+      if (result.rewardCoupons.isNotEmpty) {
+        for (final r in result.rewardCoupons) {
+          if (r.couponCode.isEmpty) continue;
+          final params = <String, Object>{
+            AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+            AnalyticsEvents.paramCouponIssueSource: 'STAMP_REWARD',
+            AnalyticsEvents.paramCouponCode: r.couponCode,
+          };
+          if (r.couponType.isNotEmpty) {
+            params[AnalyticsEvents.paramCouponTypeCode] = r.couponType;
+          }
+          AnalyticsLogger.logEvent(
+            AnalyticsEvents.couponIssued,
+            parameters: params,
+          );
+        }
+        await CouponService.markCouponsAsSeen(
+            result.rewardCoupons.map((r) => r.couponCode));
+      } else {
+        for (final code in rewardCodes) {
+          AnalyticsLogger.logEvent(
+            AnalyticsEvents.couponIssued,
+            parameters: {
+              AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+              AnalyticsEvents.paramCouponIssueSource: 'STAMP_REWARD',
+              AnalyticsEvents.paramCouponCode: code,
+            },
+          );
+        }
+        await CouponService.markCouponsAsSeen(rewardCodes);
+      }
+
       if (rewardCodes.isNotEmpty) {
+        AnalyticsLogger.logEvent(
+          AnalyticsEvents.stampRewardCouponIssued,
+          parameters: {
+            AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+            AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+            AnalyticsEvents.paramCouponCount: rewardCodes.length,
+            AnalyticsEvents.paramIssueSource: 'STAMP_REWARD',
+          },
+        );
         // 새로 발급된 쿠폰의 benefit 정보를 서버에서 가져오기 위해
         // 해당 식당의 쿠폰 목록을 다시 불러옵니다.
         try {
@@ -1953,17 +2026,8 @@ class _AffiliateRestaurantDetailSheetState
               _coupons = List<UserCoupon>.from(_coupons)..addAll(newCoupons);
               _sortCoupons();
             });
-            final newCodes = newCoupons.map((coupon) => coupon.code).toList();
-            AnalyticsLogger.logEvent(
-              AnalyticsEvents.stampRewardCouponIssued,
-              parameters: {
-                AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
-                AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
-                AnalyticsEvents.paramCouponCount: newCodes.length,
-                AnalyticsEvents.paramIssueSource: 'stamp',
-              },
-            );
-            widget.onRewardCouponsIssued(newCodes);
+            widget.onRewardCouponsIssued(
+                newCoupons.map((c) => c.code).toList());
           }
 
           final buffer = StringBuffer();
@@ -1996,15 +2060,6 @@ class _AffiliateRestaurantDetailSheetState
                 );
               _sortCoupons();
             });
-            AnalyticsLogger.logEvent(
-              AnalyticsEvents.stampRewardCouponIssued,
-              parameters: {
-                AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
-                AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
-                AnalyticsEvents.paramCouponCount: newCodes.length,
-                AnalyticsEvents.paramIssueSource: 'stamp',
-              },
-            );
             widget.onRewardCouponsIssued(newCodes);
           }
           final buffer = StringBuffer();
@@ -2095,7 +2150,7 @@ class _AffiliateRestaurantDetailSheetState
           AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
           AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
           AnalyticsEvents.paramCouponIssueSource:
-              getCouponIssuanceSource(coupon.issueKey),
+              coupon.couponIssueSource,
         },
       );
       setState(() {
