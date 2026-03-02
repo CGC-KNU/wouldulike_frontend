@@ -5,7 +5,6 @@ import 'package:new1/affiliate_benefits_screen.dart';
 import 'package:new1/coupon_list_screen.dart';
 import 'home.dart';
 import 'my.dart';
-import 'package:new1/utils/location_helper.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
@@ -27,7 +26,6 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      LocationHelper.refreshCurrentLocation();
       // 앱 시작 시 토큰 상태 확인
       _checkTokenIfNeeded();
       _logTabView(_selectedIndex);

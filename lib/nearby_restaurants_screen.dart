@@ -37,17 +37,15 @@ class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
       final foodNames = prefs.getStringList('recommended_foods') ?? [];
 
       final position = await LocationHelper.getLatLon();
-      if (position == null) {
-        throw Exception('위치 정보를 가져올 수 없습니다.');
-      }
+      final pos = position ?? LocationHelper.getDefaultLatLon();
 
       final response = await http.post(
         Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-nearby-restaurants/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'food_names': foodNames,
-          'latitude': position['lat'],
-          'longitude': position['lon'],
+          'latitude': pos['lat'],
+          'longitude': pos['lon'],
         }),
       );
 
@@ -57,8 +55,8 @@ class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
             .map<Map<String, dynamic>>((item) => Map<String, dynamic>.from(item as Map))
             .toList();
 
-        final userLat = position['lat'] as double;
-        final userLon = position['lon'] as double;
+        final userLat = pos['lat'] as double;
+        final userLon = pos['lon'] as double;
 
         _restaurants = restList.map<Map<String, dynamic>>((r) {
           final restLat = double.tryParse(r['y']?.toString() ?? '') ?? userLat;

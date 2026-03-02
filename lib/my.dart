@@ -280,7 +280,6 @@ class _MyScreenState extends State<MyScreen> {
 
   Future<void> _showReferralCodeSheet() async {
     final initialStatus = _referralInputLocked ? _lastReferralStatus : null;
-    final initialMessage = _referralInputLocked ? _lastReferralMessage : null;
     final result = await showModalBottomSheet<ReferralSheetResult>(
       context: context,
       isScrollControlled: true,
@@ -288,10 +287,7 @@ class _MyScreenState extends State<MyScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => _ReferralCodeSheet(
-        initialStatus: initialStatus,
-        initialMessage: initialMessage,
-      ),
+      builder: (context) => _ReferralCodeSheet(initialStatus: initialStatus),
     );
     if (!mounted || result == null) {
       return;
@@ -748,7 +744,7 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.2.1', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.2.2', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],
@@ -771,16 +767,12 @@ class ReferralSheetResult {
   final bool openCoupons;
 }
 
-enum _ReferralSheetMode { input, success, locked }
+enum _ReferralSheetMode { input, success }
 
 class _ReferralCodeSheet extends StatefulWidget {
-  const _ReferralCodeSheet({
-    this.initialStatus,
-    this.initialMessage,
-  });
+  const _ReferralCodeSheet({this.initialStatus});
 
   final ReferralSheetStatus? initialStatus;
-  final String? initialMessage;
 
   @override
   State<_ReferralCodeSheet> createState() => _ReferralCodeSheetState();
@@ -791,19 +783,12 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
   bool _isSubmitting = false;
   String? _inputError;
   _ReferralSheetMode _mode = _ReferralSheetMode.input;
-  String? _successMessage;
-  String? _lockedMessage;
-
   @override
   void initState() {
     super.initState();
     final initialStatus = widget.initialStatus;
     if (initialStatus == ReferralSheetStatus.success) {
       _mode = _ReferralSheetMode.success;
-      _successMessage = widget.initialMessage;
-    } else if (initialStatus == ReferralSheetStatus.alreadyAccepted) {
-      _mode = _ReferralSheetMode.locked;
-      _lockedMessage = widget.initialMessage;
     }
   }
 
@@ -837,17 +822,16 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         // 쿠폰 목록 동기화 실패는 성공 흐름을 막지 않는다.
       }
       if (!mounted) return;
+      FocusManager.instance.primaryFocus?.unfocus();
       setState(() {
         _mode = _ReferralSheetMode.success;
-        _successMessage = '친구 추천 쿠폰이 발급되었어요!';
       });
     } on ApiHttpException catch (e) {
       final message = _parseApiError(e.body) ?? '추천 코드를 확인해 주세요.';
       if (!mounted) return;
       if (e.statusCode == 409) {
         setState(() {
-          _mode = _ReferralSheetMode.locked;
-          _lockedMessage = message;
+          _inputError = message;
         });
       } else {
         setState(() {
@@ -882,18 +866,8 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
     Navigator.of(context).pop(
       ReferralSheetResult(
         status: ReferralSheetStatus.success,
-        noticeMessage: _successMessage ?? '이미 추천 코드를 입력했어요.',
+        noticeMessage: '쿠폰이 발급되었어요.',
         openCoupons: openCoupons,
-      ),
-    );
-  }
-
-  void _completeLocked() {
-    if (!mounted) return;
-    Navigator.of(context).pop(
-      ReferralSheetResult(
-        status: ReferralSheetStatus.alreadyAccepted,
-        noticeMessage: _lockedMessage ?? '이미 추천 코드를 입력한 계정이에요.',
       ),
     );
   }
@@ -1131,7 +1105,6 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
   }
 
   Widget _buildSuccessBody() {
-    final message = _successMessage ?? '친구 추천 쿠폰이 발급되었어요!';
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1150,7 +1123,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                '친구 추천 쿠폰이 발급되었어요',
+                '쿠폰이 발급되었어요',
                 style: TextStyle(
                   color: Color(0xFF39393E),
                   fontSize: 19,
@@ -1170,8 +1143,8 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
                     height: 1.29,
                   ),
                   children: [
-                    TextSpan(
-                      text: '친구의 추천 코드 입력이 완료되었어요.\n쿠폰함에서 ',
+                    const TextSpan(
+                      text: '쿠폰함에서 ',
                     ),
                     const TextSpan(
                       text: '새로 발급된 쿠폰',
@@ -1180,19 +1153,9 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
                       ),
                     ),
                     const TextSpan(
-                      text: '을 바로 확인해 보세요.',
+                      text: '을 확인해 보세요.',
                     ),
                   ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              Text(
-                message,
-                style: const TextStyle(
-                  color: Color(0xFF4B5563),
-                  fontSize: 13,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w600,
                 ),
               ),
             ],
@@ -1247,63 +1210,6 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
     );
   }
 
-  Widget _buildLockedBody() {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _buildHandle(),
-        const SizedBox(height: 24),
-        Container(
-          width: 72,
-          height: 72,
-          decoration: BoxDecoration(
-            color: const Color(0xFFFEE2E2),
-            borderRadius: BorderRadius.circular(36),
-          ),
-          child: const Icon(
-            Icons.lock_outline,
-            color: Color(0xFFB91C1C),
-            size: 32,
-          ),
-        ),
-        const SizedBox(height: 20),
-        const Text(
-          '이미 추천 코드를 입력했어요',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF39393E),
-            fontFamily: 'Pretendard',
-          ),
-        ),
-        const SizedBox(height: 24),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _completeLocked,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF1C203C),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(15),
-              ),
-              elevation: 0,
-              textStyle: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontWeight: FontWeight.w700,
-                fontSize: 16,
-                letterSpacing: -0.32,
-              ),
-            ),
-            child: const Text('확인'),
-          ),
-        ),
-      ],
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
@@ -1314,9 +1220,6 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         break;
       case _ReferralSheetMode.success:
         body = _buildSuccessBody();
-        break;
-      case _ReferralSheetMode.locked:
-        body = _buildLockedBody();
         break;
     }
 
@@ -1339,8 +1242,18 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
           bottom: bottomInset + 24,
           top: 12,
         ),
-        child: SingleChildScrollView(
-          child: content,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              ),
+            ),
+            SingleChildScrollView(
+              child: content,
+            ),
+          ],
         ),
       ),
     );

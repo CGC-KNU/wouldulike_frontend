@@ -2,10 +2,8 @@
     xmlns:tools="http://schemas.android.com/tools"
     package="com.coggiri.new1">
 
-    <!-- 인터넷/위치 권한 -->
+    <!-- 인터넷 권한 -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     
     <!-- Android 13 (API 33) 이상에서 광고 ID 사용을 위한 권한 -->
     <uses-permission android:name="com.google.android.gms.permission.AD_ID"/>

@@ -1,10 +1,12 @@
 // lib/utils/location_helper.dart
+// 위치 기반 서비스 비활성화: SharedPreferences에 저장된 값만 사용 (기본값 대체)
 
-import 'package:flutter/foundation.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LocationHelper {
+  static const double _defaultLat = 35.8714;
+  static const double _defaultLon = 128.6014;
+
   // 위도 가져오기
   static Future<double?> getLatitude() async {
     final prefs = await SharedPreferences.getInstance();
@@ -17,7 +19,7 @@ class LocationHelper {
     return prefs.getDouble('user_lon');
   }
 
-  // 위도+경도 Map으로 가져오기
+  // 위도+경도 Map으로 가져오기 (저장된 값 없으면 null)
   static Future<Map<String, double>?> getLatLon() async {
     final prefs = await SharedPreferences.getInstance();
     final lat = prefs.getDouble('user_lat');
@@ -28,39 +30,7 @@ class LocationHelper {
     return null;
   }
 
-  // 현재 위치를 받아 SharedPreferences에 저장 (비동기로 호출)
-  static Future<void> refreshCurrentLocation() async {
-    try {
-      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        debugPrint('Location services disabled; skipping refresh.');
-        return;
-      }
-
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          debugPrint('Location permission denied.');
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        debugPrint('Location permission denied forever.');
-        return;
-      }
-
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: const Duration(seconds: 10),
-      );
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble('user_lat', position.latitude);
-      await prefs.setDouble('user_lon', position.longitude);
-    } catch (e) {
-      debugPrint('Failed to refresh current location: $e');
-    }
-  }
+  // 기본 좌표 반환 (대구 대학가 등 - 위치 권한 없을 때 사용)
+  static Map<String, double> getDefaultLatLon() =>
+      {'lat': _defaultLat, 'lon': _defaultLon};
 }
