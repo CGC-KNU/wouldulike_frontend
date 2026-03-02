@@ -55,6 +55,8 @@ class UserCoupon {
     this.restaurantId,
     this.benefit,
     this.expiresAt,
+    this.issuedAt,
+    this.updatedAt,
     this.issueKey,
     this.campaignCode,
   });
@@ -86,6 +88,8 @@ class UserCoupon {
       restaurantId: resolvedRestaurantId,
       benefit: benefit,
       expiresAt: _parseDate(json['expires_at']),
+      issuedAt: _parseDate(json['issued_at'] ?? json['created_at']),
+      updatedAt: _parseDate(json['updated_at'] ?? json['redeemed_at']),
       issueKey: issueKey,
       campaignCode: campaignCode,
     );
@@ -96,6 +100,10 @@ class UserCoupon {
   final int? restaurantId;
   final CouponBenefitInfo? benefit;
   final DateTime? expiresAt;
+  /// 쿠폰 발급 시각 (최신순 정렬용)
+  final DateTime? issuedAt;
+  /// 사용/갱신 시각 (사용 완료 쿠폰 최신순 정렬용)
+  final DateTime? updatedAt;
   /// 쿠폰 발급 경로 식별 (APP_OPEN:, STAMP_REWARD:, FLASH:, FINAL_EXAM: 등)
   final String? issueKey;
   /// 캠페인 코드 (기획전·발급 경로 구분, Firebase coupon_issue_source 우선 사용)
@@ -202,15 +210,41 @@ class CouponBenefitInfo {
 
 CouponBenefitInfo? _parseCouponBenefit(Map<String, dynamic> json) {
   final dynamic raw = json['benefit'] ?? json['benefit_snapshot'];
+  if (raw == null) {
+    // benefit/benefit_snapshot 없을 때 쿠폰 JSON 최상위에 title 등이 있는지 확인
+    if (_normalizeString(json['title']) != null ||
+        _normalizeString(json['subtitle']) != null ||
+        _normalizeString(json['restaurant_name']) != null) {
+      return CouponBenefitInfo.fromJson(json);
+    }
+    return null;
+  }
+
+  Map<String, dynamic> toParse;
   if (raw is Map<String, dynamic>) {
-    return CouponBenefitInfo.fromJson(raw);
+    toParse = raw;
+  } else if (raw is Map) {
+    toParse = Map<String, dynamic>.from(raw);
+  } else {
+    return null;
   }
-  if (raw is Map) {
-    return CouponBenefitInfo.fromJson(
-      Map<String, dynamic>.from(raw),
-    );
+
+  // 사용 완료 쿠폰: benefit_snapshot이 { benefit: { title, subtitle, ... } } 형태일 수 있음.
+  // 상위에 title/subtitle/restaurant_name이 없고 중첩 benefit이 있으면 그걸 사용.
+  final hasTopLevelInfo = _normalizeString(toParse['title']) != null ||
+      _normalizeString(toParse['subtitle']) != null ||
+      _normalizeString(toParse['restaurant_name']) != null;
+
+  if (!hasTopLevelInfo) {
+    final nested = toParse['benefit'];
+    if (nested is Map<String, dynamic>) {
+      toParse = nested;
+    } else if (nested is Map) {
+      toParse = Map<String, dynamic>.from(nested);
+    }
   }
-  return null;
+
+  return CouponBenefitInfo.fromJson(toParse);
 }
 
 class StampRewardCoupon {
@@ -248,11 +282,24 @@ class StampReward {
   });
 
   factory StampReward.fromJson(Map<String, dynamic> json) {
+    final visitRange = _normalizeString(json['visit_range']);
+    int? minVisit = _parseOptionalInt(json['min_visit']);
+    int? maxVisit = _parseOptionalInt(json['max_visit']);
+
+    // visit_range만 있으면 "1_4" 또는 "1-4" 형식으로 파싱
+    if ((minVisit == null || maxVisit == null) &&
+        visitRange != null &&
+        visitRange.isNotEmpty) {
+      final parsed = _parseVisitRange(visitRange);
+      minVisit ??= parsed.$1;
+      maxVisit ??= parsed.$2;
+    }
+
     return StampReward(
       stamps: _parseOptionalInt(json['stamps']),
-      visitRange: _normalizeString(json['visit_range']),
-      minVisit: _parseOptionalInt(json['min_visit']),
-      maxVisit: _parseOptionalInt(json['max_visit']),
+      visitRange: visitRange,
+      minVisit: minVisit,
+      maxVisit: maxVisit,
       title: _normalizeString(json['title']),
       subtitle: _normalizeString(json['subtitle']),
       notes: _normalizeString(json['notes']),
@@ -285,6 +332,7 @@ class StampStatus {
     this.updatedAt,
     this.rewardCoupons = const [],
     this.rewards = const [],
+    this.notes,
   });
 
   factory StampStatus.fromJson(Map<String, dynamic> json) {
@@ -327,12 +375,17 @@ class StampStatus {
       return const [];
     }
 
+    final notesRaw = json['notes'];
+    final notesStr = notesRaw is String ? notesRaw.trim() : null;
+    final notes = (notesStr != null && notesStr.isNotEmpty) ? notesStr : null;
+
     return StampStatus(
       current: _parseInt(json['current']),
       target: _parseInt(json['target']),
       updatedAt: _parseDate(json['updated_at']),
       rewardCoupons: parseRewardCoupons(),
       rewards: parseRewards(),
+      notes: notes,
     );
   }
 
@@ -340,6 +393,8 @@ class StampStatus {
   final int target;
   final DateTime? updatedAt;
   final List<StampRewardCoupon> rewardCoupons;
+  /// 해당 식당 스탬프 프로그램 전체에 대한 유의사항 (인원 제한, 최소 주문 금액 등)
+  final String? notes;
   /// GET 스탬프 현황 API의 rewards 배열 (식당별 N개 적립 시 ~ 혜택 목록)
   final List<StampReward> rewards;
 }
@@ -354,6 +409,22 @@ class StampStatusCollection {
   final Map<int, StampStatus> statuses;
   final int? defaultTarget;
   final bool hasResults;
+}
+
+/// 스탬프 적립 API 결과 (throw 대신 반환으로 스택 트레이스 방지)
+class StampAddResult {
+  const StampAddResult._({this.result, this.errorMessage})
+      : assert(result != null || errorMessage != null);
+
+  factory StampAddResult.success(StampActionResult r) =>
+      StampAddResult._(result: r);
+
+  factory StampAddResult.failure(String msg) =>
+      StampAddResult._(errorMessage: msg);
+
+  final StampActionResult? result;
+  final String? errorMessage;
+  bool get isSuccess => result != null;
 }
 
 class StampActionResult {
@@ -438,6 +509,22 @@ class CouponRedeemResult {
 
   final bool ok;
   final String couponCode;
+}
+
+/// 쿠폰 사용 시도 결과 (throw 없이 반환)
+class CouponRedeemAttemptResult {
+  const CouponRedeemAttemptResult._({this.result, this.errorMessage});
+
+  factory CouponRedeemAttemptResult.success(CouponRedeemResult r) =>
+      CouponRedeemAttemptResult._(result: r);
+
+  factory CouponRedeemAttemptResult.failure(String msg) =>
+      CouponRedeemAttemptResult._(errorMessage: msg);
+
+  final CouponRedeemResult? result;
+  final String? errorMessage;
+
+  bool get isSuccess => result != null;
 }
 
 /// 백엔드 응답의 issued_coupons 항목 (쿠폰 발급 시 반환)
@@ -708,7 +795,8 @@ class CouponService {
     );
   }
 
-  static Future<StampActionResult> addStamp({
+  /// 스탬프 적립 결과. 성공 시 result, 실패 시 errorMessage (throw 없이 반환)
+  static Future<StampAddResult> addStamp({
     required int restaurantId,
     required String pin,
     String? idemKey,
@@ -721,16 +809,44 @@ class CouponService {
       body['idem_key'] = idemKey;
     }
 
-    final response = await ApiClient.post(
-      '/api/coupons/stamps/add/',
-      body: body,
-    );
+    try {
+      final response = await ApiClient.postWithoutThrow(
+        '/api/coupons/stamps/add/',
+        body: body,
+      );
+      if (response.statusCode >= 400) {
+        final msg = _extractDetailFromBody(response.body) ??
+            (response.statusCode == 400 || response.statusCode == 401
+                ? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.'
+                : '요청이 실패했어요 (HTTP ${response.statusCode})');
+        return StampAddResult.failure(msg);
+      }
+      final decoded = _decodeResponseBody(response);
+      if (decoded is Map<String, dynamic>) {
+        return StampAddResult.success(StampActionResult.fromJson(decoded));
+      }
+      return StampAddResult.success(
+          const StampActionResult(ok: true, current: 0, target: 0));
+    } on ApiAuthException catch (e) {
+      return StampAddResult.failure(e.message);
+    } on ApiNetworkException catch (e) {
+      return StampAddResult.failure('네트워크 오류: ${e.cause}');
+    } catch (e) {
+      return StampAddResult.failure(e.toString());
+    }
+  }
 
+  /// POST /api/coupons/check/ - 쿠폰 조회/검증 (사용 직전 benefit.notes 등 최신 정보 조회)
+  static Future<UserCoupon> checkCoupon({required String couponCode}) async {
+    final response = await ApiClient.post(
+      '/api/coupons/check/',
+      body: {'coupon_code': couponCode},
+    );
     final decoded = _decodeResponseBody(response);
     if (decoded is Map<String, dynamic>) {
-      return StampActionResult.fromJson(decoded);
+      return UserCoupon.fromJson(decoded);
     }
-    return const StampActionResult(ok: true, current: 0, target: 0);
+    throw ApiHttpException(response.statusCode, response.body);
   }
 
   static Future<CouponRedeemResult> redeemCoupon({
@@ -751,6 +867,44 @@ class CouponService {
       return CouponRedeemResult.fromJson(decoded);
     }
     return CouponRedeemResult(ok: true, couponCode: couponCode);
+  }
+
+  /// 쿠폰 사용 시도. throw 없이 성공/실패 반환 (PIN 오류 등 입력창 내 에러 표시용)
+  static Future<CouponRedeemAttemptResult> redeemCouponWithoutThrow({
+    required String couponCode,
+    required int restaurantId,
+    required String pin,
+  }) async {
+    try {
+      final response = await ApiClient.postWithoutThrow(
+        '/api/coupons/redeem/',
+        body: {
+          'coupon_code': couponCode,
+          'restaurant_id': restaurantId,
+          'pin': pin,
+        },
+      );
+      if (response.statusCode >= 400) {
+        final msg = _extractDetailFromBody(response.body) ??
+            (response.statusCode == 400 || response.statusCode == 401
+                ? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.'
+                : '요청이 실패했어요 (HTTP ${response.statusCode})');
+        return CouponRedeemAttemptResult.failure(msg);
+      }
+      final decoded = _decodeResponseBody(response);
+      if (decoded is Map<String, dynamic>) {
+        return CouponRedeemAttemptResult.success(
+            CouponRedeemResult.fromJson(decoded));
+      }
+      return CouponRedeemAttemptResult.success(
+          CouponRedeemResult(ok: true, couponCode: couponCode));
+    } on ApiAuthException catch (e) {
+      return CouponRedeemAttemptResult.failure(e.message);
+    } on ApiNetworkException catch (e) {
+      return CouponRedeemAttemptResult.failure('네트워크 오류: ${e.cause}');
+    } catch (e) {
+      return CouponRedeemAttemptResult.failure(e.toString());
+    }
   }
 
   static Future<Map<String, dynamic>> fetchInviteCode() async {
@@ -898,6 +1052,62 @@ String? _normalizeString(dynamic value) {
     return trimmed;
   }
   return null;
+}
+
+String? _extractDetailFromBody(String body) {
+  if (body.isEmpty) return null;
+  final trimmed = body.trim();
+  // JSON이 아니면 (ValidationError 등) 기술 문구를 사용자 친화 문구로 변환
+  if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) {
+    final friendly = _toUserFriendlyMessage(trimmed);
+    return friendly != trimmed ? friendly : null;
+  }
+  try {
+    final decoded = jsonDecode(body);
+    if (decoded is Map<String, dynamic>) {
+      for (final key in ['detail', 'message', 'error']) {
+        final value = decoded[key];
+        if (value is String && value.isNotEmpty) {
+          return _toUserFriendlyMessage(value);
+        }
+        if (value is List && value.isNotEmpty) {
+          final first = value.first;
+          if (first is String && first.isNotEmpty) {
+            return _toUserFriendlyMessage(first);
+          }
+        }
+      }
+    }
+  } catch (_) {}
+  return null;
+}
+
+/// 기술적 에러 문구를 사용자 친화 문구로 변환 (식당 상세 진입 후이므로 PIN 관련 문구만)
+String _toUserFriendlyMessage(String raw) {
+  final lower = raw.toLowerCase();
+  if (lower.contains('invalid merchant code') ||
+      (lower.contains('invalid') && (lower.contains('pin') || lower.contains('password'))) ||
+      lower.contains('validationerror') ||
+      lower.contains('request method') ||
+      lower.contains('/api/')) {
+    return '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
+  }
+  return raw;
+}
+
+/// visit_range "1_4" 또는 "1-4" 형식 파싱 → (minVisit, maxVisit)
+(int?, int?) _parseVisitRange(String s) {
+  final parts = s.split(RegExp(r'[_\-\s]+'));
+  if (parts.length >= 2) {
+    final min = int.tryParse(parts[0].trim());
+    final max = int.tryParse(parts[1].trim());
+    if (min != null && max != null) return (min, max);
+  }
+  if (parts.length == 1) {
+    final single = int.tryParse(parts[0].trim());
+    if (single != null) return (single, single);
+  }
+  return (null, null);
 }
 
 int _parseInt(dynamic value) {

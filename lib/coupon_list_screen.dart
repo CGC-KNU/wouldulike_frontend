@@ -47,11 +47,22 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
+  /// 정렬 기준 날짜: 사용 완료는 updatedAt, 그 외는 issuedAt. 없으면 expiresAt 사용.
+  DateTime? _sortDate(UserCoupon c) =>
+      c.updatedAt ?? c.issuedAt ?? c.expiresAt;
+
   List<UserCoupon> _sortedCoupons(List<UserCoupon> coupons) {
     final sorted = List<UserCoupon>.from(coupons);
     sorted.sort((a, b) {
-      final priorityDiff = _statusPriority(a.status) - _statusPriority(b.status);
-      if (priorityDiff != 0) return priorityDiff;
+      final dateA = _sortDate(a);
+      final dateB = _sortDate(b);
+      if (dateA != null && dateB != null) {
+        final cmp = dateB.compareTo(dateA);
+        if (cmp != 0) return cmp;
+      } else if (dateA != null) return -1;
+      else if (dateB != null) return 1;
+      final statusDiff = _statusPriority(a.status) - _statusPriority(b.status);
+      if (statusDiff != 0) return statusDiff;
       return a.code.compareTo(b.code);
     });
     return sorted;
@@ -237,46 +248,22 @@ class _CouponListScreenState extends State<CouponListScreen> {
       return;
     }
 
-    final pin = await _promptForPin(
-      title: '쿠폰 사용',
-      confirmLabel: '사용하기',
-      notes: coupon.benefit?.notesText,
-    );
-    if (pin == null) return;
-
     setState(() => _processingCouponCode = coupon.code);
     try {
-      await CouponService.redeemCoupon(
-        couponCode: coupon.code,
+      final success = await _showRedeemPinDialog(
+        coupon: coupon,
         restaurantId: restaurantId,
-        pin: pin,
+        restaurantName: coupon.benefit?.restaurantNameText,
+        notes: coupon.benefit?.notesText,
       );
       if (!mounted) return;
-      AnalyticsLogger.logEvent(
-        AnalyticsEvents.couponRedeemed,
-        parameters: {
-          AnalyticsEvents.paramCouponCode: coupon.code,
-          AnalyticsEvents.paramRestaurantId: restaurantId,
-          AnalyticsEvents.paramRestaurantName:
-              coupon.benefit?.restaurantNameText ?? '',
-          AnalyticsEvents.paramCouponIssueSource:
-              coupon.couponIssueSource,
-        },
-      );
-      setState(() {
-        _coupons =
-            _coupons.where((element) => element.code != coupon.code).toList();
-        _processingCouponCode = null;
-      });
-      _showSnack('쿠폰을 사용했어요.');
-    } on ApiAuthException catch (e) {
-      _showSnack(e.message);
-    } on ApiHttpException catch (e) {
-      _showSnack(_extractDetailMessage(e.body) ?? '쿠폰 사용에 실패했어요.');
-    } on ApiNetworkException catch (e) {
-      _showSnack('네트워크 오류: $e');
-    } catch (e) {
-      _showSnack('알 수 없는 오류: $e');
+      if (success) {
+        setState(() {
+          _coupons =
+              _coupons.where((element) => element.code != coupon.code).toList();
+        });
+        _showSnack('쿠폰을 사용했어요.');
+      }
     } finally {
       if (mounted && _processingCouponCode == coupon.code) {
         setState(() => _processingCouponCode = null);
@@ -284,16 +271,20 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
-  Future<String?> _promptForPin({
-    required String title,
-    required String confirmLabel,
+  /// 쿠폰 사용 PIN 다이얼로그. redeem 실패 시 입력창 내 에러 표시
+  Future<bool> _showRedeemPinDialog({
+    required UserCoupon coupon,
+    required int restaurantId,
+    String? restaurantName,
     String? notes,
   }) async {
     final controller = TextEditingController();
     String? error;
+    bool isLoading = false;
     final hasNotes = notes != null && notes.isNotEmpty;
-    return showDialog<String>(
+    return (await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(builder: (context, setState) {
           return Dialog(
@@ -313,103 +304,99 @@ class _CouponListScreenState extends State<CouponListScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Color(0xFF39393E),
-                          fontSize: 19,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w800,
-                          height: 1.21,
-                        ),
+                    const Text(
+                      '쿠폰 사용',
+                      style: TextStyle(
+                        color: Color(0xFF39393E),
+                        fontSize: 19,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w800,
+                        height: 1.21,
                       ),
-                      const SizedBox(height: 16),
-                      SizedBox(
-                        width: 330,
-                        child: Text.rich(
-                          TextSpan(
-                            children: [
-                              const TextSpan(
-                                text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
-                                style: TextStyle(
-                                  color: Color(0xFF39393E),
-                                  fontSize: 15,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.20,
-                                ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: 330,
+                      child: Text.rich(
+                        TextSpan(
+                          children: [
+                            const TextSpan(
+                              text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
+                              style: TextStyle(
+                                color: Color(0xFF39393E),
+                                fontSize: 15,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w500,
+                                height: 1.20,
                               ),
-                              const TextSpan(
-                                text: ' 즉시 사용처리',
-                                style: TextStyle(
-                                  color: Color(0xFF39393E),
-                                  fontSize: 15,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.20,
-                                ),
-                              ),
-                              const TextSpan(
-                                text: ' 됩니다.',
-                                style: TextStyle(
-                                  color: Color(0xFF39393E),
-                                  fontSize: 15,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.20,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      if (hasNotes) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: const Color(0xFFE5E5E5),
-                              width: 1,
                             ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                '사용 조건',
-                                style: TextStyle(
-                                  color: Color(0xFF797979),
-                                  fontSize: 12,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w700,
-                                ),
+                            const TextSpan(
+                              text: ' 즉시 사용처리',
+                              style: TextStyle(
+                                color: Color(0xFF39393E),
+                                fontSize: 15,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                height: 1.20,
                               ),
-                              const SizedBox(height: 6),
-                              Text(
-                                notes,
-                                style: const TextStyle(
-                                  color: Color(0xFF39393E),
-                                  fontSize: 14,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.4,
-                                ),
+                            ),
+                            const TextSpan(
+                              text: ' 됩니다.',
+                              style: TextStyle(
+                                color: Color(0xFF39393E),
+                                fontSize: 15,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w500,
+                                height: 1.20,
                               ),
-                            ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    if (hasNotes) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                            color: const Color(0xFFE5E5E5),
+                            width: 1,
                           ),
                         ),
-                      ],
-                      const SizedBox(height: 20),
-                  const SizedBox(
-                    width: 55,
-                    height: 40,
-                    child: Text(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              '사용 조건',
+                              style: TextStyle(
+                                color: Color(0xFF797979),
+                                fontSize: 12,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              notes,
+                              style: const TextStyle(
+                                color: Color(0xFF39393E),
+                                fontSize: 14,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w500,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    const SizedBox(height: 20),
+                    const Text(
                       '비밀번호',
-                      textAlign: TextAlign.center,
                       style: TextStyle(
                         color: Color(0xFF797979),
                         fontSize: 15,
@@ -418,121 +405,164 @@ class _CouponListScreenState extends State<CouponListScreen> {
                         letterSpacing: -0.5,
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    width: double.infinity,
-                    height: 40,
-                    decoration: ShapeDecoration(
-                      color: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        side: const BorderSide(
-                          width: 2,
-                          color: Color(0xFFD9D9D9),
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    alignment: Alignment.center,
-                    child: TextField(
-                      controller: controller,
-                      keyboardType: TextInputType.number,
-                      obscureText: true,
-                      maxLength: 4,
-                      style: const TextStyle(
-                        color: Color(0xFF39393E),
-                        fontSize: 16,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w600,
-                      ),
-                      decoration: InputDecoration(
-                        isCollapsed: true,
-                        border: InputBorder.none,
-                        counterText: '',
-                        errorText: error,
-                      ),
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(4),
-                      ],
-                    ),
-                  ),
-                  if (error != null) ...[
                     const SizedBox(height: 6),
-                    Text(
-                      error!,
-                      style: const TextStyle(
-                        color: Color(0xFFEF4444),
-                        fontSize: 12,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(),
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            foregroundColor: const Color(0xFF39393E),
-                            side: const BorderSide(color: Color(0xFFBABAC0)),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            textStyle: const TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w700,
-                              fontSize: 15,
-                            ),
+                    Container(
+                      width: double.infinity,
+                      height: 40,
+                      decoration: ShapeDecoration(
+                        color: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          side: const BorderSide(
+                            width: 2,
+                            color: Color(0xFFD9D9D9),
                           ),
-                          child: const Text('취소'),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: () {
-                            final value = controller.text.trim();
-                            if (value.length != 4) {
-                              setState(() {
-                                error = 'PIN은 4자리 숫자여야 합니다.';
-                              });
-                              return;
-                            }
-                            Navigator.of(dialogContext).pop(value);
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF1C203C),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 13),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
-                            ),
-                            textStyle: const TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                              letterSpacing: -0.32,
-                            ),
-                          ),
-                          child: Text(confirmLabel),
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      alignment: Alignment.center,
+                      child: TextField(
+                        controller: controller,
+                        keyboardType: TextInputType.number,
+                        obscureText: true,
+                        maxLength: 4,
+                        enabled: !isLoading,
+                        style: const TextStyle(
+                          color: Color(0xFF39393E),
+                          fontSize: 16,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
+                        ),
+                        decoration: InputDecoration(
+                          isCollapsed: true,
+                          border: InputBorder.none,
+                          counterText: '',
+                        ),
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                          LengthLimitingTextInputFormatter(4),
+                        ],
+                      ),
+                    ),
+                    if (error != null) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        error!,
+                        style: const TextStyle(
+                          color: Color(0xFFEF4444),
+                          fontSize: 12,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ],
-                  ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: isLoading
+                                ? null
+                                : () => Navigator.of(dialogContext).pop(false),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              foregroundColor: const Color(0xFF39393E),
+                              side: const BorderSide(color: Color(0xFFBABAC0)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              textStyle: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 15,
+                              ),
+                            ),
+                            child: const Text('취소'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    final value = controller.text.trim();
+                                    if (value.length != 4) {
+                                      setState(() {
+                                        error = 'PIN은 4자리 숫자여야 합니다.';
+                                      });
+                                      return;
+                                    }
+                                    setState(() {
+                                      error = null;
+                                      isLoading = true;
+                                    });
+                                    final result =
+                                        await CouponService.redeemCouponWithoutThrow(
+                                      couponCode: coupon.code,
+                                      restaurantId: restaurantId,
+                                      pin: value,
+                                    );
+                                    if (!dialogContext.mounted) return;
+                                    if (result.isSuccess) {
+                                      AnalyticsLogger.logEvent(
+                                        AnalyticsEvents.couponRedeemed,
+                                        parameters: {
+                                          AnalyticsEvents.paramCouponCode:
+                                              coupon.code,
+                                          AnalyticsEvents.paramRestaurantId:
+                                              restaurantId,
+                                          AnalyticsEvents.paramRestaurantName:
+                                              restaurantName ?? '',
+                                          AnalyticsEvents.paramCouponIssueSource:
+                                              coupon.couponIssueSource,
+                                        },
+                                      );
+                                      Navigator.of(dialogContext).pop(true);
+                                    } else {
+                                      setState(() {
+                                        error = result.errorMessage ??
+                                            '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
+                                        isLoading = false;
+                                      });
+                                    }
+                                  },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1C203C),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 13),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(15),
+                              ),
+                              textStyle: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                letterSpacing: -0.32,
+                              ),
+                            ),
+                            child: isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('사용하기'),
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ),
           );
-        },
-        );
+        });
       },
-    );
+    )) ?? false;
   }
 
   void _showSnack(String message) {
@@ -642,6 +672,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
     if (_requiresLogin) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 140),
         children: [
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.4,
@@ -696,6 +727,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
     if (_errorMessage != null) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 140),
         children: [
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.4,
@@ -730,6 +762,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
     if (_coupons.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(bottom: 140),
         children: [
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.4,
@@ -750,7 +783,12 @@ class _CouponListScreenState extends State<CouponListScreen> {
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.only(
+        left: 16,
+        right: 16,
+        top: 12,
+        bottom: 140, // 하단 바와 겹치지 않도록 다른 탭과 동일한 여백
+      ),
       children: [
         _buildStatusTabSwitcher(
           availableCount: availableCount,
@@ -835,17 +873,19 @@ class _CouponListScreenState extends State<CouponListScreen> {
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 6),
-                  Text(
-                    subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFFD1D6FF),
-                      fontWeight: FontWeight.w500,
+                  if (coupon.status != CouponStatus.redeemed) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFFD1D6FF),
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
+                  ],
                   if (expiryText != null &&
                       coupon.status == CouponStatus.issued) ...[
                     const SizedBox(height: 8),

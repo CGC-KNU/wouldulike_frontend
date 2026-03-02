@@ -398,47 +398,6 @@ class _MyScreenState extends State<MyScreen> {
     }
   }
 
-  Future<void> _openHomepage() async {
-    try {
-      final response = await ApiClient.get('/api/url/', authenticated: false);
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final url = data['url']?.toString() ?? '';
-
-      if (url.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('홈페이지 URL이 설정되지 않았어요.')),
-        );
-        return;
-      }
-
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('홈페이지를 열 수 없어요.')),
-        );
-      }
-    } on ApiHttpException {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('홈페이지 URL을 불러오지 못했어요.')),
-      );
-    } on ApiNetworkException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('네트워크 오류: $e')),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('홈페이지를 열 수 없어요: $e')),
-      );
-    }
-  }
-
   Future<void> _openProfileSetup() async {
     final profile = await UserService.fetchCurrentUserProfile();
     if (!mounted) return;
@@ -783,19 +742,13 @@ class _MyScreenState extends State<MyScreen> {
           const SizedBox(height: 24),
           _buildSectionHeader('고객 지원'),
           _buildMenuRow(
-            leading: const Text('홈페이지', style: _kItemTitleStyle),
-            trailing: _buildChevron(),
-            onTap: _openHomepage,
-            indent: _kItemIndent,
-          ),
-          _buildMenuRow(
             leading: const Text('카카오톡 1대1 문의', style: _kItemTitleStyle),
             trailing: _buildChevron(),
             onTap: _openKakaoTalkInquiry,
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.2.0', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.2.1', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],

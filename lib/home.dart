@@ -356,7 +356,9 @@ class _HomeContentState extends State<HomeContent> {
       }
       if (!mounted) return;
       setState(() {
-        _affiliateRestaurants = restaurants;
+        final shuffled = List<AffiliateRestaurantSummary>.from(restaurants);
+        shuffled.shuffle(math.Random());
+        _affiliateRestaurants = shuffled;
         _affiliateSource = source;
         _affiliateRequiresLogin = requiresLogin;
         if (requiresLogin) {
@@ -537,21 +539,9 @@ class _HomeContentState extends State<HomeContent> {
     return '사용 가능 쿠폰 ${issued}장';
   }
 
-  List<AffiliateRestaurantSummary> get _sortedAffiliateRestaurants {
-    if (_affiliateRestaurants.isEmpty) return const <AffiliateRestaurantSummary>[];
-    final sorted = List<AffiliateRestaurantSummary>.from(_affiliateRestaurants);
-    sorted.sort((a, b) {
-      final aInProgress = _isAffiliateInProgress(a);
-      final bInProgress = _isAffiliateInProgress(b);
-      if (aInProgress != bInProgress) return aInProgress ? -1 : 1;
-      return a.name.compareTo(b.name);
-    });
-    return sorted;
-  }
-
   List<AffiliateRestaurantSummary> get _displayAffiliateRestaurants {
-    if (_affiliateSource == 'all') return _affiliateRestaurants;
-    return _sortedAffiliateRestaurants;
+    // 적립 중 3개 미만(제휴식당 전체)이든 3개 이상(적립 중)이든, 로드 시 한 번 셔플된 목록 사용
+    return _affiliateRestaurants;
   }
 
   String? _formatCouponExpiry(DateTime? expiresAt) {
@@ -869,46 +859,105 @@ class _HomeContentState extends State<HomeContent> {
     return null;
   }
 
-  Future<String?> _promptForCouponPin({
-    required String title,
-    required String confirmLabel,
+  // _promptForCouponPin 제거됨 → _showRedeemPinDialog 사용 (입력창 내 에러 표시)
+
+  Future<void> _handleHomeCouponUse(UserCoupon coupon) async {
+    if (_processingHomeCouponCode == coupon.code) return;
+    final restaurantId = coupon.restaurantId;
+    if (restaurantId == null) {
+      _showHomeSnack('이 쿠폰은 사용 가능한 매장 정보가 없어요.');
+      return;
+    }
+
+    UserCoupon? checkedCoupon;
+    try {
+      checkedCoupon = await CouponService.checkCoupon(couponCode: coupon.code);
+    } on ApiAuthException catch (e) {
+      _showHomeSnack(e.message);
+      return;
+    } on ApiHttpException catch (e) {
+      _showHomeSnack(_extractDetailMessage(e.body) ?? '쿠폰 확인에 실패했어요.');
+      return;
+    } on ApiNetworkException catch (e) {
+      _showHomeSnack('네트워크 오류: $e');
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() => _processingHomeCouponCode = coupon.code);
+    try {
+      final success = await _showRedeemPinDialog(
+        coupon: coupon,
+        restaurantId: restaurantId,
+        restaurantName: coupon.benefit?.restaurantNameText,
+        notes: checkedCoupon.benefit?.notesText,
+        couponIssueSource: getCouponIssuanceSource(coupon.issueKey),
+      );
+      if (!mounted) return;
+      if (success) {
+        setState(() {
+          _affiliateCoupons = _affiliateCoupons
+              .where((element) => element.code != coupon.code)
+              .toList();
+          _homeCouponShowcase = _homeCouponShowcase
+              .where((element) => element.code != coupon.code)
+              .toList();
+        });
+        _showHomeSnack('쿠폰을 사용했어요.');
+      }
+    } finally {
+      if (mounted && _processingHomeCouponCode == coupon.code) {
+        setState(() => _processingHomeCouponCode = null);
+      }
+    }
+  }
+
+  /// 쿠폰 사용 PIN 다이얼로그. redeem 실패 시 입력창 내 에러 표시
+  Future<bool> _showRedeemPinDialog({
+    required UserCoupon coupon,
+    required int restaurantId,
+    String? restaurantName,
     String? notes,
+    String? couponIssueSource,
   }) async {
     final controller = TextEditingController();
     String? error;
+    bool isLoading = false;
     final hasNotes = notes != null && notes.isNotEmpty;
-    return showDialog<String>(
+    final issueSource =
+        couponIssueSource ?? coupon.couponIssueSource;
+    return (await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            return Dialog(
-              backgroundColor: Colors.transparent,
-              insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Container(
-                  width: 358,
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                  decoration: ShapeDecoration(
-                    color: const Color(0xFFF2F2F2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
+        return StatefulBuilder(builder: (context, setState) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Container(
+              width: 358,
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+              decoration: ShapeDecoration(
+                color: const Color(0xFFF2F2F2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '쿠폰 사용',
+                      style: TextStyle(
+                        color: Color(0xFF39393E),
+                        fontSize: 19,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w800,
+                        height: 1.21,
+                      ),
                     ),
-                  ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          title,
-                          style: const TextStyle(
-                            color: Color(0xFF39393E),
-                            fontSize: 19,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w800,
-                            height: 1.21,
-                          ),
-                        ),
                         const SizedBox(height: 16),
                         const SizedBox(
                           width: 330,
@@ -989,20 +1038,15 @@ class _HomeContentState extends State<HomeContent> {
                             ),
                           ),
                         ],
-                        const SizedBox(height: 20),
-                    const SizedBox(
-                      width: 55,
-                      height: 40,
-                      child: Text(
-                        '비밀번호',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Color(0xFF797979),
-                          fontSize: 15,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
-                        ),
+                    const SizedBox(height: 20),
+                    const Text(
+                      '비밀번호',
+                      style: TextStyle(
+                        color: Color(0xFF797979),
+                        fontSize: 15,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.5,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -1026,6 +1070,7 @@ class _HomeContentState extends State<HomeContent> {
                         keyboardType: TextInputType.number,
                         obscureText: true,
                         maxLength: 4,
+                        enabled: !isLoading,
                         style: const TextStyle(
                           color: Color(0xFF39393E),
                           fontSize: 16,
@@ -1036,7 +1081,6 @@ class _HomeContentState extends State<HomeContent> {
                           isCollapsed: true,
                           border: InputBorder.none,
                           counterText: '',
-                          errorText: error,
                         ),
                         inputFormatters: [
                           FilteringTextInputFormatter.digitsOnly,
@@ -1061,7 +1105,9 @@ class _HomeContentState extends State<HomeContent> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            onPressed: isLoading
+                                ? null
+                                : () => Navigator.of(dialogContext).pop(false),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               foregroundColor: const Color(0xFF39393E),
@@ -1081,16 +1127,50 @@ class _HomeContentState extends State<HomeContent> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: () {
-                              final value = controller.text.trim();
-                              if (value.length != 4) {
-                                setState(() {
-                                  error = 'PIN은 4자리 숫자여야 합니다.';
-                                });
-                                return;
-                              }
-                              Navigator.of(dialogContext).pop(value);
-                            },
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    final value = controller.text.trim();
+                                    if (value.length != 4) {
+                                      setState(() {
+                                        error = 'PIN은 4자리 숫자여야 합니다.';
+                                      });
+                                      return;
+                                    }
+                                    setState(() {
+                                      error = null;
+                                      isLoading = true;
+                                    });
+                                    final result =
+                                        await CouponService.redeemCouponWithoutThrow(
+                                      couponCode: coupon.code,
+                                      restaurantId: restaurantId,
+                                      pin: value,
+                                    );
+                                    if (!dialogContext.mounted) return;
+                                    if (result.isSuccess) {
+                                      AnalyticsLogger.logEvent(
+                                        AnalyticsEvents.couponRedeemed,
+                                        parameters: {
+                                          AnalyticsEvents.paramCouponCode:
+                                              coupon.code,
+                                          AnalyticsEvents.paramRestaurantId:
+                                              restaurantId,
+                                          AnalyticsEvents.paramRestaurantName:
+                                              restaurantName ?? '',
+                                          AnalyticsEvents.paramCouponIssueSource:
+                                              issueSource,
+                                        },
+                                      );
+                                      Navigator.of(dialogContext).pop(true);
+                                    } else {
+                                      setState(() {
+                                        error = result.errorMessage ??
+                                            '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
+                                        isLoading = false;
+                                      });
+                                    }
+                                  },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF1C203C),
                               foregroundColor: Colors.white,
@@ -1105,7 +1185,16 @@ class _HomeContentState extends State<HomeContent> {
                                 letterSpacing: -0.32,
                               ),
                             ),
-                            child: Text(confirmLabel),
+                            child: isLoading
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Text('사용하기'),
                           ),
                         ),
                       ],
@@ -1118,67 +1207,7 @@ class _HomeContentState extends State<HomeContent> {
         },
       );
     },
-    );
-  }
-
-  Future<void> _handleHomeCouponUse(UserCoupon coupon) async {
-    if (_processingHomeCouponCode == coupon.code) return;
-    final restaurantId = coupon.restaurantId;
-    if (restaurantId == null) {
-      _showHomeSnack('이 쿠폰은 사용 가능한 매장 정보가 없어요.');
-      return;
-    }
-
-    final pin = await _promptForCouponPin(
-      title: '쿠폰 사용',
-      confirmLabel: '사용하기',
-      notes: coupon.benefit?.notesText,
-    );
-    if (pin == null) return;
-
-    if (!mounted) return;
-    setState(() => _processingHomeCouponCode = coupon.code);
-    try {
-      await CouponService.redeemCoupon(
-        couponCode: coupon.code,
-        restaurantId: restaurantId,
-        pin: pin,
-      );
-      if (!mounted) return;
-      AnalyticsLogger.logEvent(
-        AnalyticsEvents.couponRedeemed,
-        parameters: {
-          AnalyticsEvents.paramCouponCode: coupon.code,
-          AnalyticsEvents.paramRestaurantId: restaurantId,
-          AnalyticsEvents.paramRestaurantName:
-              coupon.benefit?.restaurantNameText ?? '',
-          AnalyticsEvents.paramCouponIssueSource:
-              getCouponIssuanceSource(coupon.issueKey),
-        },
-      );
-      setState(() {
-        _affiliateCoupons = _affiliateCoupons
-            .where((element) => element.code != coupon.code)
-            .toList();
-        _homeCouponShowcase = _homeCouponShowcase
-            .where((element) => element.code != coupon.code)
-            .toList();
-        _processingHomeCouponCode = null;
-      });
-      _showHomeSnack('쿠폰을 사용했어요.');
-    } on ApiAuthException catch (e) {
-      _showHomeSnack(e.message);
-    } on ApiHttpException catch (e) {
-      _showHomeSnack(_extractDetailMessage(e.body) ?? '쿠폰 사용에 실패했어요.');
-    } on ApiNetworkException catch (e) {
-      _showHomeSnack('네트워크 오류: $e');
-    } catch (e) {
-      _showHomeSnack('알 수 없는 오류: $e');
-    } finally {
-      if (mounted && _processingHomeCouponCode == coupon.code) {
-        setState(() => _processingHomeCouponCode = null);
-      }
-    }
+    )) ?? false;
   }
 
   // URL 열기 함수

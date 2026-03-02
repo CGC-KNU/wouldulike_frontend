@@ -162,6 +162,31 @@ class ApiClient {
     return response;
   }
 
+  /// post와 동일하나 4xx/5xx 시 throw 대신 response 반환 (스택 트레이스 방지)
+  static Future<http.Response> postWithoutThrow(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Object? body,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    final uri = _resolve(path, queryParameters);
+    final payload = body == null || body is String ? body : jsonEncode(body);
+    Future<http.Response> sendRequest() async {
+      final requestHeaders =
+          await _headers(authenticated: authenticated, extra: headers);
+      try {
+        return await _http.post(uri, headers: requestHeaders, body: payload);
+      } catch (e) {
+        throw ApiNetworkException(e);
+      }
+    }
+    return _sendWithAuthRetry(
+      authenticated: authenticated,
+      sendRequest: sendRequest,
+    );
+  }
+
   static Future<http.Response> patch(
     String path, {
     Map<String, dynamic>? queryParameters,
