@@ -49,7 +49,7 @@ dependencies:
   firebase_messaging: ^14.7.2
   app_links: ^3.5.0
   app_settings: ^5.1.1
-  google_mobile_ads: ^7.0.0
+  google_mobile_ads: 6.0.0
   sign_in_with_apple: ^6.0.0
 
 dev_dependencies:

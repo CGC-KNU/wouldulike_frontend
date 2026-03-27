@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch:*)",
+      "Bash(git checkout:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter build:*)",
+      "Bash(git stash:*)",
+      "Bash(git pull:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(keytool:*)",
+      "Bash(openssl sha1:*)",
+      "Bash(openssl base64:*)",
+      "Bash(xxd:*)",
+      "Bash(git restore:*)"
+    ]
+  }
+}

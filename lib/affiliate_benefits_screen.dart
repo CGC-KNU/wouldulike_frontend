@@ -955,26 +955,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     final appBar = AppBar(
       backgroundColor: const Color(0xFF172133),
       elevation: 0,
-      centerTitle: true,
-      foregroundColor: Colors.white,
-      title: const Text(
-        '대학가 근처 식당',
-        style: TextStyle(
-          fontSize: 17,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-        ),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
-      bottom: const PreferredSize(
-        preferredSize: Size.fromHeight(1),
-        child: Divider(
-          height: 1,
-          thickness: 1,
-          color: Color(0x33FFFFFF),
-        ),
-      ),
+      scrolledUnderElevation: 0,
+      toolbarHeight: 0,
     );
 
     if (_error != null) {

@@ -641,17 +641,25 @@ class _CouponListScreenState extends State<CouponListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        scrolledUnderElevation: 0,
-        elevation: 0,
-        title: const Text(
-          '내 쿠폰',
-          style: TextStyle(color: Colors.black),
-        ),
-        iconTheme: const IconThemeData(color: Colors.black),
-      ),
+      appBar: widget.source == 'tab'
+          ? AppBar(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
+              scrolledUnderElevation: 0,
+              elevation: 0,
+              toolbarHeight: 0,
+            )
+          : AppBar(
+              backgroundColor: Colors.white,
+              surfaceTintColor: Colors.white,
+              scrolledUnderElevation: 0,
+              elevation: 0,
+              title: const Text(
+                '내 쿠폰',
+                style: TextStyle(color: Colors.black),
+              ),
+              iconTheme: const IconThemeData(color: Colors.black),
+            ),
       backgroundColor: const Color(0xFFF9FAFB),
       body: RefreshIndicator(
         // 일반 화면 진입 로딩과 동일한 톤의 인디케이터 사용

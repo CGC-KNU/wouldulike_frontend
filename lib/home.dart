@@ -430,7 +430,15 @@ class _HomeContentState extends State<HomeContent> {
     final issued = coupons
         .where((coupon) => coupon.status == CouponStatus.issued)
         .toList();
-    issued.shuffle(math.Random());
+    // 만료일이 가까운 쿠폰을 앞에 배치하여 사용을 유도
+    issued.sort((a, b) {
+      final aExpiry = a.expiresAt;
+      final bExpiry = b.expiresAt;
+      if (aExpiry == null && bExpiry == null) return 0;
+      if (aExpiry == null) return 1; // 만료일 없는 쿠폰은 뒤로
+      if (bExpiry == null) return -1;
+      return aExpiry.compareTo(bExpiry); // 만료일 가까운 순
+    });
     return issued;
   }
 
@@ -1536,7 +1544,7 @@ class _HomeContentState extends State<HomeContent> {
 
   Widget _buildAffiliateRestaurantsSection() {
     const header = Text(
-      '내 주변에서 즐기는 우주라이크 혜택',
+      '현재 진행 중인 우주라이크 혜택',
       style: TextStyle(
         color: Color(0xFF111827),
         fontSize: 18,
@@ -2050,13 +2058,21 @@ class _HomeCouponCard extends StatelessWidget {
         ? restaurantName
         : (coupon.restaurantId != null ? '적용 매장 ID: ${coupon.restaurantId}' : null);
 
+    // 만료 임박 여부 (3일 이내)
+    final expiresAt = coupon.expiresAt;
+    final isExpiringSoon = expiresAt != null &&
+        !expiresAt.difference(DateTime.now()).isNegative &&
+        expiresAt.difference(DateTime.now()).inDays <= 3;
+
     return Container(
       width: 268,
       padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0B1033), Color(0xFF1C2470)],
+        gradient: LinearGradient(
+          colors: isExpiringSoon
+              ? [const Color(0xFF7F1D1D), const Color(0xFFB91C1C)]
+              : [const Color(0xFF0B1033), const Color(0xFF1C2470)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -2064,15 +2080,34 @@ class _HomeCouponCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (isExpiringSoon)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEF4444),
+                borderRadius: BorderRadius.circular(99),
+              ),
+              child: const Text(
+                '⏰ 만료 임박!',
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white,
+                ),
+              ),
+            ),
           if (restaurantLabel != null) ...[
             Text(
               restaurantLabel,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFFCBD5FF),
+                color: isExpiringSoon
+                    ? const Color(0xFFFFCDD2)
+                    : const Color(0xFFCBD5FF),
               ),
             ),
             const SizedBox(height: 6),
@@ -2092,9 +2127,11 @@ class _HomeCouponCard extends StatelessWidget {
             subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 13,
-              color: Color(0xFFD1D6FF),
+              color: isExpiringSoon
+                  ? const Color(0xFFFFCDD2)
+                  : const Color(0xFFD1D6FF),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -2106,10 +2143,14 @@ class _HomeCouponCard extends StatelessWidget {
                 child: expiryText != null
                     ? Row(
                         children: [
-                          const Icon(
-                            Icons.access_time,
+                          Icon(
+                            isExpiringSoon
+                                ? Icons.warning_amber_rounded
+                                : Icons.access_time,
                             size: 14,
-                            color: Color.fromARGB(255, 185, 183, 247),
+                            color: isExpiringSoon
+                                ? const Color(0xFFFFCDD2)
+                                : const Color.fromARGB(255, 185, 183, 247),
                           ),
                           const SizedBox(width: 4),
                           Expanded(
@@ -2117,9 +2158,11 @@ class _HomeCouponCard extends StatelessWidget {
                               expiryText!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: Color.fromARGB(255, 185, 183, 247),
+                                color: isExpiringSoon
+                                    ? const Color(0xFFFFCDD2)
+                                    : const Color.fromARGB(255, 185, 183, 247),
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -2134,8 +2177,12 @@ class _HomeCouponCard extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: isProcessing ? null : onUsePressed,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: const Color(0xFF0B1033),
+                    backgroundColor: isExpiringSoon
+                        ? const Color(0xFFFFE082)
+                        : Colors.white,
+                    foregroundColor: isExpiringSoon
+                        ? const Color(0xFF7F1D1D)
+                        : const Color(0xFF0B1033),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 14,
                       vertical: 0,
@@ -2149,15 +2196,17 @@ class _HomeCouponCard extends StatelessWidget {
                     ),
                   ),
                   child: isProcessing
-                      ? const SizedBox(
+                      ? SizedBox(
                           width: 14,
                           height: 14,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Color(0xFF0B1033),
+                            color: isExpiringSoon
+                                ? const Color(0xFF7F1D1D)
+                                : const Color(0xFF0B1033),
                           ),
                         )
-                      : const Text('사용'),
+                      : Text(isExpiringSoon ? '지금 사용' : '사용'),
                 ),
               ),
             ],
@@ -2430,6 +2479,7 @@ class _HomePopupCarouselDialogState extends State<_HomePopupCarouselDialog> {
   late final PageController _controller;
   Timer? _autoSlideTimer;
   int _currentIndex = 0;
+  bool _isTouching = false;
 
   @override
   void initState() {
@@ -2449,7 +2499,7 @@ class _HomePopupCarouselDialogState extends State<_HomePopupCarouselDialog> {
     if (widget.popups.length <= 1) return;
     _autoSlideTimer?.cancel();
     _autoSlideTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (!_controller.hasClients) return;
+      if (!_controller.hasClients || _isTouching) return;
       final next = (_currentIndex + 1) % widget.popups.length;
       _controller.animateToPage(
         next,
@@ -2465,32 +2515,47 @@ class _HomePopupCarouselDialogState extends State<_HomePopupCarouselDialog> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: SizedBox(
-            width: 310,
-            child: AspectRatio(
-              aspectRatio: 1 / 1.1,
-              child: PageView.builder(
-                controller: _controller,
-                itemCount: widget.popups.length,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentIndex = index;
-                  });
-                },
-                itemBuilder: (context, index) {
-                  final popup = widget.popups[index];
-                  return GestureDetector(
-                    onTap: () => widget.onTapPopup(popup),
-                    child: Container(
-                      color: const Color(0xFF111827),
-                      child: _PopupImageView(
-                        imageBytes: widget.preloadedImages[popup.id],
+        Listener(
+          onPointerDown: (_) {
+            _isTouching = true;
+          },
+          onPointerUp: (_) {
+            _isTouching = false;
+            _startAutoSlide();
+          },
+          onPointerCancel: (_) {
+            _isTouching = false;
+            _startAutoSlide();
+          },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(
+              width: 310,
+              child: AspectRatio(
+                aspectRatio: 1 / 1.1,
+                child: PageView.builder(
+                  controller: _controller,
+                  itemCount: widget.popups.length,
+                  physics: const _SlowSwipePagePhysics(),
+                  onPageChanged: (index) {
+                    setState(() {
+                      _currentIndex = index;
+                    });
+                    _startAutoSlide();
+                  },
+                  itemBuilder: (context, index) {
+                    final popup = widget.popups[index];
+                    return GestureDetector(
+                      onTap: () => widget.onTapPopup(popup),
+                      child: Container(
+                        color: const Color(0xFF111827),
+                        child: _PopupImageView(
+                          imageBytes: widget.preloadedImages[popup.id],
+                        ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -2575,4 +2640,25 @@ class _PopupImageView extends StatelessWidget {
       gaplessPlayback: true,
     );
   }
+}
+
+/// 팝업 스와이프 감도를 낮추는 커스텀 PageScrollPhysics.
+/// 기본값보다 높은 minFlingVelocity를 설정하여 가벼운 터치로 페이지가 넘어가지 않도록 합니다.
+class _SlowSwipePagePhysics extends PageScrollPhysics {
+  const _SlowSwipePagePhysics({super.parent});
+
+  @override
+  _SlowSwipePagePhysics applyTo(ScrollPhysics? ancestor) {
+    return _SlowSwipePagePhysics(parent: buildParent(ancestor));
+  }
+
+  @override
+  double get minFlingVelocity => 800.0; // 기본값(~365)보다 높여 의도적 스와이프만 반응
+
+  @override
+  SpringDescription get spring => const SpringDescription(
+    mass: 100,
+    stiffness: 100,
+    damping: 1.2,
+  );
 }

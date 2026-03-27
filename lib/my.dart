@@ -655,24 +655,7 @@ class _MyScreenState extends State<MyScreen> {
         surfaceTintColor: Colors.white,
         scrolledUnderElevation: 0,
         elevation: 0,
-        centerTitle: true,
-        foregroundColor: const Color(0xFF111827),
-        title: const Text(
-          '마이페이지',
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF111827),
-          ),
-        ),
-        bottom: const PreferredSize(
-          preferredSize: Size.fromHeight(1),
-          child: Divider(
-            height: 1,
-            thickness: 1,
-            color: Color(0xFFE5E7EB),
-          ),
-        ),
+        toolbarHeight: 0,
       ),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
