@@ -51,6 +51,7 @@ dependencies:
   app_settings: ^5.1.1
   google_mobile_ads: 6.0.0
   sign_in_with_apple: ^6.0.0
+  in_app_update: ^4.2.5
 
 dev_dependencies:
   flutter_test:

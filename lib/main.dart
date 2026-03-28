@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'main2.dart';
@@ -15,6 +16,7 @@ import 'profile_setup_screen.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/services.dart';
+import 'package:in_app_update/in_app_update.dart';
 import 'firebase_options.dart';
 import 'config/analytics_events.dart';
 import 'utils/analytics_logger.dart';
@@ -387,7 +389,32 @@ class MainScreenState extends State<MainScreen> {
     _initializeApp();
   }
 
+  Future<void> _checkForAppUpdate() async {
+    if (!Platform.isAndroid) return;
+    try {
+      final info = await InAppUpdate.checkForUpdate();
+      if (info.updateAvailability != UpdateAvailability.updateAvailable) return;
+
+      if (info.immediateUpdateAllowed) {
+        // 필수 업데이트: 전체 화면 UI로 강제 업데이트
+        await InAppUpdate.performImmediateUpdate();
+      } else if (info.flexibleUpdateAllowed) {
+        // 선택 업데이트: 백그라운드 다운로드 후 설치
+        unawaited(
+          InAppUpdate.startFlexibleUpdate().then((_) {
+            InAppUpdate.completeFlexibleUpdate();
+          }),
+        );
+      }
+    } catch (e) {
+      debugPrint('[Update] 업데이트 확인 실패: $e');
+    }
+  }
+
   Future<void> _initializeApp() async {
+    // 앱 업데이트 확인 (Android only)
+    await _checkForAppUpdate();
+
     final prefs = await SharedPreferences.getInstance();
     // FCM 초기화가 너무 오래 걸려 스플래시에 머무르지 않도록 타임아웃을 건다.
     try {
