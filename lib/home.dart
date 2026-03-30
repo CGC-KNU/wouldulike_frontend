@@ -1917,7 +1917,7 @@ class _AffiliateRestaurantCard extends StatelessWidget {
                     child: TextButton(
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
-                        backgroundColor: const Color(0xFF312E81),
+                        backgroundColor: const Color(0xFF2D3B53),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(6),
                         ),
@@ -2063,51 +2063,31 @@ class _HomeCouponCard extends StatelessWidget {
     final isExpiringSoon = expiresAt != null &&
         !expiresAt.difference(DateTime.now()).isNegative &&
         expiresAt.difference(DateTime.now()).inDays <= 3;
+    final isExpiryDateUrgent = expiresAt != null &&
+        expiresAt.difference(DateTime.now()) <= const Duration(days: 7);
+    final expiryColor = isExpiryDateUrgent
+        ? const Color(0xFFB87270)
+        : const Color(0xFFE1B53E);
 
     return Container(
       width: 268,
       padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          colors: isExpiringSoon
-              ? [const Color(0xFF7F1D1D), const Color(0xFFB91C1C)]
-              : [const Color(0xFF0B1033), const Color(0xFF1C2470)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFF192132),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (isExpiringSoon)
-            Container(
-              margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF4444),
-                borderRadius: BorderRadius.circular(99),
-              ),
-              child: const Text(
-                '⏰ 만료 임박!',
-                style: TextStyle(
-                  fontSize: 10.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
-              ),
-            ),
           if (restaurantLabel != null) ...[
             Text(
               restaurantLabel,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
-                color: isExpiringSoon
-                    ? const Color(0xFFFFCDD2)
-                    : const Color(0xFFCBD5FF),
+                color: Colors.white,
               ),
             ),
             const SizedBox(height: 6),
@@ -2127,11 +2107,9 @@ class _HomeCouponCard extends StatelessWidget {
             subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 13,
-              color: isExpiringSoon
-                  ? const Color(0xFFFFCDD2)
-                  : const Color(0xFFD1D6FF),
+              color: Colors.white,
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -2148,9 +2126,7 @@ class _HomeCouponCard extends StatelessWidget {
                                 ? Icons.warning_amber_rounded
                                 : Icons.access_time,
                             size: 14,
-                            color: isExpiringSoon
-                                ? const Color(0xFFFFCDD2)
-                                : const Color.fromARGB(255, 185, 183, 247),
+                            color: expiryColor,
                           ),
                           const SizedBox(width: 4),
                           Expanded(
@@ -2160,9 +2136,7 @@ class _HomeCouponCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 fontSize: 12,
-                                color: isExpiringSoon
-                                    ? const Color(0xFFFFCDD2)
-                                    : const Color.fromARGB(255, 185, 183, 247),
+                                color: expiryColor,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),

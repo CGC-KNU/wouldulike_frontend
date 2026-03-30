@@ -15,6 +15,73 @@ import 'services/coupon_service.dart'
         kCouponBenefitFallbackTitle,
         kCouponBenefitFallbackSubtitle;
 
+class _CouponCategoryMeta {
+  const _CouponCategoryMeta(this.label, this.assetPath);
+
+  final String label;
+  final String assetPath;
+}
+
+const Map<String, _CouponCategoryMeta> _kCouponCategoryMeta = {
+  'ALL': _CouponCategoryMeta('전체', 'assets/images/total.png'),
+  'KOREAN': _CouponCategoryMeta('한식', 'assets/images/korean.png'),
+  'CHINESE': _CouponCategoryMeta('중식', 'assets/images/chinese.png'),
+  'JAPANESE': _CouponCategoryMeta('일식', 'assets/images/japanese.png'),
+  'WESTERN': _CouponCategoryMeta('양식', 'assets/images/western.png'),
+  'SNACK': _CouponCategoryMeta('분식', 'assets/images/snack.png'),
+  'PUB': _CouponCategoryMeta('술집', 'assets/images/pub.png'),
+  'CAFE': _CouponCategoryMeta('카페', 'assets/images/cafe.png'),
+  'DONKATSU': _CouponCategoryMeta('돈가스', 'assets/images/donkatsu.png'),
+  'HAMBURGER': _CouponCategoryMeta('햄버거', 'assets/images/hamburger.png'),
+  'ETC': _CouponCategoryMeta('기타', 'assets/images/total.png'),
+  'UNCLASSIFIED': _CouponCategoryMeta('미분류', 'assets/images/total.png'),
+};
+
+const Map<String, String> _kCouponCategoryAlias = {
+  'ALL': 'ALL',
+  '전체': 'ALL',
+  'KOREAN': 'KOREAN',
+  '한식': 'KOREAN',
+  '고기/구이': 'KOREAN',
+  'CHINESE': 'CHINESE',
+  '중식': 'CHINESE',
+  'JAPANESE': 'JAPANESE',
+  '일식': 'JAPANESE',
+  'WESTERN': 'WESTERN',
+  '양식': 'WESTERN',
+  'SNACK': 'SNACK',
+  '분식': 'SNACK',
+  'PUB': 'PUB',
+  'BAR': 'PUB',
+  '술집': 'PUB',
+  'CAFE': 'CAFE',
+  '카페': 'CAFE',
+  'DONKATSU': 'DONKATSU',
+  '돈가스': 'DONKATSU',
+  'HAMBURGER': 'HAMBURGER',
+  '햄버거': 'HAMBURGER',
+  'ETC': 'ETC',
+  '기타': 'ETC',
+  '아시안': 'ETC',
+  'UNCLASSIFIED': 'UNCLASSIFIED',
+  '미분류': 'UNCLASSIFIED',
+};
+
+const List<String> _kCouponCategoryOrder = [
+  'ALL',
+  'KOREAN',
+  'CHINESE',
+  'JAPANESE',
+  'WESTERN',
+  'SNACK',
+  'PUB',
+  'CAFE',
+  'DONKATSU',
+  'HAMBURGER',
+  'ETC',
+  'UNCLASSIFIED',
+];
+
 class CouponListScreen extends StatefulWidget {
   const CouponListScreen({super.key, this.source});
 
@@ -30,7 +97,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
   List<UserCoupon> _coupons = const [];
   String? _processingCouponCode;
   bool _requiresLogin = false;
-  int _selectedTabIndex = 0; // 0: 사용 가능, 1: 사용 완료
+  String _selectedCategory = 'ALL';
+  List<String> _categories = const ['ALL'];
 
   int _statusPriority(CouponStatus status) {
     switch (status) {
@@ -48,8 +116,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   }
 
   /// 정렬 기준 날짜: 사용 완료는 updatedAt, 그 외는 issuedAt. 없으면 expiresAt 사용.
-  DateTime? _sortDate(UserCoupon c) =>
-      c.updatedAt ?? c.issuedAt ?? c.expiresAt;
+  DateTime? _sortDate(UserCoupon c) => c.updatedAt ?? c.issuedAt ?? c.expiresAt;
 
   List<UserCoupon> _sortedCoupons(List<UserCoupon> coupons) {
     final sorted = List<UserCoupon>.from(coupons);
@@ -59,13 +126,77 @@ class _CouponListScreenState extends State<CouponListScreen> {
       if (dateA != null && dateB != null) {
         final cmp = dateB.compareTo(dateA);
         if (cmp != 0) return cmp;
-      } else if (dateA != null) return -1;
+      } else if (dateA != null)
+        return -1;
       else if (dateB != null) return 1;
       final statusDiff = _statusPriority(a.status) - _statusPriority(b.status);
       if (statusDiff != 0) return statusDiff;
       return a.code.compareTo(b.code);
     });
     return sorted;
+  }
+
+  String _normalizeCategoryKey(String category) {
+    final normalized = category.trim().toUpperCase();
+    return _kCouponCategoryAlias[normalized] ??
+        _kCouponCategoryAlias[category.trim()] ??
+        normalized;
+  }
+
+  int _categoryOrderIndex(String category) {
+    final normalized = _normalizeCategoryKey(category);
+    final index = _kCouponCategoryOrder.indexOf(normalized);
+    return index == -1 ? _kCouponCategoryOrder.length : index;
+  }
+
+  List<String> _sortCategories(Iterable<String> source) {
+    final list = source.toSet().toList();
+    list.sort((a, b) {
+      final orderA = _categoryOrderIndex(a);
+      final orderB = _categoryOrderIndex(b);
+      if (orderA != orderB) {
+        return orderA.compareTo(orderB);
+      }
+      return a.compareTo(b);
+    });
+    return list;
+  }
+
+  String _couponCategoryKey(UserCoupon coupon) {
+    final raw =
+        (coupon.restaurantCategory ?? coupon.benefit?.restaurantCategory)
+            ?.trim();
+    if (raw == null || raw.isEmpty) return 'UNCLASSIFIED';
+    final key = _normalizeCategoryKey(raw);
+    if (_kCouponCategoryMeta.containsKey(key)) {
+      return key;
+    }
+    return raw;
+  }
+
+  List<String> _deriveCategories(List<UserCoupon> coupons) {
+    return _sortCategories({
+      'ALL',
+      ...coupons.map(_couponCategoryKey),
+    });
+  }
+
+  _CouponCategoryMeta _resolveCategoryMeta(String category) {
+    final key = _normalizeCategoryKey(category);
+    final meta = _kCouponCategoryMeta[key];
+    if (meta != null) return meta;
+    final trimmed = category.trim();
+    return _CouponCategoryMeta(
+      trimmed.isEmpty ? '기타' : trimmed,
+      _kCouponCategoryMeta['ALL']!.assetPath,
+    );
+  }
+
+  void _selectCategory(String category) {
+    if (_selectedCategory == category) return;
+    setState(() {
+      _selectedCategory = category;
+    });
   }
 
   @override
@@ -94,9 +225,17 @@ class _CouponListScreenState extends State<CouponListScreen> {
         const Duration(seconds: 10),
       );
       if (!mounted) return;
-      _logCouponIssueBreakdown(coupons);
+      final issuedCoupons = coupons
+          .where((coupon) => coupon.status == CouponStatus.issued)
+          .toList();
+      _logCouponIssueBreakdown(issuedCoupons);
+      final categories = _deriveCategories(issuedCoupons);
       setState(() {
-        _coupons = _sortedCoupons(coupons);
+        _coupons = _sortedCoupons(issuedCoupons);
+        _categories = categories;
+        if (!categories.contains(_selectedCategory)) {
+          _selectedCategory = 'ALL';
+        }
         _isLoading = false;
         _processingCouponCode = null;
       });
@@ -108,6 +247,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _requiresLogin = true;
         _isLoading = false;
         _coupons = const [];
+        _categories = const ['ALL'];
+        _selectedCategory = 'ALL';
         _processingCouponCode = null;
       });
     } on TimeoutException {
@@ -116,6 +257,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _errorMessage = 'TIMEOUT';
         _isLoading = false;
         _coupons = const [];
+        _categories = const ['ALL'];
+        _selectedCategory = 'ALL';
       });
     } on ApiHttpException catch (_) {
       if (!mounted) return;
@@ -123,6 +266,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _errorMessage = 'HTTP_ERROR';
         _isLoading = false;
         _coupons = const [];
+        _categories = const ['ALL'];
+        _selectedCategory = 'ALL';
       });
     } on ApiNetworkException catch (_) {
       if (!mounted) return;
@@ -130,6 +275,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _errorMessage = 'NETWORK_ERROR';
         _isLoading = false;
         _coupons = const [];
+        _categories = const ['ALL'];
+        _selectedCategory = 'ALL';
       });
     } catch (_) {
       if (!mounted) return;
@@ -137,6 +284,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
         _errorMessage = 'UNKNOWN_ERROR';
         _isLoading = false;
         _coupons = const [];
+        _categories = const ['ALL'];
+        _selectedCategory = 'ALL';
       });
     }
   }
@@ -160,80 +309,77 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
-  List<UserCoupon> get _availableCoupons =>
-      _coupons.where((c) => c.status == CouponStatus.issued).toList();
-
-  List<UserCoupon> get _completedCoupons =>
-      _coupons.where((c) => c.status != CouponStatus.issued).toList();
-
   List<UserCoupon> get _filteredCoupons {
-    if (_selectedTabIndex == 0) {
-      return _availableCoupons;
+    if (_selectedCategory == 'ALL') {
+      return _coupons;
     }
-    return _completedCoupons;
+    return _coupons
+        .where((coupon) => _couponCategoryKey(coupon) == _selectedCategory)
+        .toList();
   }
 
-  void _selectStatusTab(int index) {
-    if (_selectedTabIndex == index) return;
-    setState(() {
-      _selectedTabIndex = index;
-    });
-  }
+  Widget _buildCategoryFilter() {
+    if (_categories.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    const double scale = 1.00;
+    return SizedBox(
+      height: 90 * scale,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 2),
+        itemCount: _categories.length,
+        separatorBuilder: (_, __) => SizedBox(width: 12 * scale),
+        itemBuilder: (context, index) {
+          final category = _categories[index];
+          final selected = category == _selectedCategory;
+          final meta = _resolveCategoryMeta(category);
+          final textStyle = TextStyle(
+            color: selected ? const Color(0xFF172133) : const Color(0xFF797979),
+            fontSize: 12 * scale,
+            fontFamily: 'Pretendard',
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            height: 1.92,
+          );
 
-  Widget _buildStatusTabSwitcher({
-    required int availableCount,
-    required int completedCount,
-  }) {
-    const labels = ['사용 가능', '사용 완료'];
-
-    return Container(
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE7E9F8),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: List.generate(labels.length, (index) {
-          final selected = _selectedTabIndex == index;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () => _selectStatusTab(index),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding:
-                    const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                decoration: BoxDecoration(
-                  color: selected ? Colors.white : Colors.transparent,
+          return InkWell(
+            onTap: () => _selectCategory(category),
+            borderRadius: BorderRadius.circular(10),
+            child: Container(
+              width: 52 * scale,
+              height: 66 * scale,
+              decoration: ShapeDecoration(
+                color: selected
+                    ? const Color(0x99C7CDD1)
+                    : const Color(0xFFF9FAFB),
+                shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
-                  boxShadow: selected
-                      ? [
-                          BoxShadow(
-                            color: const Color(0xFF0B1033).withOpacity(0.10),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
-                          ),
-                        ]
-                      : null,
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      labels[index],
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                        color: selected
-                            ? const Color(0xFF111439)
-                            : const Color(0xFF6B6F94),
-                      ),
+              ),
+              padding: EdgeInsets.symmetric(
+                horizontal: 6 * scale,
+                vertical: 8 * scale,
+              ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Image.asset(
+                      meta.assetPath,
+                      fit: BoxFit.contain,
                     ),
-                  ],
-                ),
+                  ),
+                  SizedBox(height: 4 * scale),
+                  Text(
+                    meta.label,
+                    style: textStyle,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
           );
-        }),
+        },
       ),
     );
   }
@@ -283,286 +429,293 @@ class _CouponListScreenState extends State<CouponListScreen> {
     bool isLoading = false;
     final hasNotes = notes != null && notes.isNotEmpty;
     return (await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return StatefulBuilder(builder: (context, setState) {
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Container(
-              width: 358,
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-              decoration: ShapeDecoration(
-                color: const Color(0xFFF2F2F2),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '쿠폰 사용',
-                      style: TextStyle(
-                        color: Color(0xFF39393E),
-                        fontSize: 19,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w800,
-                        height: 1.21,
-                      ),
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            return StatefulBuilder(builder: (context, setState) {
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  width: 358,
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                  decoration: ShapeDecoration(
+                    color: const Color(0xFFF2F2F2),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(15),
                     ),
-                    const SizedBox(height: 16),
-                    SizedBox(
-                      width: 330,
-                      child: Text.rich(
-                        TextSpan(
-                          children: [
-                            const TextSpan(
-                              text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
-                              style: TextStyle(
-                                color: Color(0xFF39393E),
-                                fontSize: 15,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w500,
-                                height: 1.20,
-                              ),
-                            ),
-                            const TextSpan(
-                              text: ' 즉시 사용처리',
-                              style: TextStyle(
-                                color: Color(0xFF39393E),
-                                fontSize: 15,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                                height: 1.20,
-                              ),
-                            ),
-                            const TextSpan(
-                              text: ' 됩니다.',
-                              style: TextStyle(
-                                color: Color(0xFF39393E),
-                                fontSize: 15,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w500,
-                                height: 1.20,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    if (hasNotes) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
-                            color: const Color(0xFFE5E5E5),
-                            width: 1,
-                          ),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              '사용 조건',
-                              style: TextStyle(
-                                color: Color(0xFF797979),
-                                fontSize: 12,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              notes,
-                              style: const TextStyle(
-                                color: Color(0xFF39393E),
-                                fontSize: 14,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w500,
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    const Text(
-                      '비밀번호',
-                      style: TextStyle(
-                        color: Color(0xFF797979),
-                        fontSize: 15,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      width: double.infinity,
-                      height: 40,
-                      decoration: ShapeDecoration(
-                        color: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          side: const BorderSide(
-                            width: 2,
-                            color: Color(0xFFD9D9D9),
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      alignment: Alignment.center,
-                      child: TextField(
-                        controller: controller,
-                        keyboardType: TextInputType.number,
-                        obscureText: true,
-                        maxLength: 4,
-                        enabled: !isLoading,
-                        style: const TextStyle(
-                          color: Color(0xFF39393E),
-                          fontSize: 16,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                        ),
-                        decoration: InputDecoration(
-                          isCollapsed: true,
-                          border: InputBorder.none,
-                          counterText: '',
-                        ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(4),
-                        ],
-                      ),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        error!,
-                        style: const TextStyle(
-                          color: Color(0xFFEF4444),
-                          fontSize: 12,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    Row(
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: isLoading
-                                ? null
-                                : () => Navigator.of(dialogContext).pop(false),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              foregroundColor: const Color(0xFF39393E),
-                              side: const BorderSide(color: Color(0xFFBABAC0)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              textStyle: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
-                            ),
-                            child: const Text('취소'),
+                        const Text(
+                          '쿠폰 사용',
+                          style: TextStyle(
+                            color: Color(0xFF39393E),
+                            fontSize: 19,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w800,
+                            height: 1.21,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: isLoading
-                                ? null
-                                : () async {
-                                    final value = controller.text.trim();
-                                    if (value.length != 4) {
-                                      setState(() {
-                                        error = 'PIN은 4자리 숫자여야 합니다.';
-                                      });
-                                      return;
-                                    }
-                                    setState(() {
-                                      error = null;
-                                      isLoading = true;
-                                    });
-                                    final result =
-                                        await CouponService.redeemCouponWithoutThrow(
-                                      couponCode: coupon.code,
-                                      restaurantId: restaurantId,
-                                      pin: value,
-                                    );
-                                    if (!dialogContext.mounted) return;
-                                    if (result.isSuccess) {
-                                      AnalyticsLogger.logEvent(
-                                        AnalyticsEvents.couponRedeemed,
-                                        parameters: {
-                                          AnalyticsEvents.paramCouponCode:
-                                              coupon.code,
-                                          AnalyticsEvents.paramRestaurantId:
-                                              restaurantId,
-                                          AnalyticsEvents.paramRestaurantName:
-                                              restaurantName ?? '',
-                                          AnalyticsEvents.paramCouponIssueSource:
-                                              coupon.couponIssueSource,
-                                        },
-                                      );
-                                      Navigator.of(dialogContext).pop(true);
-                                    } else {
-                                      setState(() {
-                                        error = result.errorMessage ??
-                                            '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
-                                        isLoading = false;
-                                      });
-                                    }
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1C203C),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              textStyle: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                                letterSpacing: -0.32,
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: 330,
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                const TextSpan(
+                                  text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
+                                  style: TextStyle(
+                                    color: Color(0xFF39393E),
+                                    fontSize: 15,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.20,
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: ' 즉시 사용처리',
+                                  style: TextStyle(
+                                    color: Color(0xFF39393E),
+                                    fontSize: 15,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.20,
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: ' 됩니다.',
+                                  style: TextStyle(
+                                    color: Color(0xFF39393E),
+                                    fontSize: 15,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.20,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (hasNotes) ...[
+                          const SizedBox(height: 16),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: const Color(0xFFE5E5E5),
+                                width: 1,
                               ),
                             ),
-                            child: isLoading
-                                ? const SizedBox(
-                                    height: 20,
-                                    width: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text('사용하기'),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  '사용 조건',
+                                  style: TextStyle(
+                                    color: Color(0xFF797979),
+                                    fontSize: 12,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  notes,
+                                  style: const TextStyle(
+                                    color: Color(0xFF39393E),
+                                    fontSize: 14,
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w500,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                        ],
+                        const SizedBox(height: 20),
+                        const Text(
+                          '비밀번호',
+                          style: TextStyle(
+                            color: Color(0xFF797979),
+                            fontSize: 15,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Container(
+                          width: double.infinity,
+                          height: 40,
+                          decoration: ShapeDecoration(
+                            color: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              side: const BorderSide(
+                                width: 2,
+                                color: Color(0xFFD9D9D9),
+                              ),
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          alignment: Alignment.center,
+                          child: TextField(
+                            controller: controller,
+                            keyboardType: TextInputType.number,
+                            obscureText: true,
+                            maxLength: 4,
+                            enabled: !isLoading,
+                            style: const TextStyle(
+                              color: Color(0xFF39393E),
+                              fontSize: 16,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w600,
+                            ),
+                            decoration: InputDecoration(
+                              isCollapsed: true,
+                              border: InputBorder.none,
+                              counterText: '',
+                            ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(4),
+                            ],
+                          ),
+                        ),
+                        if (error != null) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            error!,
+                            style: const TextStyle(
+                              color: Color(0xFFEF4444),
+                              fontSize: 12,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 20),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                onPressed: isLoading
+                                    ? null
+                                    : () =>
+                                        Navigator.of(dialogContext).pop(false),
+                                style: OutlinedButton.styleFrom(
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                  foregroundColor: const Color(0xFF39393E),
+                                  side: const BorderSide(
+                                      color: Color(0xFFBABAC0)),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 15,
+                                  ),
+                                ),
+                                child: const Text('취소'),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: isLoading
+                                    ? null
+                                    : () async {
+                                        final value = controller.text.trim();
+                                        if (value.length != 4) {
+                                          setState(() {
+                                            error = 'PIN은 4자리 숫자여야 합니다.';
+                                          });
+                                          return;
+                                        }
+                                        setState(() {
+                                          error = null;
+                                          isLoading = true;
+                                        });
+                                        final result = await CouponService
+                                            .redeemCouponWithoutThrow(
+                                          couponCode: coupon.code,
+                                          restaurantId: restaurantId,
+                                          pin: value,
+                                        );
+                                        if (!dialogContext.mounted) return;
+                                        if (result.isSuccess) {
+                                          AnalyticsLogger.logEvent(
+                                            AnalyticsEvents.couponRedeemed,
+                                            parameters: {
+                                              AnalyticsEvents.paramCouponCode:
+                                                  coupon.code,
+                                              AnalyticsEvents.paramRestaurantId:
+                                                  restaurantId,
+                                              AnalyticsEvents
+                                                      .paramRestaurantName:
+                                                  restaurantName ?? '',
+                                              AnalyticsEvents
+                                                      .paramCouponIssueSource:
+                                                  coupon.couponIssueSource,
+                                            },
+                                          );
+                                          Navigator.of(dialogContext).pop(true);
+                                        } else {
+                                          setState(() {
+                                            error = result.errorMessage ??
+                                                '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
+                                            isLoading = false;
+                                          });
+                                        }
+                                      },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: const Color(0xFF1C203C),
+                                  foregroundColor: Colors.white,
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 13),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(15),
+                                  ),
+                                  textStyle: const TextStyle(
+                                    fontFamily: 'Pretendard',
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                    letterSpacing: -0.32,
+                                  ),
+                                ),
+                                child: isLoading
+                                    ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text('사용하기'),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
-          );
-        });
-      },
-    )) ?? false;
+              );
+            });
+          },
+        )) ??
+        false;
   }
 
   void _showSnack(String message) {
@@ -712,11 +865,21 @@ class _CouponListScreenState extends State<CouponListScreen> {
                       // 로그인 화면에서 쿠폰 리스트를 미리 불러온 경우
                       // 바로 상태를 갱신하고, 실패했으면 기존 로딩 로직을 사용.
                       if (result is List<UserCoupon>) {
+                        final issuedCoupons = result
+                            .where((coupon) =>
+                                coupon.status == CouponStatus.issued)
+                            .toList();
+                        final sorted = _sortedCoupons(issuedCoupons);
+                        final categories = _deriveCategories(issuedCoupons);
                         setState(() {
                           _requiresLogin = false;
                           _errorMessage = null;
                           _isLoading = false;
-                          _coupons = _sortedCoupons(result);
+                          _coupons = sorted;
+                          _categories = categories;
+                          if (!categories.contains(_selectedCategory)) {
+                            _selectedCategory = 'ALL';
+                          }
                         });
                       } else if (result == true) {
                         await _loadCoupons();
@@ -785,8 +948,6 @@ class _CouponListScreenState extends State<CouponListScreen> {
       );
     }
 
-    final availableCount = _availableCoupons.length;
-    final completedCount = _completedCoupons.length;
     final filtered = _filteredCoupons;
 
     return ListView(
@@ -798,19 +959,16 @@ class _CouponListScreenState extends State<CouponListScreen> {
         bottom: 140, // 하단 바와 겹치지 않도록 다른 탭과 동일한 여백
       ),
       children: [
-        _buildStatusTabSwitcher(
-          availableCount: availableCount,
-          completedCount: completedCount,
-        ),
+        _buildCategoryFilter(),
         const SizedBox(height: 12),
         if (filtered.isEmpty)
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.25,
             child: Center(
               child: Text(
-                _selectedTabIndex == 0
-                    ? '사용 가능한 쿠폰이 없어요.'
-                    : '사용 완료된 쿠폰이 없어요.',
+                _selectedCategory != 'ALL'
+                    ? '선택한 카테고리의 쿠폰이 없어요.'
+                    : '사용 가능한 쿠폰이 없어요.',
                 style: const TextStyle(fontSize: 15),
               ),
             ),
@@ -836,18 +994,17 @@ class _CouponListScreenState extends State<CouponListScreen> {
       restaurantLabel = '적용 매장 ID: ${coupon.restaurantId}';
     }
     final expiryText = _formatExpiryDate(coupon.expiresAt);
-    final expiryColor = const Color.fromARGB(255, 185, 183, 247);
+    final isExpiryUrgent = coupon.expiresAt != null &&
+        coupon.expiresAt!.difference(DateTime.now()) <= const Duration(days: 7);
+    final expiryColor =
+        isExpiryUrgent ? const Color(0xFFB87270) : const Color(0xFFE1B53E);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0B1033), Color(0xFF1C2470)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFF192132),
       ),
       child: IntrinsicHeight(
         child: Row(

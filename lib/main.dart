@@ -17,6 +17,8 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:app_links/app_links.dart';
 import 'package:flutter/services.dart';
 import 'package:in_app_update/in_app_update.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
 import 'config/analytics_events.dart';
 import 'utils/analytics_logger.dart';
@@ -26,6 +28,20 @@ import 'services/user_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 const MethodChannel _deviceInfoChannel = MethodChannel('app/device_info');
+final DateTime _kSeasonalSplashEnd = DateTime(2026, 4, 12, 23, 59, 59);
+const String _kSplashMode =
+    String.fromEnvironment('SPLASH_MODE', defaultValue: 'auto');
+
+bool _shouldShowSeasonalSplash() {
+  switch (_kSplashMode) {
+    case 'seasonal':
+      return true;
+    case 'default':
+      return false;
+    default:
+      return DateTime.now().isBefore(_kSeasonalSplashEnd);
+  }
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -303,11 +319,7 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
     if (_isCheckingProfile) {
       return const Scaffold(
         backgroundColor: Colors.white,
-        body: Center(
-          child: CircularProgressIndicator(
-            color: Color(0xFF312E81),
-          ),
-        ),
+        body: _AppEntryLoadingView(),
       );
     }
     if (_isProfileIncomplete) {
@@ -321,6 +333,29 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   }
 }
 
+class _AppEntryLoadingView extends StatelessWidget {
+  const _AppEntryLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    final isSeasonalSplash = _shouldShowSeasonalSplash();
+    if (isSeasonalSplash) {
+      return SizedBox.expand(
+        child: Image.asset(
+          'assets/images/seasonal_splash_2026_0430.png',
+          fit: BoxFit.fitWidth,
+          alignment: Alignment.center,
+        ),
+      );
+    }
+    return const Center(
+      child: CircularProgressIndicator(
+        color: Color(0xFF312E81),
+      ),
+    );
+  }
+}
+
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -331,6 +366,9 @@ class MainScreen extends StatefulWidget {
 class MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   static const String _uuidKey = 'user_uuid'; // SharedPreferences ??
+  // 운영 중 필요 시 강제 업데이트 하한 버전을 지정해 사용할 수 있습니다. (예: '2.3.0')
+  static const String? _kIosMinimumRequiredVersion = '2.3.0';
+  bool get _isSeasonalSplashPeriod => _shouldShowSeasonalSplash();
 
   Future<void> _navigateAfterSplash() async {
     final prefs = await SharedPreferences.getInstance();
@@ -390,24 +428,168 @@ class MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _checkForAppUpdate() async {
-    if (!Platform.isAndroid) return;
-    try {
-      final info = await InAppUpdate.checkForUpdate();
-      if (info.updateAvailability != UpdateAvailability.updateAvailable) return;
+    if (Platform.isAndroid) {
+      try {
+        final info = await InAppUpdate.checkForUpdate();
+        if (info.updateAvailability != UpdateAvailability.updateAvailable) {
+          return;
+        }
 
-      if (info.immediateUpdateAllowed) {
-        // 필수 업데이트: 전체 화면 UI로 강제 업데이트
-        await InAppUpdate.performImmediateUpdate();
-      } else if (info.flexibleUpdateAllowed) {
-        // 선택 업데이트: 백그라운드 다운로드 후 설치
-        unawaited(
-          InAppUpdate.startFlexibleUpdate().then((_) {
-            InAppUpdate.completeFlexibleUpdate();
-          }),
-        );
+        if (info.immediateUpdateAllowed) {
+          // 필수 업데이트: 전체 화면 UI로 강제 업데이트
+          await InAppUpdate.performImmediateUpdate();
+        } else if (info.flexibleUpdateAllowed) {
+          // 선택 업데이트: 백그라운드 다운로드 후 설치
+          unawaited(
+            InAppUpdate.startFlexibleUpdate().then((_) {
+              InAppUpdate.completeFlexibleUpdate();
+            }),
+          );
+        }
+      } catch (e) {
+        debugPrint('[Update] 업데이트 확인 실패: $e');
       }
+      return;
+    }
+
+    if (Platform.isIOS) {
+      await _checkForIosAppUpdate();
+    }
+  }
+
+  Future<void> _checkForIosAppUpdate() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+      final bundleId = packageInfo.packageName;
+      final lookupUri = Uri.https(
+        'itunes.apple.com',
+        '/lookup',
+        {'bundleId': bundleId, 'country': 'kr'},
+      );
+      final response =
+          await http.get(lookupUri).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) return;
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) return;
+      final results = decoded['results'];
+      if (results is! List || results.isEmpty) return;
+      final first = results.first;
+      if (first is! Map) return;
+      final map = Map<String, dynamic>.from(first);
+      final latestVersionRaw = map['version'];
+      if (latestVersionRaw is! String || latestVersionRaw.trim().isEmpty) {
+        return;
+      }
+      final latestVersion = latestVersionRaw.trim();
+      if (_compareVersions(currentVersion, latestVersion) >= 0) return;
+
+      final trackViewUrlRaw = map['trackViewUrl'];
+      final trackViewUrl =
+          trackViewUrlRaw is String && trackViewUrlRaw.isNotEmpty
+              ? trackViewUrlRaw
+              : null;
+      final trackIdRaw = map['trackId'];
+      final trackId =
+          trackIdRaw is int ? trackIdRaw : int.tryParse('$trackIdRaw');
+      final isForceUpdate = _kIosMinimumRequiredVersion != null &&
+          _compareVersions(currentVersion, _kIosMinimumRequiredVersion!) < 0;
+
+      if (!mounted) return;
+      await _showIosUpdateDialog(
+        isForceUpdate: isForceUpdate,
+        latestVersion: latestVersion,
+        storeUrl: trackViewUrl,
+        trackId: trackId,
+      );
     } catch (e) {
-      debugPrint('[Update] 업데이트 확인 실패: $e');
+      debugPrint('[Update][iOS] 업데이트 확인 실패: $e');
+    }
+  }
+
+  int _compareVersions(String a, String b) {
+    List<int> normalize(String version) {
+      return version
+          .split('.')
+          .map((part) =>
+              int.tryParse(part.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0)
+          .toList();
+    }
+
+    final left = normalize(a);
+    final right = normalize(b);
+    final maxLen = left.length > right.length ? left.length : right.length;
+    for (var i = 0; i < maxLen; i++) {
+      final lv = i < left.length ? left[i] : 0;
+      final rv = i < right.length ? right[i] : 0;
+      if (lv != rv) return lv.compareTo(rv);
+    }
+    return 0;
+  }
+
+  Future<void> _showIosUpdateDialog({
+    required bool isForceUpdate,
+    required String latestVersion,
+    required String? storeUrl,
+    required int? trackId,
+  }) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: !isForceUpdate,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: !isForceUpdate,
+          child: AlertDialog(
+            title: const Text('업데이트 안내'),
+            content: Text(
+              isForceUpdate
+                  ? '안정적인 서비스 이용을 위해 최신 버전($latestVersion)으로 업데이트가 필요해요.'
+                  : '새 버전($latestVersion)이 출시되었어요. 더 좋은 경험을 위해 업데이트해 주세요.',
+            ),
+            actions: [
+              if (!isForceUpdate)
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('나중에'),
+                ),
+              TextButton(
+                onPressed: () async {
+                  await _launchIosStoreUrl(
+                      storeUrl: storeUrl, trackId: trackId);
+                  if (!isForceUpdate && dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                },
+                child: const Text('업데이트'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _launchIosStoreUrl({
+    required String? storeUrl,
+    required int? trackId,
+  }) async {
+    Uri? preferred;
+    if (storeUrl != null && storeUrl.isNotEmpty) {
+      preferred = Uri.tryParse(storeUrl);
+    }
+    final fallback = trackId != null
+        ? Uri.parse('itms-apps://itunes.apple.com/app/id$trackId')
+        : null;
+
+    if (preferred != null) {
+      final ok =
+          await launchUrl(preferred, mode: LaunchMode.externalApplication);
+      if (ok) return;
+    }
+    if (fallback != null) {
+      await launchUrl(fallback, mode: LaunchMode.externalApplication);
     }
   }
 
@@ -634,22 +816,30 @@ class MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
+      final isSeasonalSplash = _isSeasonalSplashPeriod;
       return Scaffold(
         backgroundColor: Colors.white,
-        body: Column(
-          children: [
-            Spacer(flex: 9),
-            Center(
-              child: Image.asset(
-                'assets/images/Logo-Final.png', // 濡쒓??????寃쎈?
-                width:
-                    MediaQuery.of(context).size.width * 0.6, // ?붾㈃ ??퉬??50%???젙
-                fit: BoxFit.contain, // ??????????
+        body: isSeasonalSplash
+            ? SizedBox.expand(
+                child: Image.asset(
+                  'assets/images/seasonal_splash_2026_0430.png',
+                  fit: BoxFit.fitWidth,
+                  alignment: Alignment.center,
+                ),
+              )
+            : Column(
+                children: [
+                  const Spacer(flex: 9),
+                  Center(
+                    child: Image.asset(
+                      'assets/images/Logo-Final.png',
+                      width: MediaQuery.of(context).size.width * 0.6,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                  const Spacer(flex: 10),
+                ],
               ),
-            ),
-            Spacer(flex: 10),
-          ],
-        ),
       );
     }
     // 濡쒕???꾨땺 ??? ?붾㈃

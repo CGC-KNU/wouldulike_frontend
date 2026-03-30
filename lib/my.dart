@@ -676,12 +676,6 @@ class _MyScreenState extends State<MyScreen> {
           const SizedBox(height: 24),
           _buildSectionHeader('활동 내역'),
           _buildMenuRow(
-            leading: const Text('쿠폰 사용 내역', style: _kItemTitleStyle),
-            trailing: _buildChevron(),
-            onTap: _openCouponList,
-            indent: _kItemIndent,
-          ),
-          _buildMenuRow(
             leading: const Text('찜한 식당 모아보기', style: _kItemTitleStyle),
             trailing: _buildChevron(),
             onTap: _openFavoriteRestaurants,
@@ -727,7 +721,7 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.2.2', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.3.0', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],

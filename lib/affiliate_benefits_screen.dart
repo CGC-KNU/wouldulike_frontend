@@ -120,6 +120,16 @@ class _CouponCounts {
   int get total => issued + redeemed;
 }
 
+class _StampAddRequest {
+  const _StampAddRequest({
+    required this.pin,
+    required this.count,
+  });
+
+  final String pin;
+  final int count;
+}
+
 class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   static const String _kFavoriteAffiliateRestaurantIdsKey =
       'affiliate_favorite_restaurant_ids';
@@ -208,9 +218,11 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
       if (!mounted) return;
       setState(() {
-        final shuffledAffiliate = List<AffiliateRestaurantSummary>.from(affiliateRestaurants);
+        final shuffledAffiliate =
+            List<AffiliateRestaurantSummary>.from(affiliateRestaurants);
         shuffledAffiliate.shuffle(math.Random());
-        final shuffledGeneral = List<GeneralRestaurantSummary>.from(generalRestaurants);
+        final shuffledGeneral =
+            List<GeneralRestaurantSummary>.from(generalRestaurants);
         shuffledGeneral.shuffle(math.Random());
         _affiliateRestaurants = shuffledAffiliate;
         _generalRestaurants = shuffledGeneral;
@@ -1004,97 +1016,97 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             controller: _scrollController,
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             padding: const EdgeInsets.only(
-            top: 16,
-            // 마지막 식당 카드 한 블록 정도의 여백은 두어서
-            // 하단 바와 겹치지 않고 자연스럽게 보이도록 유지합니다.
-            bottom: 140,
-          ),
-          children: [
-            _buildRestaurantSearchBar(),
-            const SizedBox(height: 12),
-            _buildCategoryFilter(),
-            const SizedBox(height: 12),
-            if (_isLoading)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: const Text(
-                    '불러오는 중...',
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-              )
-            else if (_filteredAffiliateRestaurants.isEmpty &&
-                _filteredGeneralRestaurants.isEmpty)
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Center(
-                  child: Text(
-                    _normalizeForSearch(_searchQuery).isEmpty
-                        ? '표시할 식당이 없어요.'
-                        : '검색 결과가 없어요.',
-                  ),
-                ),
-              )
-            else ...[
-              if (_filteredAffiliateRestaurants.isNotEmpty) ...[
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
-                  child: Text(
-                    '제휴 식당',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF4B5563),
-                    ),
-                  ),
-                ),
-                ..._filteredAffiliateRestaurants.map(
-                  (restaurant) => Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    child: _buildAffiliateRestaurantCard(restaurant),
-                  ),
-                ),
-              ],
-              if (_filteredGeneralRestaurants.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
-                  child: Text(
-                    '일반 식당',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF4B5563),
-                    ),
-                  ),
-                ),
-                ..._filteredGeneralRestaurants.map(
-                  (restaurant) => Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                    child: _buildGeneralRestaurantCard(restaurant),
-                  ),
-                ),
-                if (_isAppending)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Center(
-                      child: SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+              top: 16,
+              // 마지막 식당 카드 한 블록 정도의 여백은 두어서
+              // 하단 바와 겹치지 않고 자연스럽게 보이도록 유지합니다.
+              bottom: 140,
+            ),
+            children: [
+              _buildRestaurantSearchBar(),
+              const SizedBox(height: 12),
+              _buildCategoryFilter(),
+              const SizedBox(height: 12),
+              if (_isLoading)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: const Text(
+                      '불러오는 중...',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 14,
                       ),
                     ),
                   ),
+                )
+              else if (_filteredAffiliateRestaurants.isEmpty &&
+                  _filteredGeneralRestaurants.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Center(
+                    child: Text(
+                      _normalizeForSearch(_searchQuery).isEmpty
+                          ? '표시할 식당이 없어요.'
+                          : '검색 결과가 없어요.',
+                    ),
+                  ),
+                )
+              else ...[
+                if (_filteredAffiliateRestaurants.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
+                    child: Text(
+                      '제휴 식당',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF4B5563),
+                      ),
+                    ),
+                  ),
+                  ..._filteredAffiliateRestaurants.map(
+                    (restaurant) => Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 4),
+                      child: _buildAffiliateRestaurantCard(restaurant),
+                    ),
+                  ),
+                ],
+                if (_filteredGeneralRestaurants.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(16, 2, 16, 6),
+                    child: Text(
+                      '일반 식당',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF4B5563),
+                      ),
+                    ),
+                  ),
+                  ..._filteredGeneralRestaurants.map(
+                    (restaurant) => Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 4),
+                      child: _buildGeneralRestaurantCard(restaurant),
+                    ),
+                  ),
+                  if (_isAppending)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 16),
+                      child: Center(
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                    ),
+                ],
               ],
             ],
-          ],
-        ),
+          ),
         ),
       ),
     );
@@ -1146,8 +1158,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                     children: [
                       if (_searchFocusNode.hasFocus)
                         IconButton(
-                          onPressed: () =>
-                              FocusScope.of(context).unfocus(),
+                          onPressed: () => FocusScope.of(context).unfocus(),
                           icon: const Icon(Icons.keyboard_hide, size: 20),
                           color: const Color(0xFF6B7280),
                           splashRadius: 18,
@@ -1732,8 +1743,7 @@ class _AffiliateRestaurantDetailSheetState
         .toList();
     if (visitRewards.isEmpty) return null;
 
-    visitRewards.sort(
-        (a, b) => (a.minVisit ?? 0).compareTo(b.minVisit ?? 0));
+    visitRewards.sort((a, b) => (a.minVisit ?? 0).compareTo(b.minVisit ?? 0));
     for (final r in visitRewards) {
       final min = r.minVisit ?? 0;
       final max = r.maxVisit;
@@ -1753,9 +1763,8 @@ class _AffiliateRestaurantDetailSheetState
         : _fallbackRewardsForEmpty(target: status.target);
     final current = status.current;
 
-    final thresholdRewards = apiRewards
-        .where((r) => r.stamps != null && r.stamps! > 0)
-        .toList();
+    final thresholdRewards =
+        apiRewards.where((r) => r.stamps != null && r.stamps! > 0).toList();
     final visitRewards = apiRewards
         .where((r) => r.isVisitPattern && r.minVisit != null)
         .toList();
@@ -1767,8 +1776,7 @@ class _AffiliateRestaurantDetailSheetState
       }
     }
     if (visitRewards.isNotEmpty) {
-      visitRewards.sort(
-          (a, b) => (a.minVisit ?? 0).compareTo(b.minVisit ?? 0));
+      visitRewards.sort((a, b) => (a.minVisit ?? 0).compareTo(b.minVisit ?? 0));
       for (final r in visitRewards) {
         if ((r.minVisit ?? 0) > current) return r;
       }
@@ -1822,8 +1830,7 @@ class _AffiliateRestaurantDetailSheetState
           updatedAt: null,
         );
     final hasInitialStatus = widget.initialStampStatus != null;
-    final hasEmptyRewards =
-        hasInitialStatus &&
+    final hasEmptyRewards = hasInitialStatus &&
         (widget.initialStampStatus!.rewards.isEmpty ||
             widget.initialStampStatus!.rewards
                 .where((r) => r.stamps != null && r.stamps! > 0)
@@ -1950,23 +1957,8 @@ class _AffiliateRestaurantDetailSheetState
   }
 
   Future<void> _handleAddStamp() async {
-    final pin = await _promptForPin(
-      title: '스탬프 적립',
-      confirmLabel: '적립하기',
-      description: const [
-        TextSpan(
-          text: '스탬프를 적립하시겠습니까?\n\n관리자 비밀번호를 입력하시면\n\n스탬프 1개가 적립됩니다.',
-          style: TextStyle(
-            color: Color(0xFF39393E),
-            fontSize: 14,
-            fontFamily: 'Pretendard',
-            fontWeight: FontWeight.w500,
-            height: 0.70,
-          ),
-        ),
-      ],
-    );
-    if (pin == null) return;
+    final request = await _promptForStampAdd();
+    if (request == null) return;
 
     setState(() {
       _isStampProcessing = true;
@@ -1974,14 +1966,20 @@ class _AffiliateRestaurantDetailSheetState
     });
     final addResult = await CouponService.addStamp(
       restaurantId: widget.restaurant.id,
-      pin: pin,
+      pin: request.pin,
+      count: request.count,
     );
     if (!mounted) return;
     if (!addResult.isSuccess) {
+      final failureMessage = addResult.errorMessage ?? '요청이 실패했어요.';
       setState(() {
         _isStampProcessing = false;
-        _stampError = addResult.errorMessage ?? '요청이 실패했어요.';
+        _stampError = failureMessage;
       });
+      if (addResult.statusCode == 429 ||
+          addResult.errorCode == 'stamp_daily_limit_reached') {
+        await _showStampDailyLimitDialog(failureMessage);
+      }
       return;
     }
     final result = addResult.result!;
@@ -2020,7 +2018,8 @@ class _AffiliateRestaurantDetailSheetState
         });
         widget.onStampStatusUpdated(merged);
       }
-      _showSnack('스탬프를 적립했어요.');
+      final addedCount = result.added > 0 ? result.added : request.count;
+      _showSnack('스탬프 $addedCount개를 적립했어요.');
       final rewardCodesSet = <String>{
         ...result.rewardCouponCodes.where((code) => code.isNotEmpty),
       };
@@ -2095,8 +2094,8 @@ class _AffiliateRestaurantDetailSheetState
               _coupons = List<UserCoupon>.from(_coupons)..addAll(newCoupons);
               _sortCoupons();
             });
-            widget.onRewardCouponsIssued(
-                newCoupons.map((c) => c.code).toList());
+            widget
+                .onRewardCouponsIssued(newCoupons.map((c) => c.code).toList());
           }
 
           final buffer = StringBuffer();
@@ -2119,12 +2118,12 @@ class _AffiliateRestaurantDetailSheetState
               _coupons = List<UserCoupon>.from(_coupons)
                 ..addAll(
                   newCodes.map(
-                  (code) => UserCoupon(
-                    code: code,
-                    status: CouponStatus.issued,
-                    restaurantId: widget.restaurant.id,
-                    issueKey: 'STAMP_REWARD:reward',
-                  ),
+                    (code) => UserCoupon(
+                      code: code,
+                      status: CouponStatus.issued,
+                      restaurantId: widget.restaurant.id,
+                      issueKey: 'STAMP_REWARD:reward',
+                    ),
                   ),
                 );
               _sortCoupons();
@@ -2199,7 +2198,8 @@ class _AffiliateRestaurantDetailSheetState
       if (!mounted) return;
       if (success) {
         setState(() {
-          _coupons = _coupons.where((item) => item.code != coupon.code).toList();
+          _coupons =
+              _coupons.where((item) => item.code != coupon.code).toList();
         });
         widget.onCouponRedeemed(coupon.code);
         _showSnack('쿠폰을 사용했어요.');
@@ -2223,8 +2223,282 @@ class _AffiliateRestaurantDetailSheetState
     bool isLoading = false;
     final hasNotes = notes != null && notes.isNotEmpty;
     return (await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) {
+            return StatefulBuilder(builder: (context, setState) {
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: 360,
+                    maxHeight: MediaQuery.of(dialogContext).size.height * 0.75,
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+                    decoration: ShapeDecoration(
+                      color: const Color(0xFFF2F2F2),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '쿠폰 사용',
+                            style: TextStyle(
+                              color: Color(0xFF39393E),
+                              fontSize: 19,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w800,
+                              height: 1.21,
+                            ),
+                          ),
+                          const SizedBox(height: 22),
+                          Text.rich(
+                            const TextSpan(
+                              text:
+                                  '해당 쿠폰을 사용처리 하시겠습니까?\n\n관리자 비밀번호를 입력하시면\n\n즉시 사용처리 됩니다.',
+                              style: TextStyle(
+                                color: Color(0xFF39393E),
+                                fontSize: 15,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w500,
+                                height: 0.70,
+                              ),
+                            ),
+                          ),
+                          if (hasNotes) ...[
+                            const SizedBox(height: 16),
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: const Color(0xFFE5E5E5),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    '사용 조건',
+                                    style: TextStyle(
+                                      color: Color(0xFF797979),
+                                      fontSize: 12,
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    notes,
+                                    style: const TextStyle(
+                                      color: Color(0xFF39393E),
+                                      fontSize: 14,
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 26),
+                          const Text(
+                            'PIN 번호',
+                            style: TextStyle(
+                              color: Color(0xFF797979),
+                              fontSize: 15,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: -0.5,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            width: double.infinity,
+                            height: 40,
+                            decoration: ShapeDecoration(
+                              color: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                side: const BorderSide(
+                                  width: 2,
+                                  color: Color(0xFFD9D9D9),
+                                ),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            alignment: Alignment.center,
+                            child: TextField(
+                              controller: controller,
+                              keyboardType: TextInputType.number,
+                              obscureText: true,
+                              maxLength: 4,
+                              enabled: !isLoading,
+                              style: const TextStyle(
+                                color: Color(0xFF39393E),
+                                fontSize: 16,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w600,
+                              ),
+                              decoration: InputDecoration(
+                                isCollapsed: true,
+                                border: InputBorder.none,
+                                counterText: '',
+                              ),
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                                LengthLimitingTextInputFormatter(4),
+                              ],
+                            ),
+                          ),
+                          if (error != null) ...[
+                            const SizedBox(height: 6),
+                            Text(
+                              error!,
+                              style: const TextStyle(
+                                color: Color(0xFFEF4444),
+                                fontSize: 12,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                          const SizedBox(height: 20),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton(
+                                  onPressed: isLoading
+                                      ? null
+                                      : () => Navigator.of(dialogContext)
+                                          .pop(false),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                    foregroundColor: const Color(0xFF39393E),
+                                    side: const BorderSide(
+                                        color: Color(0xFFBABAC0)),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 15,
+                                    ),
+                                  ),
+                                  child: const Text('취소'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: ElevatedButton(
+                                  onPressed: isLoading
+                                      ? null
+                                      : () async {
+                                          final value = controller.text.trim();
+                                          if (value.length != 4) {
+                                            setState(() {
+                                              error = 'PIN은 4자리 숫자여야 합니다.';
+                                            });
+                                            return;
+                                          }
+                                          setState(() {
+                                            error = null;
+                                            isLoading = true;
+                                          });
+                                          final result = await CouponService
+                                              .redeemCouponWithoutThrow(
+                                            couponCode: coupon.code,
+                                            restaurantId: restaurantId,
+                                            pin: value,
+                                          );
+                                          if (!dialogContext.mounted) return;
+                                          if (result.isSuccess) {
+                                            AnalyticsLogger.logEvent(
+                                              AnalyticsEvents.couponRedeemed,
+                                              parameters: {
+                                                AnalyticsEvents.paramCouponCode:
+                                                    coupon.code,
+                                                AnalyticsEvents
+                                                        .paramRestaurantId:
+                                                    restaurantId,
+                                                AnalyticsEvents
+                                                        .paramRestaurantName:
+                                                    restaurantName ?? '',
+                                                AnalyticsEvents
+                                                        .paramCouponIssueSource:
+                                                    coupon.couponIssueSource,
+                                              },
+                                            );
+                                            Navigator.of(dialogContext)
+                                                .pop(true);
+                                          } else {
+                                            setState(() {
+                                              error = result.errorMessage ??
+                                                  '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
+                                              isLoading = false;
+                                            });
+                                          }
+                                        },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: const Color(0xFF1C203C),
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 13),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(15),
+                                    ),
+                                    textStyle: const TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                      letterSpacing: -0.32,
+                                    ),
+                                  ),
+                                  child: isLoading
+                                      ? const SizedBox(
+                                          height: 20,
+                                          width: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Text('사용하기'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            });
+          },
+        )) ??
+        false;
+  }
+
+  Future<_StampAddRequest?> _promptForStampAdd() async {
+    final controller = TextEditingController();
+    int selectedCount = 1;
+    String? error;
+    return showDialog<_StampAddRequest>(
       context: context,
-      barrierDismissible: false,
       builder: (dialogContext) {
         return StatefulBuilder(builder: (context, setState) {
           return Dialog(
@@ -2249,7 +2523,7 @@ class _AffiliateRestaurantDetailSheetState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        '쿠폰 사용',
+                        '스탬프 적립',
                         style: TextStyle(
                           color: Color(0xFF39393E),
                           fontSize: 19,
@@ -2260,57 +2534,71 @@ class _AffiliateRestaurantDetailSheetState
                       ),
                       const SizedBox(height: 22),
                       Text.rich(
-                        const TextSpan(
-                          text: '해당 쿠폰을 사용처리 하시겠습니까?\n\n관리자 비밀번호를 입력하시면\n\n즉시 사용처리 됩니다.',
-                          style: TextStyle(
+                        TextSpan(
+                          text:
+                              '스탬프를 적립하시겠습니까?\n\n적립 개수를 선택하고 관리자 비밀번호를 입력하시면\n\n스탬프 $selectedCount개가 적립됩니다.',
+                          style: const TextStyle(
                             color: Color(0xFF39393E),
-                            fontSize: 15,
+                            fontSize: 14,
                             fontFamily: 'Pretendard',
                             fontWeight: FontWeight.w500,
                             height: 0.70,
                           ),
                         ),
                       ),
-                      if (hasNotes) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: const Color(0xFFE5E5E5),
-                              width: 1,
+                      const SizedBox(height: 20),
+                      const Text(
+                        '적립 개수',
+                        style: TextStyle(
+                          color: Color(0xFF797979),
+                          fontSize: 15,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        decoration: ShapeDecoration(
+                          color: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            side: const BorderSide(
+                              width: 2,
+                              color: Color(0xFFD9D9D9),
                             ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                '사용 조건',
-                                style: TextStyle(
-                                  color: Color(0xFF797979),
-                                  fontSize: 12,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                notes,
-                                style: const TextStyle(
-                                  color: Color(0xFF39393E),
-                                  fontSize: 14,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
+                            borderRadius: BorderRadius.circular(10),
                           ),
                         ),
-                      ],
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            value: selectedCount,
+                            isExpanded: true,
+                            borderRadius: BorderRadius.circular(10),
+                            dropdownColor: Colors.white,
+                            style: const TextStyle(
+                              color: Color(0xFF39393E),
+                              fontSize: 16,
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w600,
+                            ),
+                            items: List.generate(
+                              4,
+                              (index) => DropdownMenuItem<int>(
+                                value: index + 1,
+                                child: Text('${index + 1}개'),
+                              ),
+                            ),
+                            onChanged: (value) {
+                              if (value == null) return;
+                              setState(() {
+                                selectedCount = value;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
                       const SizedBox(height: 26),
                       const Text(
                         '비밀번호',
@@ -2343,14 +2631,13 @@ class _AffiliateRestaurantDetailSheetState
                           keyboardType: TextInputType.number,
                           obscureText: true,
                           maxLength: 4,
-                          enabled: !isLoading,
                           style: const TextStyle(
                             color: Color(0xFF39393E),
                             fontSize: 16,
                             fontFamily: 'Pretendard',
                             fontWeight: FontWeight.w600,
                           ),
-                          decoration: InputDecoration(
+                          decoration: const InputDecoration(
                             isCollapsed: true,
                             border: InputBorder.none,
                             counterText: '',
@@ -2378,13 +2665,14 @@ class _AffiliateRestaurantDetailSheetState
                         children: [
                           Expanded(
                             child: OutlinedButton(
-                              onPressed: isLoading
-                                  ? null
-                                  : () => Navigator.of(dialogContext).pop(false),
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
                               style: OutlinedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                                 foregroundColor: const Color(0xFF39393E),
-                                side: const BorderSide(color: Color(0xFFBABAC0)),
+                                side:
+                                    const BorderSide(color: Color(0xFFBABAC0)),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -2400,54 +2688,26 @@ class _AffiliateRestaurantDetailSheetState
                           const SizedBox(width: 10),
                           Expanded(
                             child: ElevatedButton(
-                              onPressed: isLoading
-                                  ? null
-                                  : () async {
-                                      final value = controller.text.trim();
-                                      if (value.length != 4) {
-                                        setState(() {
-                                          error = 'PIN은 4자리 숫자여야 합니다.';
-                                        });
-                                        return;
-                                      }
-                                      setState(() {
-                                        error = null;
-                                        isLoading = true;
-                                      });
-                                      final result =
-                                          await CouponService.redeemCouponWithoutThrow(
-                                        couponCode: coupon.code,
-                                        restaurantId: restaurantId,
-                                        pin: value,
-                                      );
-                                      if (!dialogContext.mounted) return;
-                                      if (result.isSuccess) {
-                                        AnalyticsLogger.logEvent(
-                                          AnalyticsEvents.couponRedeemed,
-                                          parameters: {
-                                            AnalyticsEvents.paramCouponCode:
-                                                coupon.code,
-                                            AnalyticsEvents.paramRestaurantId:
-                                                restaurantId,
-                                            AnalyticsEvents.paramRestaurantName:
-                                                restaurantName ?? '',
-                                            AnalyticsEvents.paramCouponIssueSource:
-                                                coupon.couponIssueSource,
-                                          },
-                                        );
-                                        Navigator.of(dialogContext).pop(true);
-                                      } else {
-                                        setState(() {
-                                          error = result.errorMessage ??
-                                              '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
-                                          isLoading = false;
-                                        });
-                                      }
-                                    },
+                              onPressed: () {
+                                final value = controller.text.trim();
+                                if (value.length != 4) {
+                                  setState(() {
+                                    error = 'PIN은 4자리 숫자여야 합니다.';
+                                  });
+                                  return;
+                                }
+                                Navigator.of(dialogContext).pop(
+                                  _StampAddRequest(
+                                    pin: value,
+                                    count: selectedCount,
+                                  ),
+                                );
+                              },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF1C203C),
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 13),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 13),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(15),
                                 ),
@@ -2458,16 +2718,7 @@ class _AffiliateRestaurantDetailSheetState
                                   letterSpacing: -0.32,
                                 ),
                               ),
-                              child: isLoading
-                                  ? const SizedBox(
-                                      height: 20,
-                                      width: 20,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text('사용하기'),
+                              child: const Text('적립하기'),
                             ),
                           ),
                         ],
@@ -2480,221 +2731,6 @@ class _AffiliateRestaurantDetailSheetState
           );
         });
       },
-    )) ?? false;
-  }
-
-  Future<String?> _promptForPin({
-    required String title,
-    required String confirmLabel,
-    required List<TextSpan> description,
-    String? notes,
-  }) async {
-    final controller = TextEditingController();
-    String? error;
-    final hasNotes = notes != null && notes.isNotEmpty;
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(builder: (context, setState) {
-          return Dialog(
-            backgroundColor: Colors.transparent,
-            insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: 360,
-                maxHeight: MediaQuery.of(dialogContext).size.height * 0.75,
-              ),
-              child: Container(
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                decoration: ShapeDecoration(
-                  color: const Color(0xFFF2F2F2),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                ),
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Color(0xFF39393E),
-                          fontSize: 19,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w800,
-                          height: 1.21,
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      Text.rich(
-                        TextSpan(children: description),
-                      ),
-                      if (hasNotes) ...[
-                        const SizedBox(height: 16),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(
-                              color: const Color(0xFFE5E5E5),
-                              width: 1,
-                            ),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                '사용 조건',
-                                style: TextStyle(
-                                  color: Color(0xFF797979),
-                                  fontSize: 12,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                notes,
-                                style: const TextStyle(
-                                  color: Color(0xFF39393E),
-                                  fontSize: 14,
-                                  fontFamily: 'Pretendard',
-                                  fontWeight: FontWeight.w500,
-                                  height: 1.4,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 26),
-                      const Text(
-                        '비밀번호',
-                      style: TextStyle(
-                        color: Color(0xFF797979),
-                        fontSize: 15,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      width: double.infinity,
-                      height: 40,
-                      decoration: ShapeDecoration(
-                        color: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          side: const BorderSide(
-                            width: 2,
-                            color: Color(0xFFD9D9D9),
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      alignment: Alignment.center,
-                      child: TextField(
-                        controller: controller,
-                        keyboardType: TextInputType.number,
-                        obscureText: true,
-                        maxLength: 4,
-                        style: const TextStyle(
-                          color: Color(0xFF39393E),
-                          fontSize: 16,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                        ),
-                        decoration: InputDecoration(
-                          isCollapsed: true,
-                          border: InputBorder.none,
-                          counterText: '',
-                        ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(4),
-                        ],
-                      ),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        error!,
-                        style: const TextStyle(
-                          color: Color(0xFFEF4444),
-                          fontSize: 12,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(dialogContext).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              foregroundColor: const Color(0xFF39393E),
-                              side: const BorderSide(color: Color(0xFFBABAC0)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              textStyle: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
-                            ),
-                            child: const Text('취소'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              final value = controller.text.trim();
-                              if (value.length != 4) {
-                                setState(() {
-                                  error = 'PIN은 4자리 숫자여야 합니다.';
-                                });
-                                return;
-                              }
-                              Navigator.of(dialogContext).pop(value);
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF1C203C),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              textStyle: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                                letterSpacing: -0.32,
-                              ),
-                            ),
-                            child: Text(confirmLabel),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          );
-        },
-        );
-      },
     );
   }
 
@@ -2702,6 +2738,25 @@ class _AffiliateRestaurantDetailSheetState
     // 모달 시트 내 SnackBar → Scaffold 레이아웃 충돌 발생. 스탬프/쿠폰 에러는 _stampError 등으로 표시
     if (message.isEmpty || !mounted) return;
     // SnackBar 호출 제거 (ScaffoldLayout.performLayout 오류 원인)
+  }
+
+  Future<void> _showStampDailyLimitDialog(String message) async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('적립 한도 안내'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('확인'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -2934,37 +2989,39 @@ class _AffiliateRestaurantDetailSheetState
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0B1033), Color(0xFF1C2470)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFF192132),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
+              SizedBox(
                 width: 32,
                 height: 32,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(
-                  Icons.card_giftcard,
-                  color: Color(0xFFFFB800),
-                  size: 26,
+                child: Transform.translate(
+                  offset: const Offset(0, 2),
+                  child: Image.asset(
+                    'assets/images/stamp_gift.png',
+                    width: 32,
+                    height: 32,
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                '스탬프 혜택',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+              const SizedBox(
+                height: 32,
+                child: Center(
+                  child: Text(
+                    '스탬프 혜택',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
                 ),
               ),
               const Spacer(),
@@ -2999,7 +3056,7 @@ class _AffiliateRestaurantDetailSheetState
             _buildStampProgress(),
             const SizedBox(height: 12),
             const Text(
-              '하루 최대 3회 적립 가능',
+              '하루 최대 5회 적립 가능',
               style: TextStyle(
                 color: Colors.white70,
                 fontSize: 12,
@@ -3090,9 +3147,8 @@ class _AffiliateRestaurantDetailSheetState
       rewardThresholds.isNotEmpty ? rewardThresholds.last : 10,
     );
     final filled = math.min(status.current, total);
-    final milestoneSet = rewardThresholds.isNotEmpty
-        ? rewardThresholds.toSet()
-        : <int>{5, 10};
+    final milestoneSet =
+        rewardThresholds.isNotEmpty ? rewardThresholds.toSet() : <int>{5, 10};
 
     // 메인 리워드 요약 문구: VISIT 패턴이면 현재 구간 혜택, 아니면 다음 목표 혜택 표시
     // (THRESHOLD: 1,3,5,7,10 / VISIT: 1~4, 5~9, 10 등 식당별 상이)
@@ -3114,13 +3170,11 @@ class _AffiliateRestaurantDetailSheetState
       if (nextReward.stamps != null) {
         remainingToNext = math.max(nextReward.stamps! - status.current, 0);
       } else if (nextReward.minVisit != null) {
-        remainingToNext =
-            math.max(nextReward.minVisit! - status.current, 0);
+        remainingToNext = math.max(nextReward.minVisit! - status.current, 0);
       }
     }
     // 정든밤: VISIT 패턴으로 항상 "리워드까지 1개 남았어요" 표기
-    final isJeongdeunbam =
-        widget.restaurant.name.contains('정든밤');
+    final isJeongdeunbam = widget.restaurant.name.contains('정든밤');
     if (isJeongdeunbam && nextReward != null) {
       remainingToNext = 1;
     }
@@ -3182,6 +3236,7 @@ class _AffiliateRestaurantDetailSheetState
                         child: _buildStampIcon(
                           filled: isFilled,
                           showMilestoneGlow: isMilestone && isFilled,
+                          showMilestoneMarker: isMilestone && !isFilled,
                           size: stampSize,
                         ),
                       );
@@ -3395,7 +3450,9 @@ class _AffiliateRestaurantDetailSheetState
 
     Widget? nextMessageWidget;
     if (status.current < 5 &&
-        (thresholdSet.contains(5) || thresholds.isEmpty || status.target <= 5)) {
+        (thresholdSet.contains(5) ||
+            thresholds.isEmpty ||
+            status.target <= 5)) {
       final benefit = _stampBenefitFor(5);
       nextMessageWidget = benefit != null
           ? buildUpcomingMessage(5, benefit)
@@ -3404,7 +3461,9 @@ class _AffiliateRestaurantDetailSheetState
               style: upcomingStyle,
             );
     } else if (status.current < 10 &&
-        (thresholdSet.contains(10) || thresholds.isEmpty || status.target <= 10)) {
+        (thresholdSet.contains(10) ||
+            thresholds.isEmpty ||
+            status.target <= 10)) {
       final benefit = _stampBenefitFor(10);
       nextMessageWidget = benefit != null
           ? buildUpcomingMessage(10, benefit)
@@ -3523,6 +3582,7 @@ class _AffiliateRestaurantDetailSheetState
   Widget _buildStampIcon({
     required bool filled,
     required bool showMilestoneGlow,
+    required bool showMilestoneMarker,
     double size = 50,
   }) {
     final decoration = ShapeDecoration(
@@ -3565,7 +3625,49 @@ class _AffiliateRestaurantDetailSheetState
                 ),
               ),
             )
-          : const SizedBox.shrink(),
+          : (showMilestoneMarker
+              ? Opacity(
+                  opacity: 0.18,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(15),
+                    child: ColorFiltered(
+                      colorFilter: const ColorFilter.matrix(<double>[
+                        0.2126,
+                        0.7152,
+                        0.0722,
+                        0,
+                        0,
+                        0.2126,
+                        0.7152,
+                        0.0722,
+                        0,
+                        0,
+                        0.2126,
+                        0.7152,
+                        0.0722,
+                        0,
+                        0,
+                        0,
+                        0,
+                        0,
+                        1,
+                        0,
+                      ]),
+                      child: Image.asset(
+                        'assets/images/would_logo.png',
+                        width: size * 0.72,
+                        height: size * 0.72,
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => Icon(
+                          Icons.restaurant,
+                          color: const Color(0xFF9CA3AF),
+                          size: size * 0.6,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              : const SizedBox.shrink()),
     );
   }
 
@@ -3661,18 +3763,17 @@ class _AffiliateRestaurantDetailSheetState
         benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
     final statusText = _couponStatusLabel(coupon.status);
     final expiryText = _formatExpiryDate(coupon.expiresAt);
-    final expiryColor = const Color.fromARGB(255, 185, 183, 247);
+    final isExpiryUrgent = coupon.expiresAt != null &&
+        coupon.expiresAt!.difference(DateTime.now()) <= const Duration(days: 7);
+    final expiryColor =
+        isExpiryUrgent ? const Color(0xFFB87270) : const Color(0xFFE1B53E);
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          colors: [Color(0xFF0B1033), Color(0xFF1C2470)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: const Color(0xFF192132),
       ),
       child: IntrinsicHeight(
         child: Row(
