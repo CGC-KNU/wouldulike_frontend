@@ -1413,15 +1413,18 @@ class _HomeContentState extends State<HomeContent> {
     if (!_isValidHttpImageUrl(imageUrl)) {
       return Image.asset(
         'assets/images/food_image0.png',
+        width: double.infinity,
         fit: BoxFit.cover,
       );
     }
     return Image.network(
       imageUrl.trim(),
+      width: double.infinity,
       fit: BoxFit.cover,
       alignment: Alignment.center,
       errorBuilder: (_, __, ___) => Image.asset(
         'assets/images/food_image0.png',
+        width: double.infinity,
         fit: BoxFit.cover,
       ),
     );
