@@ -214,6 +214,31 @@ class ApiClient {
     return response;
   }
 
+  static Future<http.Response> delete(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    final uri = _resolve(path, queryParameters);
+    Future<http.Response> sendRequest() async {
+      final requestHeaders =
+          await _headers(authenticated: authenticated, extra: headers);
+      try {
+        return await _http.delete(uri, headers: requestHeaders);
+      } catch (e) {
+        throw ApiNetworkException(e);
+      }
+    }
+
+    final response = await _sendWithAuthRetry(
+      authenticated: authenticated,
+      sendRequest: sendRequest,
+    );
+    _throwIfFailed(response);
+    return response;
+  }
+
   static Future<http.Response> _sendWithAuthRetry({
     required bool authenticated,
     required Future<http.Response> Function() sendRequest,

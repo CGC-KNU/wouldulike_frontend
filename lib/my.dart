@@ -50,6 +50,7 @@ class _MyScreenState extends State<MyScreen> {
   bool _isInviteLoading = false;
   bool _isShareInProgress = false;
   bool _isKakaoLogoutInProgress = false;
+  bool _isAccountDeleteInProgress = false;
   String? inviteCode;
   String? _inviteError;
   bool _referralInputLocked = false;
@@ -143,6 +144,294 @@ class _MyScreenState extends State<MyScreen> {
         content: Text(errorMessage ?? '로그아웃이 완료되었어요.'),
       ),
     );
+  }
+
+  Future<bool> _showAccountDeleteFirstConfirmDialog() async {
+    if (!mounted) return false;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Container(
+              width: 358,
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+              decoration: ShapeDecoration(
+                color: const Color(0xFFF2F2F2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '계정 삭제',
+                    style: TextStyle(
+                      color: Color(0xFF39393E),
+                      fontSize: 19,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
+                      height: 1.21,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const SizedBox(
+                    width: 330,
+                    child: Text(
+                      '계정을 삭제하면 쿠폰/스탬프 내역 등 계정 데이터가 함께 정리되며 되돌릴 수 없어요.\n\n계속 진행할까요?',
+                      style: TextStyle(
+                        color: Color(0xFF39393E),
+                        fontSize: 15,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w500,
+                        height: 1.20,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            foregroundColor: const Color(0xFF39393E),
+                            side: const BorderSide(color: Color(0xFFBABAC0)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                          child: const Text('취소'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF1C203C),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            elevation: 0,
+                            textStyle: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              letterSpacing: -0.32,
+                            ),
+                          ),
+                          child: const Text('계속'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  Future<bool> _showAccountDeleteSecondConfirmDialog() async {
+    if (!mounted) return false;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 360),
+            child: Container(
+              width: 358,
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+              decoration: ShapeDecoration(
+                color: const Color(0xFFF2F2F2),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(15),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '정말로 삭제할까요?',
+                    style: TextStyle(
+                      color: Color(0xFF39393E),
+                      fontSize: 19,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
+                      height: 1.21,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const SizedBox(
+                    width: 330,
+                    child: Text(
+                      '이 작업은 되돌릴 수 없어요.\n계정을 삭제하시겠어요?',
+                      style: TextStyle(
+                        color: Color(0xFF39393E),
+                        fontSize: 15,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w500,
+                        height: 1.20,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            foregroundColor: const Color(0xFF39393E),
+                            side: const BorderSide(color: Color(0xFFBABAC0)),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            textStyle: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                          ),
+                          child: const Text('취소'),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(true),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFB91C1C),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            elevation: 0,
+                            textStyle: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              letterSpacing: -0.32,
+                            ),
+                          ),
+                          child: const Text('삭제'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    return result ?? false;
+  }
+
+  Future<void> _handleAccountDelete() async {
+    if (_isAccountDeleteInProgress) return;
+    if (!isKakaoLoggedIn) {
+      _promptLoginRequired();
+      return;
+    }
+
+    final first = await _showAccountDeleteFirstConfirmDialog();
+    if (!first) return;
+    final second = await _showAccountDeleteSecondConfirmDialog();
+    if (!second) return;
+
+    if (!mounted) return;
+    setState(() {
+      _isAccountDeleteInProgress = true;
+    });
+
+    try {
+      await UserService.deleteMyAccount();
+      await AuthService.logout();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('계정이 삭제되었어요.')),
+      );
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    } on ApiAuthException catch (e) {
+      try {
+        await AuthService.logout();
+      } catch (_) {}
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+      Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+    } on ApiHttpException catch (e) {
+      String message;
+      if (e.statusCode == 401) {
+        message = '세션이 만료되었어요. 다시 로그인해 주세요.';
+        try {
+          await AuthService.logout();
+        } catch (_) {}
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message)),
+        );
+        Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
+        return;
+      }
+
+      final detail = _extractDetailMessage(e.body);
+      if (e.statusCode >= 500) {
+        message = '일시적인 오류로 탈퇴에 실패했어요. 잠시 후 다시 시도해주세요.';
+      } else {
+        message = detail ?? '계정 삭제에 실패했어요. 잠시 후 다시 시도해주세요.';
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } on ApiNetworkException catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('네트워크 오류로 탈퇴에 실패했어요. 잠시 후 다시 시도해주세요.')),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('계정 삭제에 실패했어요. 잠시 후 다시 시도해주세요.')),
+      );
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _isAccountDeleteInProgress = false;
+      });
+      await _refreshLoginState();
+    }
   }
 
   Future<String?> _loadInviteCode() async {
@@ -408,23 +697,27 @@ class _MyScreenState extends State<MyScreen> {
   }
 
   Widget _buildAccountTile() {
-    final isBusy = _isKakaoLogoutInProgress;
-    final label = isKakaoLoggedIn ? '로그아웃' : '로그인';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildMenuRow(
-          leading: Text(label, style: _kItemTitleStyle),
-          trailing: isBusy
+          leading: Text(isKakaoLoggedIn ? '로그아웃' : '로그인', style: _kItemTitleStyle),
+          trailing: _isKakaoLogoutInProgress
               ? const SizedBox(
                   height: 20,
                   width: 20,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               : _buildChevron(),
-          onTap: isBusy
+          onTap: _isKakaoLogoutInProgress
               ? null
               : (isKakaoLoggedIn ? _handleKakaoLogout : _navigateToLoginScreen),
+          indent: _kItemIndent,
+        ),
+        _buildMenuRow(
+          leading: const Text('프로필 설정/재설정', style: _kItemTitleStyle),
+          trailing: _buildChevron(),
+          onTap: isKakaoLoggedIn ? _openProfileSetup : _navigateToLoginScreen,
           indent: _kItemIndent,
         ),
         // 우주라이크 ID 표시 (로그인 상태일 때만, 프로필 설정과 시작점 맞춤)
@@ -445,6 +738,26 @@ class _MyScreenState extends State<MyScreen> {
                 color: Color(0xFF6B7280),
               ),
             ),
+          ),
+        if (isKakaoLoggedIn)
+          _buildMenuRow(
+            leading: Text(
+              '계정 삭제',
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFF6B7280),
+              ),
+            ),
+            trailing: _isAccountDeleteInProgress
+                ? const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : _buildChevron(),
+            onTap: _isAccountDeleteInProgress ? null : _handleAccountDelete,
+            indent: _kItemIndent,
           ),
       ],
     );
@@ -667,12 +980,6 @@ class _MyScreenState extends State<MyScreen> {
         children: [
           _buildSectionHeader('계정 정보'),
           _buildAccountTile(),
-          _buildMenuRow(
-            leading: const Text('프로필 설정/재설정', style: _kItemTitleStyle),
-            trailing: _buildChevron(),
-            onTap: _openProfileSetup,
-            indent: _kItemIndent,
-          ),
           const SizedBox(height: 24),
           _buildSectionHeader('활동 내역'),
           _buildMenuRow(

@@ -420,9 +420,19 @@ class _HomeContentState extends State<HomeContent> {
         _homeCouponShowcase = const <UserCoupon>[];
         _affiliateStampStatuses = const <int, StampStatus>{};
       });
-    } catch (e, stackTrace) {
+    } on ApiNetworkException catch (e) {
+      // 홈 화면에서는 제휴 진행 데이터(쿠폰/스탬프) 로딩 실패가 치명적이지 않으므로
+      // 스택 트레이스는 출력하지 않고 조용히 무시한다.
+      debugPrint('Failed to load affiliate progress data (network): $e');
+    } on ApiHttpException catch (e) {
+      debugPrint(
+          'Failed to load affiliate progress data (http ${e.statusCode})');
+    } on TimeoutException catch (e) {
+      debugPrint('Failed to load affiliate progress data (timeout): $e');
+    } catch (e) {
       debugPrint('Failed to load affiliate progress data: $e');
-      debugPrintStack(stackTrace: stackTrace);
+      // 디버그 환경에서도 과도한 스택 트레이스 출력은 사용자 혼란을 유발할 수 있어
+      // 여기서는 출력하지 않는다.
     }
   }
 
@@ -493,9 +503,8 @@ class _HomeContentState extends State<HomeContent> {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
         SnackBar(content: Text('쿠폰 정보를 불러오지 못했어요. (HTTP ${e.statusCode})')),
       );
-    } catch (e, stackTrace) {
+    } catch (e) {
       debugPrint('Failed to load affiliate coupons: $e');
-      debugPrintStack(stackTrace: stackTrace);
     }
   }
 

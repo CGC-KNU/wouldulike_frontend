@@ -87,6 +87,15 @@ class UserService {
     throw const FormatException('사용자 프로필 응답 형식이 올바르지 않아요.');
   }
 
+  static Future<Map<String, dynamic>> deleteMyAccount() async {
+    final response = await ApiClient.delete('/api/users/me/');
+    final dynamic data = json.decode(utf8.decode(response.bodyBytes));
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    throw const FormatException('계정 삭제 응답 형식이 올바르지 않아요.');
+  }
+
   static Future<NicknameAvailabilityResult> checkNicknameAvailability(
     String nickname,
   ) async {
