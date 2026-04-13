@@ -28,18 +28,23 @@ import 'services/user_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 const MethodChannel _deviceInfoChannel = MethodChannel('app/device_info');
-final DateTime _kSeasonalSplashEnd = DateTime(2026, 4, 12, 23, 59, 59);
+const String _kCampaignSplashAsset =
+    'assets/images/midterm_splash_2026_0415_0424.png';
+final DateTime _kCampaignSplashStart = DateTime(2026, 4, 13);
+final DateTime _kCampaignSplashEnd = DateTime(2026, 4, 24, 23, 59, 59);
 const String _kSplashMode =
     String.fromEnvironment('SPLASH_MODE', defaultValue: 'auto');
 
-bool _shouldShowSeasonalSplash() {
+bool _shouldShowCampaignSplash() {
   switch (_kSplashMode) {
     case 'seasonal':
       return true;
     case 'default':
       return false;
     default:
-      return DateTime.now().isBefore(_kSeasonalSplashEnd);
+      final now = DateTime.now();
+      return !now.isBefore(_kCampaignSplashStart) &&
+          !now.isAfter(_kCampaignSplashEnd);
   }
 }
 
@@ -338,11 +343,11 @@ class _AppEntryLoadingView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isSeasonalSplash = _shouldShowSeasonalSplash();
-    if (isSeasonalSplash) {
+    final shouldShowSplash = _shouldShowCampaignSplash();
+    if (shouldShowSplash) {
       return SizedBox.expand(
         child: Image.asset(
-          'assets/images/seasonal_splash_2026_0430.png',
+          _kCampaignSplashAsset,
           fit: BoxFit.fitWidth,
           alignment: Alignment.center,
         ),
@@ -368,7 +373,7 @@ class MainScreenState extends State<MainScreen> {
   static const String _uuidKey = 'user_uuid'; // SharedPreferences ??
   // 운영 중 필요 시 강제 업데이트 하한 버전을 지정해 사용할 수 있습니다. (예: '2.3.0')
   static const String? _kIosMinimumRequiredVersion = '2.3.0';
-  bool get _isSeasonalSplashPeriod => _shouldShowSeasonalSplash();
+  bool get _isSeasonalSplashPeriod => _shouldShowCampaignSplash();
 
   Future<void> _navigateAfterSplash() async {
     final prefs = await SharedPreferences.getInstance();
@@ -822,7 +827,7 @@ class MainScreenState extends State<MainScreen> {
         body: isSeasonalSplash
             ? SizedBox.expand(
                 child: Image.asset(
-                  'assets/images/seasonal_splash_2026_0430.png',
+                  _kCampaignSplashAsset,
                   fit: BoxFit.fitWidth,
                   alignment: Alignment.center,
                 ),
