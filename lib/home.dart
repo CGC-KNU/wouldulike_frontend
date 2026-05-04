@@ -640,6 +640,7 @@ class _HomeContentState extends State<HomeContent> {
             restaurant: restaurant,
             coupons: _couponsForAffiliate(restaurant.id),
             requiresLogin: _affiliateRequiresLogin,
+            source: 'home',
             isFavorite: _isFavoriteRestaurant(restaurant.id),
             onFavoriteChanged: (isFavorite) {
               _setFavoriteRestaurant(restaurant.id, isFavorite);

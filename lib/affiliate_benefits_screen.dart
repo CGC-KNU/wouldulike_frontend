@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:uuid/uuid.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
@@ -939,6 +940,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             restaurant: restaurant,
             coupons: initialCoupons,
             requiresLogin: _requiresLogin,
+            source: 'affiliate_benefits',
             isFavorite: _isFavoriteAffiliateRestaurant(restaurant.id),
             onFavoriteChanged: (isFavorite) {
               _setFavoriteAffiliateRestaurant(restaurant.id, isFavorite);
@@ -1654,6 +1656,7 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
     required this.restaurant,
     required this.coupons,
     required this.requiresLogin,
+    required this.source,
     required this.isFavorite,
     required this.onFavoriteChanged,
     this.initialStampStatus,
@@ -1665,6 +1668,7 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
   final AffiliateRestaurantSummary restaurant;
   final List<UserCoupon> coupons;
   final bool requiresLogin;
+  final String source;
   final bool isFavorite;
   final void Function(bool isFavorite) onFavoriteChanged;
   final StampStatus? initialStampStatus;
@@ -1700,6 +1704,27 @@ class _AffiliateRestaurantDetailSheetState
   int _currentImageIndex = 0;
   late bool _isFavorite;
   double _lastLoggedScrollOffset = 0;
+  late final DateTime _openedAt;
+  late final String _detailSessionId;
+  String _exitType = 'unknown';
+
+  void _logDetailCta(
+    String cta, {
+    Map<String, Object?>? extra,
+  }) {
+    final params = <String, Object?>{
+      AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+      AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+      AnalyticsEvents.paramDetailSessionId: _detailSessionId,
+      AnalyticsEvents.paramSource: widget.source,
+      AnalyticsEvents.paramCta: cta,
+      ...?extra,
+    };
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantDetailCtaClick,
+      parameters: params,
+    );
+  }
 
   /// API rewards 또는 레거시 fallback에서 threshold별 혜택 문구 반환 (THRESHOLD 패턴용)
   String? _stampBenefitFor(int threshold) {
@@ -1819,6 +1844,21 @@ class _AffiliateRestaurantDetailSheetState
   @override
   void initState() {
     super.initState();
+    _openedAt = DateTime.now();
+    _detailSessionId = const Uuid().v4();
+    final prev = AnalyticsLogger.getRecentLastRestaurantDetail();
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantDetailOpen,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+        AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+        AnalyticsEvents.paramDetailSessionId: _detailSessionId,
+        AnalyticsEvents.paramSource: widget.source,
+        if (prev.restaurantId != null)
+          AnalyticsEvents.paramPrevRestaurantId: prev.restaurantId,
+        if (prev.source != null) AnalyticsEvents.paramPrevSource: prev.source,
+      },
+    );
     _isFavorite = widget.isFavorite;
     _coupons = List<UserCoupon>.from(widget.coupons);
     _sortCoupons();
@@ -1851,6 +1891,12 @@ class _AffiliateRestaurantDetailSheetState
   }
 
   void _toggleFavorite() {
+    _logDetailCta(
+      'favorite_toggle',
+      extra: {
+        AnalyticsEvents.paramAction: _isFavorite ? 'remove' : 'add',
+      },
+    );
     setState(() {
       _isFavorite = !_isFavorite;
     });
@@ -1859,6 +1905,22 @@ class _AffiliateRestaurantDetailSheetState
 
   @override
   void dispose() {
+    final durationMs = DateTime.now().difference(_openedAt).inMilliseconds;
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantDetailClose,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+        AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+        AnalyticsEvents.paramDetailSessionId: _detailSessionId,
+        AnalyticsEvents.paramSource: widget.source,
+        AnalyticsEvents.paramDurationMs: durationMs,
+        AnalyticsEvents.paramExitType: _exitType,
+      },
+    );
+    AnalyticsLogger.markRestaurantDetailClosed(
+      restaurantId: widget.restaurant.id,
+      source: widget.source,
+    );
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _imagePageController.dispose();
@@ -1957,6 +2019,7 @@ class _AffiliateRestaurantDetailSheetState
   }
 
   Future<void> _handleAddStamp() async {
+    _logDetailCta('stamp_add');
     final request = await _promptForStampAdd();
     if (request == null) return;
 
@@ -1990,6 +2053,8 @@ class _AffiliateRestaurantDetailSheetState
           AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
           AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
           AnalyticsEvents.paramStampCountAfter: result.status.current,
+          AnalyticsEvents.paramStampAddedCount:
+              (result.added > 0 ? result.added : request.count),
         },
       );
       // result.status는 rewards, notes가 없으므로 재조회하여 전체 정보 갱신
@@ -2766,65 +2831,76 @@ class _AffiliateRestaurantDetailSheetState
     final topPadding = MediaQuery.of(context).padding.top;
     // 아이폰 다이나믹 아일랜드 등을 고려한 최소 상단 여백
     final safeTopPadding = math.max(topPadding, 50.0);
-    return Container(
-      color: Colors.white,
-      child: Padding(
-        padding: EdgeInsets.only(top: safeTopPadding),
-        child: Stack(
-          children: [
-            Padding(
-              padding: EdgeInsets.only(bottom: bottomInset),
-              child: SingleChildScrollView(
-                controller: _scrollController,
-                child: Padding(
-                  padding: const EdgeInsets.only(top: 16, bottom: 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildHeroSection(restaurant),
-                      const SizedBox(height: 24),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 24),
-                        child: _buildBenefitsTab(restaurant),
-                      ),
-                    ],
+    return PopScope(
+      canPop: true,
+      onPopInvoked: (didPop) {
+        if (!didPop) return;
+        if (_exitType == 'unknown') {
+          _exitType = 'dismiss';
+        }
+      },
+      child: Container(
+        color: Colors.white,
+        child: Padding(
+          padding: EdgeInsets.only(top: safeTopPadding),
+          child: Stack(
+            children: [
+              Padding(
+                padding: EdgeInsets.only(bottom: bottomInset),
+                child: SingleChildScrollView(
+                  controller: _scrollController,
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 16, bottom: 24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildHeroSection(restaurant),
+                        const SizedBox(height: 24),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: _buildBenefitsTab(restaurant),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-            Positioned(
-              top: 8,
-              right: 8,
-              child: GestureDetector(
-                onTap: () {
-                  Navigator.of(context).pop();
-                },
-                behavior: HitTestBehavior.opaque,
-                child: Container(
-                  width: 40,
-                  height: 40,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.9),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
-                        blurRadius: 4,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.close,
-                    color: Color(0xFF6B7280),
-                    size: 24,
+              Positioned(
+                top: 8,
+                right: 8,
+                child: GestureDetector(
+                  onTap: () {
+                    _exitType = 'close_button';
+                    _logDetailCta('close');
+                    Navigator.of(context).pop();
+                  },
+                  behavior: HitTestBehavior.opaque,
+                  child: Container(
+                    width: 40,
+                    height: 40,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      color: Color(0xFF6B7280),
+                      size: 24,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -3837,7 +3913,10 @@ class _AffiliateRestaurantDetailSheetState
                 child: ElevatedButton(
                   onPressed: isProcessing || widget.requiresLogin
                       ? null
-                      : () => _handleRedeem(coupon),
+                      : () {
+                          _logDetailCta('coupon_use');
+                          _handleRedeem(coupon);
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: const Color(0xFF0B1033),
@@ -4006,6 +4085,7 @@ class _AffiliateRestaurantDetailSheetState
   Future<void> _openRestaurantPage() async {
     final url = widget.restaurant.url;
     if (url == null || url.isEmpty) return;
+    _logDetailCta('url');
     final uri = Uri.tryParse(url);
     if (uri == null) {
       _showSnack('유효한 링크가 아니에요.');

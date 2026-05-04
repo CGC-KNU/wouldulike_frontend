@@ -587,6 +587,7 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
             restaurant: restaurant,
             coupons: coupons,
             requiresLogin: requiresLogin,
+            source: 'favorite_restaurants',
             isFavorite: _favoriteIds.contains(restaurant.id),
             onFavoriteChanged: (isFavorite) {
               _toggleFavorite(restaurant);
