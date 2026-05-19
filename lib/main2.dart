@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -6,6 +8,7 @@ import 'package:new1/coupon_list_screen.dart';
 import 'home.dart';
 import 'my.dart';
 import 'package:new1/services/api_client.dart';
+import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
 import 'package:new1/widgets/ad_banner_widget.dart';
@@ -20,13 +23,20 @@ class MainAppScreen extends StatefulWidget {
 class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   static const List<String> _tabNames = <String>['home', 'affiliate', 'coupon', 'my'];
+  StreamSubscription<int>? _deepLinkSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // 앱 최초 실행 시 딥링크로 진입한 경우 해당 탭으로 이동
+    final pendingTab = DeepLinkService.instance.consumePendingTabIndex();
+    if (pendingTab != null) _selectedIndex = pendingTab;
+    // 앱 실행 중 딥링크 수신 시 탭 전환
+    _deepLinkSub = DeepLinkService.instance.tabStream.listen((tabIndex) {
+      if (mounted) setState(() => _selectedIndex = tabIndex);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // 앱 시작 시 토큰 상태 확인
       _checkTokenIfNeeded();
       _logTabView(_selectedIndex);
     });
@@ -34,8 +44,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
 
   @override
   void dispose() {
+    _deepLinkSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    // 타이머 취소
     ApiClient.cancelTokenRefreshTimer();
     super.dispose();
   }

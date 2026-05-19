@@ -13,6 +13,7 @@ import 'package:new1/utils/analytics_logger.dart';
 import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
+import 'services/deep_link_service.dart';
 
 bool _isValidNetworkImageUrl(String? value) {
   if (value == null) return false;
@@ -167,16 +168,33 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     super.initState();
     _scrollController.addListener(_handleScroll);
     _searchFocusNode.addListener(() => setState(() {}));
+    DeepLinkService.instance.pendingRestaurantId.addListener(_handleDeepLinkRestaurant);
     _load();
   }
 
   @override
   void dispose() {
+    DeepLinkService.instance.pendingRestaurantId.removeListener(_handleDeepLinkRestaurant);
     _searchDebounce?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
     _searchFocusNode.dispose();
     super.dispose();
+  }
+
+  void _handleDeepLinkRestaurant() {
+    final id = DeepLinkService.instance.pendingRestaurantId.value;
+    if (id == null) return;
+    final restaurant = _affiliateRestaurants.where((r) => r.id == id).firstOrNull;
+    if (restaurant == null) {
+      // 로딩이 완료됐는데도 없으면 해당 식당이 목록에 없는 것이므로 pending 값 초기화
+      if (!_isLoading) DeepLinkService.instance.pendingRestaurantId.value = null;
+      return;
+    }
+    DeepLinkService.instance.pendingRestaurantId.value = null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openRestaurantDetail(restaurant);
+    });
   }
 
   Future<void> _load() async {
@@ -277,6 +295,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
           _isLoading = false;
           _isAppending = false;
         });
+        _handleDeepLinkRestaurant();
       }
     }
   }
