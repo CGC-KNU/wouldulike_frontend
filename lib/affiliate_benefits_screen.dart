@@ -11,9 +11,11 @@ import 'package:uuid/uuid.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
+import 'models/coupon_benefits_summary.dart';
 import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
+import 'widgets/restaurant_coupon_benefits_content.dart';
 
 bool _isValidNetworkImageUrl(String? value) {
   if (value == null) return false;
@@ -599,6 +601,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       imageUrls: restaurant.imageUrls,
       stampCurrent: status.current,
       stampTarget: status.target,
+      couponBenefitsSummary: restaurant.couponBenefitsSummary,
     );
   }
 
@@ -1707,6 +1710,25 @@ class _AffiliateRestaurantDetailSheetState
   late final DateTime _openedAt;
   late final String _detailSessionId;
   String _exitType = 'unknown';
+  bool _isBenefitDetailExpanded = false;
+  CouponBenefitsSummary? _couponBenefitsSummary;
+  bool _isCouponBenefitsLoading = false;
+
+  bool get _shouldShowBenefitDetailSection {
+    if (_isCouponBenefitsLoading) return true;
+    return _couponBenefitsSummary?.hasVisibleContent ?? false;
+  }
+
+  void _toggleBenefitDetailExpanded() {
+    setState(() {
+      _isBenefitDetailExpanded = !_isBenefitDetailExpanded;
+    });
+    _logDetailCta(
+      _isBenefitDetailExpanded
+          ? 'benefit_detail_expand'
+          : 'benefit_detail_collapse',
+    );
+  }
 
   void _logDetailCta(
     String cta, {
@@ -1887,6 +1909,37 @@ class _AffiliateRestaurantDetailSheetState
       if (widget.requiresLogin) {
         _stampError = '로그인 후 스탬프 정보를 확인할 수 있어요.';
       }
+    }
+
+    _couponBenefitsSummary = widget.restaurant.couponBenefitsSummary;
+    if (_couponBenefitsSummary == null &&
+        (widget.restaurant.id > 0 || widget.restaurant.name.trim().isNotEmpty)) {
+      _isCouponBenefitsLoading = true;
+      _loadCouponBenefitsSummary();
+    }
+  }
+
+  Future<void> _loadCouponBenefitsSummary() async {
+    final name = widget.restaurant.name.trim();
+    final id = widget.restaurant.id;
+    if (name.isEmpty && id <= 0) return;
+
+    if (!_isCouponBenefitsLoading) {
+      setState(() => _isCouponBenefitsLoading = true);
+    }
+    try {
+      final detail = await AffiliateService.fetchRestaurantDetail(
+        restaurantId: id > 0 ? id : null,
+        name: name.isNotEmpty ? name : null,
+      );
+      if (!mounted) return;
+      setState(() {
+        _couponBenefitsSummary = detail?.couponBenefitsSummary;
+        _isCouponBenefitsLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _isCouponBenefitsLoading = false);
     }
   }
 
@@ -2911,6 +2964,8 @@ class _AffiliateRestaurantDetailSheetState
       key: const ValueKey('benefits'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _buildRestaurantBenefitDetailSection(),
+        const SizedBox(height: 16),
         _buildStampSection(),
         const SizedBox(height: 24),
         _buildCouponSection(),
@@ -3054,6 +3109,109 @@ class _AffiliateRestaurantDetailSheetState
             child: _buildImageCarousel(restaurant.imageUrls),
           ),
           _buildRestaurantHeader(restaurant),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestaurantBenefitDetailSection() {
+    if (!_shouldShowBenefitDetailSection) {
+      return const SizedBox.shrink();
+    }
+
+    final summary = _couponBenefitsSummary;
+    final canExpand = summary != null && summary.hasVisibleContent;
+    final showLoadingInBody =
+        _isCouponBenefitsLoading && _isBenefitDetailExpanded;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const Expanded(
+                child: Text(
+                  '식당 혜택 상세정보',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1F2937),
+                  ),
+                ),
+              ),
+              if (canExpand || _isCouponBenefitsLoading)
+                _buildBenefitDetailToggleButton(
+                  enabled: canExpand || _isCouponBenefitsLoading,
+                ),
+            ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: _isBenefitDetailExpanded
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: showLoadingInBody
+                        ? const Align(
+                            alignment: Alignment.centerLeft,
+                            child: SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : canExpand
+                            ? RestaurantCouponBenefitsContent(summary: summary!)
+                            : const Text(
+                                '혜택 정보 준비 중이에요',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF9CA3AF),
+                                  height: 1.45,
+                                ),
+                              ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBenefitDetailToggleButton({bool enabled = true}) {
+    return GestureDetector(
+      onTap: enabled ? _toggleBenefitDetailExpanded : null,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            _isBenefitDetailExpanded ? '접기' : '펼쳐보기',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF111439),
+            ),
+          ),
+          Icon(
+            _isBenefitDetailExpanded
+                ? Icons.keyboard_arrow_up_rounded
+                : Icons.keyboard_arrow_down_rounded,
+            size: 20,
+            color: const Color(0xFF111439),
+          ),
         ],
       ),
     );

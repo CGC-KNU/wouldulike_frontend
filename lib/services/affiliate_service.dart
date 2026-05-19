@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:new1/models/coupon_benefits_summary.dart';
+
 import 'api_client.dart';
 
 class AffiliateRestaurantSummary {
@@ -15,6 +17,7 @@ class AffiliateRestaurantSummary {
     required this.imageUrls,
     required this.stampCurrent,
     required this.stampTarget,
+    this.couponBenefitsSummary,
   });
 
   factory AffiliateRestaurantSummary.fromJson(Map<String, dynamic> json) {
@@ -59,6 +62,10 @@ class AffiliateRestaurantSummary {
       return const [];
     }
 
+    CouponBenefitsSummary? parseCouponBenefitsSummary() {
+      return CouponBenefitsSummary.tryParse(json['coupon_benefits_summary']);
+    }
+
     return AffiliateRestaurantSummary(
       id: json['restaurant_id'] is int
           ? json['restaurant_id'] as int
@@ -73,6 +80,7 @@ class AffiliateRestaurantSummary {
       imageUrls: parseImages(json['s3_image_urls']),
       stampCurrent: parseStampCurrent(),
       stampTarget: parseStampTarget(),
+      couponBenefitsSummary: parseCouponBenefitsSummary(),
     );
   }
 
@@ -87,6 +95,7 @@ class AffiliateRestaurantSummary {
   final List<String> imageUrls;
   final int stampCurrent;
   final int stampTarget;
+  final CouponBenefitsSummary? couponBenefitsSummary;
 }
 
 class GeneralRestaurantSummary {
@@ -220,18 +229,38 @@ class AffiliateService {
   }
 
   static Future<AffiliateRestaurantSummary?> fetchRestaurantByName(
-      String name) async {
-    if (name.isEmpty) return null;
+      String name) {
+    return fetchRestaurantDetail(name: name);
+  }
+
+  static Future<AffiliateRestaurantSummary?> fetchRestaurantDetail({
+    String? name,
+    int? restaurantId,
+  }) async {
+    final queryParameters = <String, String>{};
+    if (restaurantId != null && restaurantId > 0) {
+      queryParameters['restaurant_id'] = restaurantId.toString();
+    }
+    final trimmedName = name?.trim() ?? '';
+    if (trimmedName.isNotEmpty) {
+      queryParameters['name'] = trimmedName;
+    }
+    if (queryParameters.isEmpty) return null;
+
     final response = await ApiClient.get(
       '/restaurants/affiliate-restaurants/detail/',
       authenticated: false,
-      queryParameters: {'name': name},
+      queryParameters: queryParameters,
     );
     final Map<String, dynamic> data =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-    if (data['restaurant'] is Map<String, dynamic>) {
+    final restaurant = data['restaurant'];
+    if (restaurant is Map<String, dynamic>) {
+      return AffiliateRestaurantSummary.fromJson(restaurant);
+    }
+    if (restaurant is Map) {
       return AffiliateRestaurantSummary.fromJson(
-        Map<String, dynamic>.from(data['restaurant'] as Map),
+        Map<String, dynamic>.from(restaurant),
       );
     }
     return null;

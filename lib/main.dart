@@ -29,11 +29,15 @@ import 'services/user_service.dart';
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 const MethodChannel _deviceInfoChannel = MethodChannel('app/device_info');
 const String _kCampaignSplashAsset =
-    'assets/images/midterm_splash_2026_0415_0424.png';
-final DateTime _kCampaignSplashStart = DateTime(2026, 4, 13);
-final DateTime _kCampaignSplashEnd = DateTime(2026, 4, 24, 23, 59, 59);
+    'assets/images/summer_splash_2026_0522_0531.png';
+const Color _kCampaignSplashBackground = Color(0xFF55BCF7);
+final DateTime _kCampaignSplashStart = DateTime(2026, 5, 22);
+final DateTime _kCampaignSplashEnd = DateTime(2026, 5, 31, 23, 59, 59);
 const String _kSplashMode =
     String.fromEnvironment('SPLASH_MODE', defaultValue: 'auto');
+
+/// 에뮬레이터 확인용. 확인 후 false로 바꾸면 5/22~5/31 기간만 표시됩니다.
+const bool _kCampaignSplashIgnoreDateRange = true;
 
 bool _shouldShowCampaignSplash() {
   switch (_kSplashMode) {
@@ -42,10 +46,23 @@ bool _shouldShowCampaignSplash() {
     case 'default':
       return false;
     default:
+      if (_kCampaignSplashIgnoreDateRange) return true;
       final now = DateTime.now();
       return !now.isBefore(_kCampaignSplashStart) &&
           !now.isAfter(_kCampaignSplashEnd);
   }
+}
+
+Widget _buildCampaignSplashBody() {
+  return const ColoredBox(
+    color: _kCampaignSplashBackground,
+    child: Center(
+      child: Image(
+        image: AssetImage(_kCampaignSplashAsset),
+        fit: BoxFit.contain,
+      ),
+    ),
+  );
 }
 
 Future<void> main() async {
@@ -322,9 +339,11 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
       return const LoginScreen();
     }
     if (_isCheckingProfile) {
-      return const Scaffold(
-        backgroundColor: Colors.white,
-        body: _AppEntryLoadingView(),
+      final showCampaignSplash = _shouldShowCampaignSplash();
+      return Scaffold(
+        backgroundColor:
+            showCampaignSplash ? _kCampaignSplashBackground : Colors.white,
+        body: const _AppEntryLoadingView(),
       );
     }
     if (_isProfileIncomplete) {
@@ -345,13 +364,7 @@ class _AppEntryLoadingView extends StatelessWidget {
   Widget build(BuildContext context) {
     final shouldShowSplash = _shouldShowCampaignSplash();
     if (shouldShowSplash) {
-      return SizedBox.expand(
-        child: Image.asset(
-          _kCampaignSplashAsset,
-          fit: BoxFit.fitWidth,
-          alignment: Alignment.center,
-        ),
-      );
+      return SizedBox.expand(child: _buildCampaignSplashBody());
     }
     return const Center(
       child: CircularProgressIndicator(
@@ -823,15 +836,10 @@ class MainScreenState extends State<MainScreen> {
     if (_isLoading) {
       final isSeasonalSplash = _isSeasonalSplashPeriod;
       return Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor:
+            isSeasonalSplash ? _kCampaignSplashBackground : Colors.white,
         body: isSeasonalSplash
-            ? SizedBox.expand(
-                child: Image.asset(
-                  _kCampaignSplashAsset,
-                  fit: BoxFit.fitWidth,
-                  alignment: Alignment.center,
-                ),
-              )
+            ? SizedBox.expand(child: _buildCampaignSplashBody())
             : Column(
                 children: [
                   const Spacer(flex: 9),
