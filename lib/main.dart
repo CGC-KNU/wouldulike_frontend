@@ -386,7 +386,15 @@ class MainScreenState extends State<MainScreen> {
   static const String _uuidKey = 'user_uuid'; // SharedPreferences ??
   // 운영 중 필요 시 강제 업데이트 하한 버전을 지정해 사용할 수 있습니다. (예: '2.3.0')
   static const String? _kIosMinimumRequiredVersion = '2.3.0';
+  StreamSubscription<InstallStatus>? _flexibleUpdateSubscription;
   bool get _isSeasonalSplashPeriod => _shouldShowCampaignSplash();
+
+  @override
+  void dispose() {
+    unawaited(_flexibleUpdateSubscription?.cancel());
+    _flexibleUpdateSubscription = null;
+    super.dispose();
+  }
 
   Future<void> _navigateAfterSplash() async {
     final prefs = await SharedPreferences.getInstance();
@@ -449,6 +457,13 @@ class MainScreenState extends State<MainScreen> {
     if (Platform.isAndroid) {
       try {
         final info = await InAppUpdate.checkForUpdate();
+
+        // 이전 flexible 다운로드가 완료된 경우 설치만 진행
+        if (info.installStatus == InstallStatus.downloaded) {
+          await InAppUpdate.completeFlexibleUpdate();
+          return;
+        }
+
         if (info.updateAvailability != UpdateAvailability.updateAvailable) {
           return;
         }
@@ -457,12 +472,8 @@ class MainScreenState extends State<MainScreen> {
           // 필수 업데이트: 전체 화면 UI로 강제 업데이트
           await InAppUpdate.performImmediateUpdate();
         } else if (info.flexibleUpdateAllowed) {
-          // 선택 업데이트: 백그라운드 다운로드 후 설치
-          unawaited(
-            InAppUpdate.startFlexibleUpdate().then((_) {
-              InAppUpdate.completeFlexibleUpdate();
-            }),
-          );
+          // 선택 업데이트: 다운로드 완료 후 설치
+          unawaited(_startAndroidFlexibleUpdate());
         }
       } catch (e) {
         debugPrint('[Update] 업데이트 확인 실패: $e');
@@ -472,6 +483,40 @@ class MainScreenState extends State<MainScreen> {
 
     if (Platform.isIOS) {
       await _checkForIosAppUpdate();
+    }
+  }
+
+  Future<void> _startAndroidFlexibleUpdate() async {
+    await _flexibleUpdateSubscription?.cancel();
+    _flexibleUpdateSubscription = InAppUpdate.installUpdateListener.listen(
+      (status) async {
+        if (status == InstallStatus.downloaded) {
+          try {
+            await InAppUpdate.completeFlexibleUpdate();
+          } catch (e) {
+            debugPrint('[Update] flexible 설치 실패: $e');
+          } finally {
+            await _flexibleUpdateSubscription?.cancel();
+            _flexibleUpdateSubscription = null;
+          }
+        } else if (status == InstallStatus.canceled ||
+            status == InstallStatus.failed) {
+          await _flexibleUpdateSubscription?.cancel();
+          _flexibleUpdateSubscription = null;
+        }
+      },
+    );
+
+    try {
+      final result = await InAppUpdate.startFlexibleUpdate();
+      if (result != AppUpdateResult.success) {
+        await _flexibleUpdateSubscription?.cancel();
+        _flexibleUpdateSubscription = null;
+      }
+    } catch (e) {
+      debugPrint('[Update] flexible 다운로드 시작 실패: $e');
+      await _flexibleUpdateSubscription?.cancel();
+      _flexibleUpdateSubscription = null;
     }
   }
 
@@ -501,7 +546,12 @@ class MainScreenState extends State<MainScreen> {
         return;
       }
       final latestVersion = latestVersionRaw.trim();
-      if (_compareVersions(currentVersion, latestVersion) >= 0) return;
+      final isBelowMinimum = _kIosMinimumRequiredVersion != null &&
+          _compareVersions(currentVersion, _kIosMinimumRequiredVersion!) < 0;
+      final hasNewerStoreVersion =
+          _compareVersions(currentVersion, latestVersion) < 0;
+
+      if (!hasNewerStoreVersion && !isBelowMinimum) return;
 
       final trackViewUrlRaw = map['trackViewUrl'];
       final trackViewUrl =
@@ -511,13 +561,14 @@ class MainScreenState extends State<MainScreen> {
       final trackIdRaw = map['trackId'];
       final trackId =
           trackIdRaw is int ? trackIdRaw : int.tryParse('$trackIdRaw');
-      final isForceUpdate = _kIosMinimumRequiredVersion != null &&
-          _compareVersions(currentVersion, _kIosMinimumRequiredVersion!) < 0;
+      final displayVersion = hasNewerStoreVersion
+          ? latestVersion
+          : (_kIosMinimumRequiredVersion ?? latestVersion);
 
       if (!mounted) return;
       await _showIosUpdateDialog(
-        isForceUpdate: isForceUpdate,
-        latestVersion: latestVersion,
+        isForceUpdate: isBelowMinimum,
+        displayVersion: displayVersion,
         storeUrl: trackViewUrl,
         trackId: trackId,
       );
@@ -548,7 +599,7 @@ class MainScreenState extends State<MainScreen> {
 
   Future<void> _showIosUpdateDialog({
     required bool isForceUpdate,
-    required String latestVersion,
+    required String displayVersion,
     required String? storeUrl,
     required int? trackId,
   }) async {
@@ -563,8 +614,8 @@ class MainScreenState extends State<MainScreen> {
             title: const Text('업데이트 안내'),
             content: Text(
               isForceUpdate
-                  ? '안정적인 서비스 이용을 위해 최신 버전($latestVersion)으로 업데이트가 필요해요.'
-                  : '새 버전($latestVersion)이 출시되었어요. 더 좋은 경험을 위해 업데이트해 주세요.',
+                  ? '안정적인 서비스 이용을 위해 버전 $displayVersion 이상으로 업데이트가 필요해요.'
+                  : '새 버전($displayVersion)이 출시되었어요. 더 좋은 경험을 위해 업데이트해 주세요.',
             ),
             actions: [
               if (!isForceUpdate)
@@ -612,7 +663,6 @@ class MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _initializeApp() async {
-    // 앱 업데이트 확인 (Android only)
     await _checkForAppUpdate();
 
     final prefs = await SharedPreferences.getInstance();
