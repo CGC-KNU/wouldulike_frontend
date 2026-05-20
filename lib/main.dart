@@ -24,6 +24,7 @@ import 'config/analytics_events.dart';
 import 'utils/analytics_logger.dart';
 import 'utils/analytics_navigator_observer.dart';
 import 'services/auth_service.dart';
+import 'services/deep_link_service.dart';
 import 'services/user_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
@@ -81,12 +82,14 @@ Future<void> main() async {
   appLinks.uriLinkStream.listen((Uri? uri) {
     if (uri != null) {
       debugPrint('Deep link received: $uri');
+      DeepLinkService.instance.handleUri(uri);
     }
   });
   try {
     final initialUri = await appLinks.getInitialAppLink();
     if (initialUri != null) {
       debugPrint('Initial deep link: $initialUri');
+      DeepLinkService.instance.handleUri(initialUri);
     }
   } on PlatformException {
     // Ignored: platform not ready for deep links.
@@ -402,47 +405,10 @@ class MainScreenState extends State<MainScreen> {
     final isLoggedIn = jwt != null && jwt.isNotEmpty;
 
     if (!mounted) return;
-    if (!isLoggedIn) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute<void>(
-          builder: (_) => const MainAppScreen(),
-        ),
-      );
-      return;
-    }
-
-    final profile = await UserService.fetchCurrentUserProfile();
-    AnalyticsLogger.setUserPropertiesFromProfile(profile);
-    final profileIncomplete = UserService.isRequiredProfileIncomplete(profile);
-    if (!mounted) return;
-
-    if (profileIncomplete) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute<void>(
-          builder: (profileContext) => ProfileSetupScreen(
-            initialProfile: profile,
-            isRequiredFlow: true,
-            onCompleted: () {
-              // 스택을 완전히 비우고 MainAppScreen으로 이동 (건너뛰기 시 프로필 설정 재표시 방지)
-              Navigator.of(profileContext).pushAndRemoveUntil(
-                MaterialPageRoute<void>(
-                  builder: (_) => const MainAppScreen(),
-                ),
-                (route) => false,
-              );
-            },
-          ),
-        ),
-      );
-      return;
-    }
-
     Navigator.pushReplacement(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => const MainAppScreen(),
+        builder: (_) => isLoggedIn ? const MainAppScreen() : const LoginScreen(),
       ),
     );
   }
