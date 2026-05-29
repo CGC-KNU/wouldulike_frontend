@@ -29,37 +29,92 @@ import 'services/user_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 const MethodChannel _deviceInfoChannel = MethodChannel('app/device_info');
-const String _kCampaignSplashAsset =
-    'assets/images/summer_splash_2026_0522_0531.png';
-const Color _kCampaignSplashBackground = Color(0xFF55BCF7);
-final DateTime _kCampaignSplashStart = DateTime(2026, 5, 22);
-final DateTime _kCampaignSplashEnd = DateTime(2026, 5, 31, 23, 59, 59);
+class _CampaignSplashConfig {
+  const _CampaignSplashConfig({
+    required this.asset,
+    required this.background,
+    required this.start,
+    required this.end,
+  });
+
+  final String asset;
+  final Color background;
+  final DateTime start;
+  final DateTime end;
+}
+
+final _kSummerCampaignSplash = _CampaignSplashConfig(
+  asset: 'assets/images/summer_splash_2026_0522_0531.png',
+  background: const Color(0xFF55BCF7),
+  start: DateTime(2026, 5, 22),
+  end: DateTime(2026, 5, 31, 23, 59, 59),
+);
+
+final _kWorldCupCampaignSplash = _CampaignSplashConfig(
+  asset: 'assets/images/worldcup_splash_2026_0608_0621.png',
+  background: Colors.white,
+  start: DateTime(2026, 6, 8),
+  end: DateTime(2026, 6, 21, 23, 59, 59),
+);
+
 const String _kSplashMode =
     String.fromEnvironment('SPLASH_MODE', defaultValue: 'auto');
 
-/// 에뮬레이터 확인용. 확인 후 false로 바꾸면 5/22~5/31 기간만 표시됩니다.
-const bool _kCampaignSplashIgnoreDateRange = true;
+enum _CampaignSplashPreview { none, summer, worldCup }
 
-bool _shouldShowCampaignSplash() {
+const _CampaignSplashPreview _kCampaignSplashPreview =
+    _CampaignSplashPreview.none;
+
+bool _isInCampaignPeriod(DateTime now, _CampaignSplashConfig config) {
+  return !now.isBefore(config.start) && !now.isAfter(config.end);
+}
+
+_CampaignSplashConfig? _resolveActiveCampaignSplashByDate() {
+  final now = DateTime.now();
+  if (_isInCampaignPeriod(now, _kWorldCupCampaignSplash)) {
+    return _kWorldCupCampaignSplash;
+  }
+  if (_isInCampaignPeriod(now, _kSummerCampaignSplash)) {
+    return _kSummerCampaignSplash;
+  }
+  return null;
+}
+
+_CampaignSplashConfig? _resolveActiveCampaignSplash() {
+  switch (_kCampaignSplashPreview) {
+    case _CampaignSplashPreview.worldCup:
+      return _kWorldCupCampaignSplash;
+    case _CampaignSplashPreview.summer:
+      return _kSummerCampaignSplash;
+    case _CampaignSplashPreview.none:
+      break;
+  }
+
   switch (_kSplashMode) {
     case 'seasonal':
-      return true;
+      return _resolveActiveCampaignSplashByDate() ?? _kWorldCupCampaignSplash;
     case 'default':
-      return false;
+      return null;
     default:
-      if (_kCampaignSplashIgnoreDateRange) return true;
-      final now = DateTime.now();
-      return !now.isBefore(_kCampaignSplashStart) &&
-          !now.isAfter(_kCampaignSplashEnd);
+      return _resolveActiveCampaignSplashByDate();
   }
 }
 
+bool _shouldShowCampaignSplash() => _resolveActiveCampaignSplash() != null;
+
+Color _campaignSplashBackground() =>
+    _resolveActiveCampaignSplash()?.background ?? Colors.white;
+
 Widget _buildCampaignSplashBody() {
-  return const ColoredBox(
-    color: _kCampaignSplashBackground,
+  final config = _resolveActiveCampaignSplash();
+  if (config == null) {
+    return const SizedBox.shrink();
+  }
+  return ColoredBox(
+    color: config.background,
     child: Center(
       child: Image(
-        image: AssetImage(_kCampaignSplashAsset),
+        image: AssetImage(config.asset),
         fit: BoxFit.contain,
       ),
     ),
@@ -345,7 +400,7 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
       final showCampaignSplash = _shouldShowCampaignSplash();
       return Scaffold(
         backgroundColor:
-            showCampaignSplash ? _kCampaignSplashBackground : Colors.white,
+            showCampaignSplash ? _campaignSplashBackground() : Colors.white,
         body: const _AppEntryLoadingView(),
       );
     }
@@ -853,7 +908,7 @@ class MainScreenState extends State<MainScreen> {
       final isSeasonalSplash = _isSeasonalSplashPeriod;
       return Scaffold(
         backgroundColor:
-            isSeasonalSplash ? _kCampaignSplashBackground : Colors.white,
+            isSeasonalSplash ? _campaignSplashBackground() : Colors.white,
         body: isSeasonalSplash
             ? SizedBox.expand(child: _buildCampaignSplashBody())
             : Column(
