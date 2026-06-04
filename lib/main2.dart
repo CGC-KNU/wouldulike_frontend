@@ -11,7 +11,6 @@ import 'package:new1/services/api_client.dart';
 import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
-import 'package:new1/widgets/ad_banner_widget.dart';
 
 class MainAppScreen extends StatefulWidget {
   const MainAppScreen({super.key});
@@ -142,12 +141,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       body: SafeArea(
         top: true,
         bottom: false,
-        child: Column(
-          children: [
-            const AdBannerWidget(),
-            Expanded(child: _buildCurrentScreen()),
-          ],
-        ),
+        child: _buildCurrentScreen(),
       ),
       bottomNavigationBar: LiquidGlassBottomBar(
         tabs: const [
