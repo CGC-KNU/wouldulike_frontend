@@ -2466,7 +2466,7 @@ class _HomePopupCarouselDialogState extends State<_HomePopupCarouselDialog> {
   late final PageController _controller;
   Timer? _autoSlideTimer;
   int _currentIndex = 0;
-  bool _isTouching = false;
+  static const Duration _autoSlideDuration = Duration(seconds: 3);
 
   @override
   void initState() {
@@ -2477,23 +2477,36 @@ class _HomePopupCarouselDialogState extends State<_HomePopupCarouselDialog> {
 
   @override
   void dispose() {
-    _autoSlideTimer?.cancel();
+    _stopAutoSlide();
     _controller.dispose();
     super.dispose();
   }
 
   void _startAutoSlide() {
-    if (widget.popups.length <= 1) return;
     _autoSlideTimer?.cancel();
-    _autoSlideTimer = Timer.periodic(const Duration(seconds: 3), (_) {
-      if (!_controller.hasClients || _isTouching) return;
-      final next = (_currentIndex + 1) % widget.popups.length;
+    if (widget.popups.length <= 1) return;
+
+    _autoSlideTimer = Timer.periodic(_autoSlideDuration, (timer) {
+      if (!mounted || !_controller.hasClients) {
+        timer.cancel();
+        return;
+      }
+
+      final itemCount = widget.popups.length;
+      if (itemCount <= 1) return;
+
+      final nextPage = (_currentIndex + 1) % itemCount;
       _controller.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 260),
-        curve: Curves.easeOutCubic,
+        nextPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
       );
     });
+  }
+
+  void _stopAutoSlide() {
+    _autoSlideTimer?.cancel();
+    _autoSlideTimer = null;
   }
 
   @override
@@ -2502,34 +2515,26 @@ class _HomePopupCarouselDialogState extends State<_HomePopupCarouselDialog> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Listener(
-          onPointerDown: (_) {
-            _isTouching = true;
-          },
-          onPointerUp: (_) {
-            _isTouching = false;
-            _startAutoSlide();
-          },
-          onPointerCancel: (_) {
-            _isTouching = false;
-            _startAutoSlide();
-          },
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: SizedBox(
-              width: 310,
-              child: AspectRatio(
-                aspectRatio: 1 / 1.1,
-                child: PageView.builder(
-                  controller: _controller,
-                  itemCount: widget.popups.length,
-                  physics: const _SlowSwipePagePhysics(),
-                  onPageChanged: (index) {
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            width: 310,
+            child: AspectRatio(
+              aspectRatio: 1 / 1.1,
+              child: PageView.builder(
+                controller: _controller,
+                itemCount: widget.popups.length,
+                physics: widget.popups.length > 1
+                    ? const PageScrollPhysics()
+                    : const NeverScrollableScrollPhysics(),
+                onPageChanged: (index) {
+                  if (_currentIndex != index) {
                     setState(() {
                       _currentIndex = index;
                     });
                     _startAutoSlide();
-                  },
+                  }
+                },
                   itemBuilder: (context, index) {
                     final popup = widget.popups[index];
                     return GestureDetector(
@@ -2546,7 +2551,6 @@ class _HomePopupCarouselDialogState extends State<_HomePopupCarouselDialog> {
               ),
             ),
           ),
-        ),
         if (widget.popups.length > 1) ...[
           const SizedBox(height: 8),
           Row(
@@ -2629,23 +2633,3 @@ class _PopupImageView extends StatelessWidget {
   }
 }
 
-/// 팝업 스와이프 감도를 낮추는 커스텀 PageScrollPhysics.
-/// 기본값보다 높은 minFlingVelocity를 설정하여 가벼운 터치로 페이지가 넘어가지 않도록 합니다.
-class _SlowSwipePagePhysics extends PageScrollPhysics {
-  const _SlowSwipePagePhysics({super.parent});
-
-  @override
-  _SlowSwipePagePhysics applyTo(ScrollPhysics? ancestor) {
-    return _SlowSwipePagePhysics(parent: buildParent(ancestor));
-  }
-
-  @override
-  double get minFlingVelocity => 800.0; // 기본값(~365)보다 높여 의도적 스와이프만 반응
-
-  @override
-  SpringDescription get spring => const SpringDescription(
-    mass: 100,
-    stiffness: 100,
-    damping: 1.2,
-  );
-}

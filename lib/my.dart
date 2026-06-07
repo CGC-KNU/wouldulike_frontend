@@ -53,9 +53,6 @@ class _MyScreenState extends State<MyScreen> {
   bool _isAccountDeleteInProgress = false;
   String? inviteCode;
   String? _inviteError;
-  bool _referralInputLocked = false;
-  ReferralSheetStatus? _lastReferralStatus;
-  String? _lastReferralMessage;
   String? _kakaoId;
   String? _appleId;
 
@@ -88,9 +85,6 @@ class _MyScreenState extends State<MyScreen> {
       if (!loggedIn) {
         inviteCode = null;
         _inviteError = null;
-        _referralInputLocked = false;
-        _lastReferralStatus = null;
-        _lastReferralMessage = null;
         _kakaoId = null;
         _appleId = null;
       }
@@ -568,7 +562,6 @@ class _MyScreenState extends State<MyScreen> {
   }
 
   Future<void> _showReferralCodeSheet() async {
-    final initialStatus = _referralInputLocked ? _lastReferralStatus : null;
     final result = await showModalBottomSheet<ReferralSheetResult>(
       context: context,
       isScrollControlled: true,
@@ -576,32 +569,14 @@ class _MyScreenState extends State<MyScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (context) => _ReferralCodeSheet(initialStatus: initialStatus),
+      builder: (context) => const _ReferralCodeSheet(),
     );
     if (!mounted || result == null) {
       return;
     }
 
-    switch (result.status) {
-      case ReferralSheetStatus.success:
-        setState(() {
-          _referralInputLocked = true;
-          _lastReferralStatus = ReferralSheetStatus.alreadyAccepted;
-          _lastReferralMessage = result.noticeMessage ?? '이미 추천 코드를 입력했어요.';
-        });
-        if (result.openCoupons) {
-          _openCouponList();
-        }
-        break;
-      case ReferralSheetStatus.alreadyAccepted:
-        setState(() {
-          _referralInputLocked = true;
-          _lastReferralStatus = result.status;
-          _lastReferralMessage = result.noticeMessage ?? '이미 추천 코드를 입력한 계정이에요.';
-        });
-        break;
-      case ReferralSheetStatus.dismissed:
-        break;
+    if (result.status == ReferralSheetStatus.success && result.openCoupons) {
+      _openCouponList();
     }
   }
 
@@ -1028,7 +1003,7 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.4.0', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.4.5', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],
@@ -1037,26 +1012,22 @@ class _MyScreenState extends State<MyScreen> {
   }
 }
 
-enum ReferralSheetStatus { dismissed, success, alreadyAccepted }
+enum ReferralSheetStatus { dismissed, success }
 
 class ReferralSheetResult {
   const ReferralSheetResult({
     required this.status,
-    this.noticeMessage,
     this.openCoupons = false,
   });
 
   final ReferralSheetStatus status;
-  final String? noticeMessage;
   final bool openCoupons;
 }
 
 enum _ReferralSheetMode { input, success }
 
 class _ReferralCodeSheet extends StatefulWidget {
-  const _ReferralCodeSheet({this.initialStatus});
-
-  final ReferralSheetStatus? initialStatus;
+  const _ReferralCodeSheet();
 
   @override
   State<_ReferralCodeSheet> createState() => _ReferralCodeSheetState();
@@ -1067,14 +1038,6 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
   bool _isSubmitting = false;
   String? _inputError;
   _ReferralSheetMode _mode = _ReferralSheetMode.input;
-  @override
-  void initState() {
-    super.initState();
-    final initialStatus = widget.initialStatus;
-    if (initialStatus == ReferralSheetStatus.success) {
-      _mode = _ReferralSheetMode.success;
-    }
-  }
 
   @override
   void dispose() {
@@ -1150,7 +1113,6 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
     Navigator.of(context).pop(
       ReferralSheetResult(
         status: ReferralSheetStatus.success,
-        noticeMessage: '쿠폰이 발급되었어요.',
         openCoupons: openCoupons,
       ),
     );
