@@ -13,16 +13,25 @@ import 'widgets/roulette_wheel.dart';
 
 enum _RewardStep { pick, spin, guide }
 
-/// 가입 직후 1회 노출되는 보상 플로우.
+/// 보상 플로우: 식당 선택 → 룰렛 연출 → 다음 단계.
 ///
-/// 식당 선택 → 룰렛 연출로 첫 쿠폰 공개 → 4컷 사용법 안내.
-/// 쿠폰 자체는 가입 완료 시점에 signupComplete()로 이미 발급되어 있고,
-/// 여기서는 보유 쿠폰을 조회해 룰렛 연출로 공개한다.
+/// [preLogin]=false (가입 직후): 쿠폰은 가입 완료 시점에 signupComplete()로 이미
+/// 발급되어 있고, 여기서는 보유 쿠폰을 조회해 룰렛 연출로 공개한 뒤 4컷 사용법으로 이어진다.
+/// [preLogin]=true (프로토타입 화면 2·3, 로그인 전): 쿠폰 API를 쓸 수 없으므로
+/// 연출만 하고 당첨 후 카카오 로그인으로 유도한다. 실제 발급은 가입 완료 시점의
+/// signupComplete()(멱등)가 보장한다.
 /// 선택한 식당은 이후 개인화(식당별 쿠폰 발급 연동 예정)를 위해 저장만 한다.
 class OnboardingRewardFlow extends StatefulWidget {
-  const OnboardingRewardFlow({super.key, required this.onFinished});
+  const OnboardingRewardFlow({
+    super.key,
+    required this.onFinished,
+    this.preLogin = false,
+  });
 
   final VoidCallback onFinished;
+
+  /// 로그인 전 노출 여부 — 쿠폰 조회를 생략하고 당첨 후 로그인 유도로 마무리한다.
+  final bool preLogin;
 
   @override
   State<OnboardingRewardFlow> createState() => _OnboardingRewardFlowState();
@@ -42,6 +51,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   late final AnimationController _spinController;
   late Animation<double> _spinAnimation;
   List<String> _wheelLabels = const [];
+  String _pickedName = '';
   bool _spinDone = false;
   bool _couponFetchDone = false;
   UserCoupon? _revealedCoupon;
@@ -149,7 +159,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
         .toList();
     final labels = [name, ...others];
     // 세그먼트가 2개는 돼야 룰렛처럼 보인다.
-    if (labels.length < 2) labels.add('우즈라이크');
+    if (labels.length < 2) labels.add('우주라이크');
 
     final targetRotation =
         2 * math.pi * 4 + RouletteWheel.rotationForIndex(0, labels.length);
@@ -159,9 +169,10 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
 
     setState(() {
       _wheelLabels = labels;
+      _pickedName = name;
       _step = _RewardStep.spin;
       _spinDone = false;
-      _couponFetchDone = false;
+      _couponFetchDone = widget.preLogin;
     });
 
     _spinController.forward(from: 0).whenComplete(() {
@@ -169,7 +180,10 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
       setState(() => _spinDone = true);
       _maybeLogReveal();
     });
-    _fetchIssuedCoupon();
+    // 로그인 전에는 쿠폰 API를 쓸 수 없으므로 연출만 진행한다.
+    if (!widget.preLogin) {
+      _fetchIssuedCoupon();
+    }
   }
 
   Future<void> _fetchIssuedCoupon() async {
@@ -326,13 +340,17 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
         children: [
           const SizedBox(height: 8),
           Text(
-            _revealReady ? '축하해요! 🎉' : '쿠폰판 돌아갑니다',
+            _revealReady
+                ? (widget.preLogin ? '당첨을 축하해요! 🎉' : '축하해요! 🎉')
+                : '어떤 쿠폰이 나올까요?',
             style: OnboardingStyle.title,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 6),
           Text(
-            _revealReady ? '첫 쿠폰이 도착했어요' : '어떤 쿠폰이 나올까요?',
+            _revealReady
+                ? (widget.preLogin ? '로그인하면 지갑에 담아드려요' : '첫 쿠폰이 도착했어요')
+                : '두구두구…',
             style: OnboardingStyle.subtitle,
             textAlign: TextAlign.center,
           ),
@@ -358,8 +376,13 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
           const Spacer(),
           ElevatedButton(
             style: OnboardingStyle.primaryButton(enabled: _revealReady),
-            onPressed: _revealReady ? _goGuide : null,
-            child: const Text('내 쿠폰에 담기'),
+            // 로그인 전에는 당첨 후 바로 카카오 로그인으로 유도 (프로토타입 화면 3)
+            onPressed: !_revealReady
+                ? null
+                : widget.preLogin
+                    ? () => _finish(skipped: false)
+                    : _goGuide,
+            child: Text(widget.preLogin ? '카카오 로그인하고 쿠폰 받기' : '내 쿠폰에 담기'),
           ),
         ],
       ),
@@ -368,8 +391,10 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
 
   Widget _buildRevealCard() {
     final coupon = _revealedCoupon;
-    final title = coupon?.benefit?.resolvedTitle ?? '첫 쿠폰을 준비하고 있어요';
-    final restaurantName = coupon?.benefit?.restaurantNameText;
+    final title = coupon?.benefit?.resolvedTitle ??
+        (widget.preLogin ? '첫 쿠폰 당첨!' : '첫 쿠폰을 준비하고 있어요');
+    final restaurantName = coupon?.benefit?.restaurantNameText ??
+        (widget.preLogin && _pickedName.isNotEmpty ? _pickedName : null);
     final expiresAt = coupon?.expiresAt;
     String? ddayText;
     if (expiresAt != null) {
@@ -408,9 +433,12 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
             ),
           ),
           if (coupon == null)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: Text('곧 보유 쿠폰함에서 확인할 수 있어요', style: OnboardingStyle.caption),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                widget.preLogin ? '로그인하면 바로 쓸 수 있어요' : '곧 보유 쿠폰함에서 확인할 수 있어요',
+                style: OnboardingStyle.caption,
+              ),
             ),
           if (ddayText != null)
             Padding(

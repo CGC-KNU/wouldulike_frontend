@@ -39,6 +39,13 @@ class OnboardingPrefs {
     return pending && !done;
   }
 
+  /// 룰렛 연출을 이미 소비했는지 (로그인 전 플로우 포함).
+  /// true면 로그인 전 게이트는 바로 로그인 화면으로, 로그인 후 보상 플로우도 재노출하지 않는다.
+  static Future<bool> isRewardDone() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_rewardDoneKey) ?? false;
+  }
+
   static Future<void> markRewardDone() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_rewardDoneKey, true);

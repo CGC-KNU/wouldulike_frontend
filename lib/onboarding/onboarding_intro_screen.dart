@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../config/analytics_events.dart';
-import '../services/affiliate_service.dart';
 import '../utils/analytics_logger.dart';
-import 'onboarding_prefs.dart';
 import 'onboarding_style.dart';
 import 'widgets/animated_reveal_text.dart';
-import 'widgets/restaurant_pick_list.dart';
 
 // 좌상단 굵은 헤드라인 (메시지 컷 공용)
 const TextStyle _headline = TextStyle(
@@ -18,20 +15,23 @@ const TextStyle _headline = TextStyle(
   color: OnboardingStyle.ink,
 );
 
-// 메시지 컷: 굵은 글씨만 (캐릭터·부가설명 없음)
-const List<String> _messageCuts = [
-  '대학가 식당 혜택,\n여기 다 모았어요',
-  '가입하면 바로 쓸\n첫 쿠폰을 드려요',
+// 프로토타입 화면 0·1 카피
+const List<({String title, String subtitle, String button})> _messageCuts = [
+  (
+    title: '대학가 맛집,\n우주라이크와 함께 하세요!',
+    subtitle: '대학가 인근 제휴 식당의 쿠폰과 스탬프 등\n모든 혜택을 한 곳에 모았어요.',
+    button: '시작하기',
+  ),
+  (
+    title: '지금 시작하면,\n바로 쓸 쿠폰을 드려요',
+    subtitle: '원하는 식당 하나를 고르면\n바로 사용 가능한 쿠폰을 드려요!',
+    button: '쿠폰 즉시 발급 받기',
+  ),
 ];
 
-// 마지막 단계(식당 선택)를 포함한 전체 스텝 수
-const int _totalSteps = 3;
-const int _pickStep = 2;
-
-/// 로그인 전 첫 실행 튜토리얼.
+/// 로그인 전 첫 실행 인트로 (프로토타입 화면 0·1).
 ///
-/// 좌상단 굵은 헤드라인 두 컷 → 실제 식당 DB에서 하나를 고르는 선택 단계 → 로그인.
-/// 고른 식당은 저장되어 로그인 후 룰렛 지급으로 이어진다.
+/// 앱 소개 두 컷만 보여주고, 이후 식당 선택→룰렛(OnboardingRewardFlow)으로 이어진다.
 class OnboardingIntroScreen extends StatefulWidget {
   const OnboardingIntroScreen({super.key, required this.onFinished});
 
@@ -47,19 +47,10 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
   int _step = 0;
   bool _finished = false;
 
-  // 식당 선택
-  bool _loadingRestaurants = false;
-  bool _restaurantsFailed = false;
-  List<AffiliateRestaurantSummary> _restaurants = const [];
-  int? _selectedRestaurant;
-
   @override
   void initState() {
     super.initState();
     _logStepView();
-    if (_isPickStep && _restaurants.isEmpty) {
-      _loadRestaurants();
-    }
   }
 
   void _logStepView() {
@@ -67,28 +58,6 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
       AnalyticsEvents.onboardingIntroView,
       parameters: {AnalyticsEvents.paramStep: _step + 1},
     );
-  }
-
-  bool get _isPickStep => _step == _pickStep;
-
-  Future<void> _loadRestaurants() async {
-    setState(() {
-      _loadingRestaurants = true;
-      _restaurantsFailed = false;
-    });
-    List<AffiliateRestaurantSummary> list = const [];
-    try {
-      // 로그인 전이므로 공개 목록 API 사용
-      list = await AffiliateService.fetchRestaurants();
-    } catch (_) {
-      // 아래에서 실패 처리
-    }
-    if (!mounted) return;
-    setState(() {
-      _restaurants = list;
-      _loadingRestaurants = false;
-      _restaurantsFailed = list.isEmpty;
-    });
   }
 
   void _handleTapAnywhere() {
@@ -99,36 +68,20 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
   }
 
   void _handlePrimary() {
-    // 식당 선택 단계: 로그인으로
-    if (_isPickStep) {
-      final index = _selectedRestaurant;
-      if (index == null) return;
-      final selected = _restaurants[index];
-      AnalyticsLogger.logEvent(
-        AnalyticsEvents.onboardingRestaurantPick,
-        parameters: {
-          AnalyticsEvents.paramRestaurantId: selected.id,
-          AnalyticsEvents.paramRestaurantName: selected.name,
-        },
-      );
-      OnboardingPrefs.savePickedRestaurant(selected.id, selected.name);
-      _finish(skipped: false);
-      return;
-    }
-
-    // 메시지 컷: 타이핑 중이면 먼저 완성
+    // 타이핑 중이면 먼저 완성
     final title = _titleKey.currentState;
     if (title != null && !title.isCompleted) {
       title.completeNow();
+      return;
+    }
+    if (_step >= _messageCuts.length - 1) {
+      _finish(skipped: false);
       return;
     }
     setState(() {
       _step++;
     });
     _logStepView();
-    if (_isPickStep && _restaurants.isEmpty) {
-      _loadRestaurants();
-    }
   }
 
   void _finish({required bool skipped}) {
@@ -146,11 +99,12 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cut = _messageCuts[_step];
     return Scaffold(
       backgroundColor: Colors.white,
       body: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: _isPickStep ? null : _handleTapAnywhere,
+        onTap: _handleTapAnywhere,
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(28, 8, 28, 24),
@@ -172,19 +126,13 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
                     child: const Text('건너뛰기'),
                   ),
                 ),
-                Expanded(
-                  child: _isPickStep ? _buildPickStep() : _buildMessageCut(),
-                ),
+                Expanded(child: _buildMessageCut(cut)),
                 _buildDots(),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  style: OnboardingStyle.primaryButton(
-                    enabled: !_isPickStep || _selectedRestaurant != null,
-                  ),
-                  onPressed: (_isPickStep && _selectedRestaurant == null)
-                      ? null
-                      : _handlePrimary,
-                  child: Text(_isPickStep ? '로그인하고 쿠폰 받기' : '다음'),
+                  style: OnboardingStyle.primaryButton(),
+                  onPressed: _handlePrimary,
+                  child: Text(cut.button),
                 ),
               ],
             ),
@@ -197,7 +145,7 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
   Widget _buildDots() {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(_totalSteps, (i) {
+      children: List.generate(_messageCuts.length, (i) {
         final active = i == _step;
         return AnimatedContainer(
           duration: const Duration(milliseconds: 200),
@@ -213,44 +161,115 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
     );
   }
 
-  // ---------- 메시지 컷: 좌상단 굵은 글씨만 ----------
+  // ---------- 메시지 컷: 헤드라인 + 서브카피 + 히어로 비주얼 ----------
 
-  Widget _buildMessageCut() {
-    return Align(
-      alignment: Alignment.topLeft,
-      child: Padding(
-        padding: const EdgeInsets.only(top: 16),
-        child: AnimatedRevealText(
-          key: ValueKey(_step),
-          text: _messageCuts[_step],
-          textAlign: TextAlign.left,
-          style: _headline,
-        ),
-      ),
-    );
-  }
-
-  // ---------- 식당 선택 단계 ----------
-
-  Widget _buildPickStep() {
+  Widget _buildMessageCut(
+      ({String title, String subtitle, String button}) cut) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(top: 16, bottom: 16),
-          child: Text('자주 가는 식당을\n골라 주세요', style: _headline),
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: AnimatedRevealText(
+            key: ValueKey(_step),
+            text: cut.title,
+            textAlign: TextAlign.left,
+            style: _headline,
+          ),
         ),
+        const SizedBox(height: 12),
+        Text(cut.subtitle, style: OnboardingStyle.subtitle),
         Expanded(
-          child: RestaurantPickList(
-            loading: _loadingRestaurants,
-            failed: _restaurantsFailed,
-            restaurants: _restaurants,
-            selectedIndex: _selectedRestaurant,
-            onSelect: (i) => setState(() => _selectedRestaurant = i),
-            onRetry: _loadRestaurants,
+          child: Center(
+            child: _step == 0 ? _buildPlateHero() : _buildCouponHero(),
           ),
         ),
       ],
+    );
+  }
+
+  // 화면 0: 3D 접시 아이콘
+  Widget _buildPlateHero() {
+    return Image.asset(
+      'assets/images/onboarding_hero_plate.png',
+      width: 170,
+      fit: BoxFit.contain,
+    );
+  }
+
+  // 화면 1: 쿠폰 카드 목업 (프로토타입 .rcpn.cpnhero)
+  Widget _buildCouponHero() {
+    return Transform.rotate(
+      angle: -1.5 * 3.141592 / 180,
+      child: Container(
+        width: 260,
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+        decoration: BoxDecoration(
+          color: const Color(0xFF192132),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x6B192132),
+              blurRadius: 38,
+              offset: Offset(0, 22),
+            ),
+          ],
+        ),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          // Center가 느슨한 제약을 주므로 min이 없으면 카드가 세로 전체로 늘어난다.
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '한끼갈비',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFCBD5FF),
+              ),
+            ),
+            SizedBox(height: 6),
+            Text(
+              '2,000원 할인',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.3,
+                color: Colors.white,
+              ),
+            ),
+            SizedBox(height: 6),
+            Text(
+              '1만원 이상 주문 시 사용 가능',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+                color: Color(0xFFD1D6FF),
+              ),
+            ),
+            SizedBox(height: 11),
+            Row(
+              children: [
+                Icon(Icons.access_time_rounded,
+                    size: 13, color: Color(0xFFE1B53E)),
+                SizedBox(width: 5),
+                Text(
+                  '받은 날부터 7일간 사용 가능',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFE1B53E),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

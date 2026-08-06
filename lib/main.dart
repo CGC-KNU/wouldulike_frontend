@@ -365,6 +365,8 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   // 온보딩(튜토리얼) 게이트: 첫 실행 인삿말 컷 / 가입 직후 보상 플로우
   bool _introSeen = true;
   bool _showRewardFlow = false;
+  // 로그인 전 보상 플로우(식당 선택→룰렛→로그인 유도) — 프로토타입 화면 2·3
+  bool _showPreLoginReward = false;
 
   @override
   void initState() {
@@ -375,9 +377,12 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   Future<void> _bootstrap() async {
     if (!widget.isLoggedIn) {
       final introSeen = await OnboardingPrefs.isIntroSeen();
+      // 룰렛 연출을 이미 봤으면(완료/건너뜀) 바로 로그인 화면으로
+      final rewardDone = await OnboardingPrefs.isRewardDone();
       if (!mounted) return;
       setState(() {
         _introSeen = introSeen;
+        _showPreLoginReward = !rewardDone;
         _isCheckingProfile = false;
       });
       return;
@@ -432,6 +437,18 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
       // 첫 실행: 홈/로그인 직행 대신 인삿말 컷부터
       if (!_introSeen) {
         return OnboardingIntroScreen(onFinished: _handleIntroFinished);
+      }
+      // 프로토타입 순서: 인트로 → 식당 선택 → 룰렛 당첨 → 카카오 로그인 유도
+      if (_showPreLoginReward) {
+        return OnboardingRewardFlow(
+          preLogin: true,
+          onFinished: () {
+            if (!mounted) return;
+            setState(() {
+              _showPreLoginReward = false;
+            });
+          },
+        );
       }
       return const LoginScreen();
     }

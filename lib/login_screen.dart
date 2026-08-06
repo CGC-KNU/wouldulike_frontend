@@ -465,22 +465,25 @@ class _LoginScreenState extends State<LoginScreen> {
                             ],
                             SizedBox(height: 17 * (screenHeight / 844)),
                             GestureDetector(
+                              // 텍스트 line-height 때문에 글자가 박스 밖으로 밀려
+                              // 탭 영역과 어긋나던 문제 수정. 터치 영역 44pt 이상 확보.
+                              behavior: HitTestBehavior.opaque,
                               onTap: () {
                                 Navigator.pushReplacementNamed(
                                     context, '/main');
                               },
-                              child: SizedBox(
+                              child: Container(
                                 width: 168,
-                                height: 41,
-                                child: Text(
+                                height: 48,
+                                alignment: Alignment.center,
+                                child: const Text(
                                   '지금은 괜찮아요',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    color: const Color(0xFF1C203C),
+                                    color: Color(0xFF1C203C),
                                     fontSize: 16,
                                     fontFamily: 'Pretendard',
                                     fontWeight: FontWeight.w400,
-                                    height: 3.75,
                                     letterSpacing: -0.50,
                                   ),
                                 ),
