@@ -82,8 +82,8 @@ class FeaturedCampaign {
 
   /// 예: 2026.06.01 ~ 06.30
   String get periodLabel {
-    final s = startsAt;
-    final e = endsAt;
+    final s = startsAt?.toLocal();
+    final e = endsAt?.toLocal();
     String two(int v) => v.toString().padLeft(2, '0');
     if (s == null || e == null) return '';
     final start = '${s.year}.${two(s.month)}.${two(s.day)}';

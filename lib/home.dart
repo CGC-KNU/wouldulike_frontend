@@ -13,10 +13,14 @@ import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'affiliate_benefits_screen.dart';
 import 'coupon_list_screen.dart';
+import 'featured/featured_campaign_screen.dart';
+import 'mission/mission_track_screen.dart';
 import 'services/affiliate_service.dart';
 import 'services/coupon_service.dart';
 import 'services/api_client.dart';
+import 'services/mission_service.dart';
 import 'services/popup_service.dart';
+import 'services/promotion_service.dart';
 import 'services/trend_service.dart';
 
 bool _isValidHttpImageUrl(String? value) {
@@ -111,6 +115,11 @@ class _HomeContentState extends State<HomeContent> {
   Set<int> _favoriteRestaurantIds = <int>{};
   Timer? _bannerAutoScrollTimer;
   static const Duration _bannerAutoScrollDuration = Duration(seconds: 3);
+  FeaturedCampaign? _featuredCampaign;
+  MissionTrack? _missionTrack;
+  int _featuredBannerIndex = 0;
+  final PageController _featuredBannerController =
+      PageController(viewportFraction: 0.92);
 
   @override
   void initState() {
@@ -118,7 +127,33 @@ class _HomeContentState extends State<HomeContent> {
     _initializePrefs();
     _loadTrends();
     _loadAffiliateRestaurants();
+    _loadFeaturedCampaign();
+    _loadMissionTrack();
     _startBannerAutoScroll();
+  }
+
+  /// 홈 미션 배너용. 미션 트랙 화면과 같은 응답을 쓰고 별도 호출을 만들지 않는다 (스펙 7.3).
+  Future<void> _loadMissionTrack() async {
+    final track = await MissionService.fetchTrack();
+    if (!mounted) return;
+    setState(() => _missionTrack = (track?.hasOngoing ?? false) ? track : null);
+  }
+
+  Future<void> _loadFeaturedCampaign() async {
+    try {
+      final campaign = await PromotionService.fetchCurrentFeatured();
+      if (!mounted) return;
+      setState(() {
+        _featuredCampaign =
+            (campaign != null && campaign.hasItems) ? campaign : null;
+        _featuredBannerIndex = 0;
+      });
+    } catch (e) {
+      // 진행 중 기획전 확인 실패 시 섹션만 숨긴다 (스펙 7.4).
+      debugPrint('Failed to load featured campaign: $e');
+      if (!mounted) return;
+      setState(() => _featuredCampaign = null);
+    }
   }
 
   Future<void> _initializePrefs() async {
@@ -1246,6 +1281,7 @@ class _HomeContentState extends State<HomeContent> {
     await Future.wait(<Future<void>>[
       _loadTrends(),
       _loadAffiliateRestaurants(),
+      _loadFeaturedCampaign(),
     ]);
     if (!_suppressWelcomeCoupon) {
       await _checkWelcomeCouponStatus();
@@ -1552,7 +1588,144 @@ class _HomeContentState extends State<HomeContent> {
   void dispose() {
     _stopBannerAutoScroll();
     _bannerController.dispose();
+    _featuredBannerController.dispose();
     super.dispose();
+  }
+
+  // ===== 기획전 캐러셀 (스펙 7.4·7.5, 프로토타입 화면 4) =====
+
+  void _openFeaturedCampaign() {
+    final campaign = _featuredCampaign;
+    if (campaign == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => FeaturedCampaignScreen(campaign: campaign),
+      ),
+    );
+  }
+
+  String? _featuredBannerImage(int itemIndex) {
+    final campaign = _featuredCampaign;
+    if (campaign == null || itemIndex >= campaign.items.length) return null;
+    final restaurantId = campaign.items[itemIndex].restaurantId;
+    for (final r in _affiliateRestaurants) {
+      if (r.id == restaurantId && r.imageUrls.isNotEmpty) {
+        return r.imageUrls.first;
+      }
+    }
+    return null;
+  }
+
+  Widget _buildFeaturedCarousel(double width) {
+    final campaign = _featuredCampaign;
+    // 진행 중 기획전이 없으면 섹션 전체를 숨긴다. 빈 캐러셀 노출 금지 (스펙 7.4).
+    if (campaign == null || !campaign.hasItems) {
+      return const SizedBox.shrink();
+    }
+
+    final banners = <({String tag, String title, String subtitle})>[
+      (tag: '기획전', title: campaign.title, subtitle: campaign.subtitle),
+      (
+        tag: '기획전 한정',
+        title: '기획전 참여 매장',
+        subtitle: '쿠폰·스탬프 혜택을\n한 번에 모아봤어요!',
+      ),
+      (
+        tag: '우주라이크 PICK',
+        title: '선별 매장 ${campaign.items.length}곳',
+        subtitle: '우주라이크가 고른 매장에서만\n열리는 한정 혜택이에요.',
+      ),
+    ];
+    final double bannerHeight = (width * 0.92 * 1.15).clamp(0.0, 400.0).toDouble();
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  campaign.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF111827),
+                    fontSize: 18,
+                    fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+              GestureDetector(
+                onTap: _openFeaturedCampaign,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Text(
+                    '더보기 >',
+                    style: TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 12.5,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: bannerHeight,
+            child: PageView.builder(
+              controller: _featuredBannerController,
+              // 수동 스와이프만 지원. 자동 넘김 타이머 없음 (스펙 7.5).
+              physics: const PageScrollPhysics(),
+              itemCount: banners.length,
+              onPageChanged: (index) {
+                if (_featuredBannerIndex != index) {
+                  setState(() => _featuredBannerIndex = index);
+                }
+              },
+              itemBuilder: (context, index) {
+                final banner = banners[index];
+                return Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: _FeaturedBannerCard(
+                    tag: banner.tag,
+                    title: banner.title,
+                    subtitle: banner.subtitle,
+                    imageUrl: _featuredBannerImage(index),
+                    onTap: _openFeaturedCampaign,
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(banners.length, (index) {
+              final bool isActive = index == _featuredBannerIndex;
+              return AnimatedContainer(
+                duration: const Duration(milliseconds: 200),
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                width: isActive ? 12 : 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: isActive
+                      ? const Color(0xFF312E81)
+                      : const Color(0xFFD1D5DB),
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildAffiliateRestaurantsSection() {
@@ -1713,19 +1886,158 @@ class _HomeContentState extends State<HomeContent> {
     return 'D-$d';
   }
 
-  Widget _buildDietGreeting() => const Padding(
-        padding: EdgeInsets.only(bottom: 16),
-        child: Text(
-          '오늘 뭐 먹지?',
-          style: TextStyle(
-            fontFamily: 'Pretendard',
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
-            letterSpacing: -0.5,
-            color: Color(0xFF111827),
+  // ===== 미션 진행 배너 (프로토타입 화면 4 .mbanner, 스펙 7.5) =====
+  // 진행 중 미션이 없으면 렌더링하지 않는다. 쿠폰 만료 정보는 넣지 않는다(중복 방지).
+  Widget _buildMissionBanner() {
+    final track = _missionTrack;
+    if (track == null) return const SizedBox.shrink();
+    final total = track.missions.length;
+    final remaining = track.remainingCount;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () {
+          AnalyticsLogger.logEvent('mission_banner_tap', parameters: {
+            'remaining': remaining,
+          });
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MissionTrackScreen(),
+            ),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(18, 17, 18, 17),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE7E9EF)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x0A14123C),
+                blurRadius: 10,
+                offset: Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '미션 깨고 쿠폰 받아가세요',
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 17,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.46,
+                            color: Color(0xFF191F28),
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        Text(
+                          '간단한 미션 $total개, 지금 $remaining개 남았어요',
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w500,
+                            letterSpacing: -0.12,
+                            color: Color(0xFF4E5968),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Transform.rotate(
+                    angle: -0.052, // -3deg (프로토타입 .mb-img)
+                    child: Image.asset(
+                      'assets/images/mission_banner.png',
+                      width: 46,
+                      height: 46,
+                      fit: BoxFit.contain,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              _buildMissionTrackStrip(track),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// 배너 하단 진행 트랙 (프로토타입 .trk): 노드 + 연결선, 마지막은 리워드 노드.
+  Widget _buildMissionTrackStrip(MissionTrack track) {
+    const primary = Color(0xFF312E81);
+    const line = Color(0xFFE7E9EF);
+    final missions = track.missions;
+    if (missions.isEmpty) return const SizedBox.shrink();
+
+    final children = <Widget>[];
+    for (var i = 0; i < missions.length; i++) {
+      final m = missions[i];
+      final isLast = i == missions.length - 1;
+      final done = m.status == MissionStatus.claimed;
+      final current = m.status == MissionStatus.open ||
+          m.status == MissionStatus.ready;
+
+      children.add(
+        isLast
+            ? Container(
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFBF3DC),
+                  border: Border.all(color: const Color(0xFFE1B53E), width: 2),
+                ),
+                child: const Icon(Icons.card_giftcard,
+                    size: 14, color: Color(0xFF8A6410)),
+              )
+            : Container(
+                width: 17,
+                height: 17,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: done
+                      ? primary
+                      : (current ? Colors.white : line),
+                  border: current
+                      ? Border.all(color: primary, width: 2.5)
+                      : null,
+                ),
+                child: done
+                    ? const Icon(Icons.check, size: 11, color: Colors.white)
+                    : null,
+              ),
       );
+      if (!isLast) {
+        children.add(
+          Expanded(
+            child: Container(
+              height: 3,
+              decoration: BoxDecoration(
+                color: done ? primary : line,
+                borderRadius: BorderRadius.circular(99),
+              ),
+            ),
+          ),
+        );
+      }
+    }
+
+    return Row(children: children);
+  }
 
   Widget _buildExpiringCouponHighlight() {
     if (_affiliateRequiresLogin || _homeCouponShowcase.isEmpty) {
@@ -1993,14 +2305,123 @@ class _HomeContentState extends State<HomeContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 홈 다이어트: 기획전·배너 제거 → 내 혜택 요약 중심
-                _buildDietGreeting(),
+                // 미션 진행 배너 (프로토타입 화면 4 최상단). 진행 중 미션 없으면 미노출
+                _buildMissionBanner(),
+                // 기획전 캐러셀: 진행 중 기획전 있을 때만 노출 (기존 섹션 순서 유지)
+                _buildFeaturedCarousel(screenWidth - padding * 2),
                 _buildExpiringCouponHighlight(),
                 _buildStampHighlight(),
                 if (_hasAffiliateContent) _buildAffiliateRestaurantsSection(),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FeaturedBannerCard extends StatelessWidget {
+  const _FeaturedBannerCard({
+    required this.tag,
+    required this.title,
+    required this.subtitle,
+    required this.imageUrl,
+    required this.onTap,
+  });
+
+  final String tag;
+  final String title;
+  final String subtitle;
+  final String? imageUrl;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: onTap,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_isValidHttpImageUrl(imageUrl))
+              Image.network(
+                imageUrl!.trim(),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            // 프로토타입 .hcollab 그라데이션 + 하단 텍스트 가독용 오버레이
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    const Color(0xFF2A2670).withOpacity(
+                        _isValidHttpImageUrl(imageUrl) ? 0.25 : 1.0),
+                    const Color(0xFF4B47C4).withOpacity(
+                        _isValidHttpImageUrl(imageUrl) ? 0.35 : 1.0),
+                    Colors.black.withOpacity(
+                        _isValidHttpImageUrl(imageUrl) ? 0.65 : 0.35),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      tag,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 10.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.5,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    subtitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w400,
+                      height: 1.5,
+                      color: Color(0xE6FFFFFF),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
