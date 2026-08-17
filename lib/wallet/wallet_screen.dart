@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import 'package:new1/coupon_list_screen.dart';
+import 'package:new1/mileage/mileage_shop_screen.dart';
+import 'package:new1/services/mileage_service.dart';
 import 'package:new1/wallet/mileage_tab.dart';
 import 'package:new1/wallet/stamp_tab.dart';
 
@@ -18,11 +20,29 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  MileageSummary? _summary;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
+    _loadSummary();
+  }
+
+  Future<void> _loadSummary() async {
+    final summary = await MileageService.fetchSummary();
+    if (!mounted) return;
+    setState(() => _summary = summary);
+  }
+
+  Future<void> _openShop() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MileageShopScreen(initialSummary: _summary),
+      ),
+    );
+    // 응모로 잔액이 줄었을 수 있으므로 복귀 시 갱신
+    await _loadSummary();
   }
 
   @override
@@ -93,14 +113,20 @@ class _WalletScreenState extends State<WalletScreen>
     );
   }
 
-  /// 마일리지 히어로 카드 (M1: 오픈 준비 중 표시, M3에서 잔액 연동)
+  /// 마일리지 히어로 카드. 잔액 + 마일리지 상점 진입 (스펙 7.1·7.2).
   Widget _buildMileageHero() {
+    final summary = _summary;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF192132),
         borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF4B47C4), Color(0xFF6A5AE6), Color(0xFF7C64EE)],
+          stops: [0.0, 0.55, 1.0],
+        ),
       ),
       child: Row(
         children: [
@@ -109,44 +135,84 @@ class _WalletScreenState extends State<WalletScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  '내 마일리지',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFFCBD5FF),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  '오픈 준비 중이에요',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                const Text(
-                  '방문 적립 마일리지가 곧 찾아와요',
+                  '보유 마일리지',
                   style: TextStyle(
                     fontSize: 12,
                     fontFamily: 'Pretendard',
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xD1FFFFFF),
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: _comma(summary?.balance ?? 0),
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.78,
+                          color: Colors.white,
+                          height: 1,
+                        ),
+                      ),
+                      const TextSpan(
+                        text: ' M',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '이번 달 +${_comma(summary?.monthEarned ?? 0)} M 적립',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontFamily: 'Pretendard',
                     fontWeight: FontWeight.w500,
-                    color: Color(0x99FFFFFF),
+                    color: Color(0xCCFFFFFF),
                   ),
                 ),
               ],
             ),
           ),
-          const Icon(
-            Icons.savings_outlined,
-            size: 32,
-            color: Color(0xFFCBD5FF),
+          ElevatedButton(
+            onPressed: _openShop,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF312E81),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              textStyle: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            child: const Text('마일리지 상점'),
           ),
         ],
       ),
     );
   }
+}
+
+String _comma(int value) {
+  final digits = value.abs().toString();
+  final buffer = StringBuffer(value < 0 ? '-' : '');
+  for (var i = 0; i < digits.length; i++) {
+    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
+    buffer.write(digits[i]);
+  }
+  return buffer.toString();
 }
