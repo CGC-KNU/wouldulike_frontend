@@ -289,16 +289,16 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('자주 가는 곳을\n골라 주세요', style: OnboardingStyle.title),
+          const Text('어디서 쓸까요?', style: OnboardingStyle.title),
           const SizedBox(height: 8),
-          const Text('고르시면 첫 쿠폰을 바로 드려요', style: OnboardingStyle.subtitle),
+          const Text('원하는 식당을 선택해 주세요.', style: OnboardingStyle.subtitle),
           const SizedBox(height: 20),
           Expanded(child: _buildRestaurantList()),
           const SizedBox(height: 12),
           ElevatedButton(
             style: OnboardingStyle.primaryButton(enabled: _selectedIndex != null),
             onPressed: _selectedIndex == null ? null : _startSpin,
-            child: const Text('쿠폰 받으러 가기'),
+            child: const Text('이 식당으로 뽑기'),
           ),
           Center(
             child: TextButton(
@@ -311,7 +311,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
                   fontWeight: FontWeight.w500,
                 ),
               ),
-              child: const Text('나중에 볼게요'),
+              child: const Text('건너뛰기'),
             ),
           ),
         ],

@@ -1,4 +1,6 @@
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
@@ -167,6 +169,7 @@ class CouponBenefitInfo {
     this.restaurantId,
     this.restaurantName,
     this.restaurantCategory,
+    this.allStores = false,
   });
 
   factory CouponBenefitInfo.fromJson(Map<String, dynamic> json) {
@@ -188,6 +191,8 @@ class CouponBenefitInfo {
       restaurantId: _parseOptionalInt(json['restaurant_id']),
       restaurantName: _normalizeString(json['restaurant_name']),
       restaurantCategory: _normalizeString(json['restaurant_category']),
+      // 식사권 응모 당첨 쿠폰은 매장이 정해져 있지 않고 전 매장에서 쓴다.
+      allStores: _normalizeString(json['scope']) == 'ALL_STORES',
     );
   }
 
@@ -198,6 +203,9 @@ class CouponBenefitInfo {
   final int? restaurantId;
   final String? restaurantName;
   final String? restaurantCategory;
+
+  /// 전 매장 공통 쿠폰 (마일리지 식사권 당첨분)
+  final bool allStores;
 
   String get resolvedTitle => (title != null && title!.isNotEmpty)
       ? title!
@@ -737,6 +745,7 @@ class CouponService {
       } else {
         coupons = const [];
       }
+      coupons = coupons.where(_isVisibleCouponType).toList();
       await _logNewCouponsFromDiff(coupons, alreadyLogged: alreadyLogged);
       return coupons;
     } on TimeoutException catch (e) {
@@ -749,6 +758,29 @@ class CouponService {
       print('CouponService: Fetch failed ($e)');
       rethrow;
     }
+  }
+
+  /// 운영 종료된 쿠폰 종류. 서버 데이터 정리(마이그레이션 0093) 전까지 앱에서 가린다.
+  /// 이미 발급된 쿠폰이라 서버 혜택 비활성만으로는 사라지지 않는다.
+  static const _hiddenCampaignCodes = {
+    'APP_OPEN_MON_EVENT',
+    'APP_OPEN_WED_EVENT',
+  };
+  static const _hiddenCouponKeywords = ['월요병 치료 쿠폰', '술요일 쿠폰'];
+
+  static bool _isVisibleCouponType(UserCoupon coupon) {
+    final campaign = coupon.campaignCode?.trim().toUpperCase();
+    if (campaign != null && _hiddenCampaignCodes.contains(campaign)) {
+      return false;
+    }
+    final issueKey = coupon.issueKey?.toUpperCase() ?? '';
+    if (issueKey.contains('APP_OPEN_MON') || issueKey.contains('APP_OPEN_WED')) {
+      return false;
+    }
+    // 캠페인 코드가 안 내려오는 과거 발급분은 문구로 거른다.
+    final text =
+        '${coupon.benefit?.title ?? ''} ${coupon.benefit?.subtitle ?? ''}';
+    return !_hiddenCouponKeywords.any(text.contains);
   }
 
   static List<UserCoupon> _getMockCoupons() {
@@ -775,6 +807,12 @@ class CouponService {
       queryParameters: {'restaurant_id': restaurantId},
     );
     final decoded = _decodeResponseBody(response);
+    // 적립 직후 값이 0으로 돌아오는 현상 추적용 (디버그 빌드 전용)
+    assert(() {
+      debugPrint('[stamp][GET r=$restaurantId] ${response.statusCode} '
+          '${response.body.length > 400 ? '${response.body.substring(0, 400)}…' : response.body}');
+      return true;
+    }());
     if (decoded is Map<String, dynamic>) {
       return StampStatus.fromJson(decoded);
     }

@@ -1360,11 +1360,13 @@ class _FavoriteRestaurantsScreenState extends State<FavoriteRestaurantsScreen> {
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Image.asset(
-            'assets/images/coupon_status.png',
+          SvgPicture.asset(
+            'assets/images/coupon.svg',
             width: 12,
             height: 12,
             fit: BoxFit.contain,
+            colorFilter:
+                const ColorFilter.mode(Color(0xFF1F2937), BlendMode.srcIn),
           ),
           const SizedBox(width: 4),
           Text(

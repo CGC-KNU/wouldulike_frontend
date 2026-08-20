@@ -22,6 +22,41 @@ class MileageSummary {
   final int monthEarned;
 }
 
+/// 지갑 배지 수치 (GET /api/wallet/overview/)
+class WalletOverview {
+  const WalletOverview({
+    required this.mileage,
+    required this.usableCoupons,
+    required this.expiringSoon,
+    required this.activeStampStores,
+  });
+
+  factory WalletOverview.fromJson(Map<String, dynamic> json) {
+    Map<String, dynamic> section(String key) {
+      final raw = json[key];
+      return raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+    }
+
+    final mileage = section('mileage');
+    final coupons = section('coupons');
+    final stamps = section('stamps');
+    return WalletOverview(
+      mileage: MileageSummary(
+        balance: _asInt(mileage['balance']),
+        monthEarned: _asInt(mileage['month_earned']),
+      ),
+      usableCoupons: _asInt(coupons['usable']),
+      expiringSoon: _asInt(coupons['expiring_soon']),
+      activeStampStores: _asInt(stamps['active_stores']),
+    );
+  }
+
+  final MileageSummary mileage;
+  final int usableCoupons;
+  final int expiringSoon;
+  final int activeStampStores;
+}
+
 /// 마일리지 원장 1건 (GET /api/mileage/history/)
 class MileageEvent {
   const MileageEvent({
@@ -84,6 +119,7 @@ class Raffle {
     required this.restaurantName,
     required this.entriesCount,
     required this.entered,
+    this.allStores = true,
     this.closesAt,
   });
 
@@ -96,6 +132,9 @@ class Raffle {
       restaurantName: json['restaurant_name']?.toString() ?? '',
       entriesCount: _asInt(json['entries_count']),
       entered: json['entered'] == true,
+      // 서버가 all_stores를 안 주는 구버전이면 매장명 유무로 판단한다.
+      allStores: json['all_stores'] == true ||
+          (json['all_stores'] == null && json['restaurant_id'] == null),
       closesAt: _asDate(json['closes_at']),
     );
   }
@@ -107,7 +146,98 @@ class Raffle {
   final String restaurantName;
   final int entriesCount;
   final bool entered;
+
+  /// 전 매장에서 쓸 수 있는 식사권인지 (마일리지는 매장 구분 없이 사용)
+  final bool allStores;
   final DateTime? closesAt;
+}
+
+/// 내 응모 1건 (GET /api/raffles/my/)
+class MyRaffleEntry {
+  const MyRaffleEntry({
+    required this.raffleId,
+    required this.title,
+    required this.prizeAmount,
+    required this.costMileage,
+    required this.status,
+    required this.won,
+    required this.allStores,
+    this.closesAt,
+    this.createdAt,
+  });
+
+  factory MyRaffleEntry.fromJson(Map<String, dynamic> json) {
+    return MyRaffleEntry(
+      raffleId: _asInt(json['raffle_id']),
+      title: json['title']?.toString() ?? '식사권',
+      prizeAmount: _asInt(json['prize_amount']),
+      costMileage: _asInt(json['cost_mileage']),
+      status: json['status']?.toString() ?? 'OPEN',
+      won: json['won'] == true,
+      allStores: json['all_stores'] != false,
+      closesAt: _asDate(json['closes_at']),
+      createdAt: _asDate(json['created_at']),
+    );
+  }
+
+  final int raffleId;
+  final String title;
+  final int prizeAmount;
+  final int costMileage;
+
+  /// OPEN(진행중) · CLOSED(마감) · DRAWN(추첨완료)
+  final String status;
+  final bool won;
+  final bool allStores;
+  final DateTime? closesAt;
+  final DateTime? createdAt;
+
+  /// 추첨 전이면 결과를 확정 표기하지 않는다.
+  String get resultLabel {
+    if (status != 'DRAWN') return '추첨 대기';
+    return won ? '당첨' : '미당첨';
+  }
+}
+
+/// 당첨자 발표 1건 (GET /api/raffles/winners/)
+class RaffleWinner {
+  const RaffleWinner({
+    required this.raffleId,
+    required this.title,
+    required this.prizeAmount,
+    required this.costMileage,
+    required this.entriesCount,
+    required this.winnerNickname,
+    required this.allStores,
+    required this.restaurantName,
+    this.drawnAt,
+  });
+
+  factory RaffleWinner.fromJson(Map<String, dynamic> json) {
+    return RaffleWinner(
+      raffleId: _asInt(json['raffle_id']),
+      title: json['title']?.toString() ?? '식사권',
+      prizeAmount: _asInt(json['prize_amount']),
+      costMileage: _asInt(json['cost_mileage']),
+      entriesCount: _asInt(json['entries_count']),
+      winnerNickname: json['winner_nickname']?.toString() ?? '당첨자 미정',
+      allStores: json['all_stores'] != false,
+      restaurantName: json['restaurant_name']?.toString() ?? '',
+      drawnAt: _asDate(json['drawn_at']),
+    );
+  }
+
+  final int raffleId;
+  final String title;
+  final int prizeAmount;
+  final int costMileage;
+  final int entriesCount;
+
+  /// 서버가 첫 글자만 남기고 마스킹해 내려주는 닉네임
+  final String winnerNickname;
+  final bool allStores;
+  final String restaurantName;
+  final DateTime? drawnAt;
 }
 
 /// 응모 결과. 실패 시 code로 사유 구분 (스펙 6.2)
@@ -147,6 +277,19 @@ class MileageService {
     } catch (_) {}
     // API 미배포 구간의 UI 확인용. 릴리스 빌드에서는 동작하지 않는다. (배포 후 삭제)
     if (kDebugMode) return const MileageSummary(balance: 12400, monthEarned: 1800);
+    return null;
+  }
+
+  /// 지갑 진입 시 탭 배지 수치 일괄 조회. 미배포면 null이라 배지를 숨긴다.
+  static Future<WalletOverview?> fetchWalletOverview() async {
+    try {
+      final response = await ApiClient.get('/api/wallet/overview/')
+          .timeout(const Duration(seconds: 8));
+      final decoded = _decode(response);
+      if (decoded is Map<String, dynamic>) {
+        return WalletOverview.fromJson(decoded);
+      }
+    } catch (_) {}
     return null;
   }
 
@@ -192,6 +335,41 @@ class MileageService {
       }
     } catch (_) {}
     if (kDebugMode) return _devRaffles();
+    return const [];
+  }
+
+  static Future<List<MyRaffleEntry>> fetchMyEntries() async {
+    try {
+      final response = await ApiClient.get('/api/raffles/my/')
+          .timeout(const Duration(seconds: 8));
+      final decoded = _decode(response);
+      final raw = decoded is Map<String, dynamic> ? decoded['results'] : decoded;
+      if (raw is List) {
+        return raw
+            .whereType<Map>()
+            .map((e) => MyRaffleEntry.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+    } catch (_) {}
+    if (kDebugMode) return _devMyEntries();
+    return const [];
+  }
+
+  /// 당첨자 발표. 추첨이 끝난 건만 내려온다 (인증 불필요).
+  static Future<List<RaffleWinner>> fetchWinners() async {
+    try {
+      final response = await ApiClient.get('/api/raffles/winners/')
+          .timeout(const Duration(seconds: 8));
+      final decoded = _decode(response);
+      final raw = decoded is Map<String, dynamic> ? decoded['results'] : decoded;
+      if (raw is List) {
+        return raw
+            .whereType<Map>()
+            .map((e) => RaffleWinner.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      }
+    } catch (_) {}
+    if (kDebugMode) return _devWinners();
     return const [];
   }
 
@@ -264,39 +442,83 @@ List<Raffle> _devRaffles() {
     Raffle(
         id: 1,
         title: '식사권',
-        prizeAmount: 30000,
+        prizeAmount: 5000,
         costMileage: 500,
-        restaurantName: '고니식탁',
+        restaurantName: '',
         entriesCount: 1240,
         entered: false,
         closesAt: now.add(const Duration(days: 3))),
     Raffle(
         id: 2,
         title: '식사권',
-        prizeAmount: 20000,
-        costMileage: 300,
-        restaurantName: '구구포차',
+        prizeAmount: 10000,
+        costMileage: 1000,
+        restaurantName: '',
         entriesCount: 860,
         entered: false,
-        closesAt: now.add(const Duration(days: 5))),
-    Raffle(
-        id: 3,
+        closesAt: now.add(const Duration(days: 3))),
+  ];
+}
+
+List<MyRaffleEntry> _devMyEntries() {
+  final now = DateTime.now();
+  return [
+    MyRaffleEntry(
+        raffleId: 91,
         title: '식사권',
-        prizeAmount: 50000,
-        costMileage: 800,
-        restaurantName: '마름모식당',
-        entriesCount: 2100,
-        entered: false,
-        closesAt: now.add(const Duration(days: 1))),
-    Raffle(
-        id: 4,
+        prizeAmount: 10000,
+        costMileage: 1000,
+        status: 'DRAWN',
+        won: true,
+        allStores: true,
+        closesAt: now.subtract(const Duration(days: 4)),
+        createdAt: now.subtract(const Duration(days: 7))),
+    MyRaffleEntry(
+        raffleId: 90,
         title: '식사권',
-        prizeAmount: 30000,
+        prizeAmount: 5000,
         costMileage: 500,
-        restaurantName: '다이와스시',
-        entriesCount: 540,
-        entered: true,
-        closesAt: now.add(const Duration(days: 7))),
+        status: 'DRAWN',
+        won: false,
+        allStores: true,
+        closesAt: now.subtract(const Duration(days: 11)),
+        createdAt: now.subtract(const Duration(days: 14))),
+    MyRaffleEntry(
+        raffleId: 1,
+        title: '식사권',
+        prizeAmount: 5000,
+        costMileage: 500,
+        status: 'OPEN',
+        won: false,
+        allStores: true,
+        closesAt: now.add(const Duration(days: 3)),
+        createdAt: now.subtract(const Duration(days: 1))),
+  ];
+}
+
+List<RaffleWinner> _devWinners() {
+  final now = DateTime.now();
+  return [
+    RaffleWinner(
+        raffleId: 91,
+        title: '식사권',
+        prizeAmount: 10000,
+        costMileage: 1000,
+        entriesCount: 934,
+        winnerNickname: '김**',
+        allStores: true,
+        restaurantName: '',
+        drawnAt: now.subtract(const Duration(days: 4))),
+    RaffleWinner(
+        raffleId: 90,
+        title: '식사권',
+        prizeAmount: 5000,
+        costMileage: 500,
+        entriesCount: 1187,
+        winnerNickname: '이**',
+        allStores: true,
+        restaurantName: '',
+        drawnAt: now.subtract(const Duration(days: 11))),
   ];
 }
 

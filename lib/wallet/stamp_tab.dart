@@ -1,3 +1,4 @@
+import 'package:new1/widgets/category_strip.dart';
 import 'package:flutter/material.dart';
 
 import 'package:new1/services/affiliate_service.dart';
@@ -29,6 +30,7 @@ class _StampEntry {
 }
 
 class _StampTabState extends State<StampTab> {
+  String _selectedCategory = 'ALL';
   bool _isLoading = true;
   bool _requiresLogin = false;
   bool _hasError = false;
@@ -140,11 +142,41 @@ class _StampTabState extends State<StampTab> {
       );
     }
 
+    // 쿠폰 탭과 같은 카테고리 줄. 선택하면 해당 분류 매장만 남긴다.
+    final visible = _selectedCategory == 'ALL'
+        ? _entries
+        : _entries
+            .where((e) =>
+                normalizeCategoryKey(e.restaurant?.category ?? '') ==
+                _selectedCategory)
+            .toList();
+
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.only(left: 16, right: 16, top: 12, bottom: 140),
       children: [
-        for (final entry in _entries) _buildStampCard(entry),
+        CategoryStrip(
+          selected: _selectedCategory,
+          onSelect: (key) => setState(() => _selectedCategory = key),
+        ),
+        const SizedBox(height: 12),
+        if (visible.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 56),
+            child: Center(
+              child: Text(
+                '${kCategoryIcons[_selectedCategory]?.label ?? ''} 스탬프가 아직 없어요',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF8B95A1),
+                ),
+              ),
+            ),
+          )
+        else
+          for (final entry in visible) _buildStampCard(entry),
       ],
     );
   }
@@ -195,6 +227,7 @@ class _StampTabState extends State<StampTab> {
     );
   }
 
+  /// 매장별 스탬프 티켓. 식당 상세와 같은 도장 에셋·절취선 구성을 쓴다.
   Widget _buildStampCard(_StampEntry entry) {
     final status = entry.status;
     final target = status.target > 0 ? status.target : (_defaultTarget ?? 10);
@@ -202,85 +235,116 @@ class _StampTabState extends State<StampTab> {
     final name = entry.restaurant?.name ?? '매장 ${entry.restaurantId}';
     final category = entry.restaurant?.category ?? '';
     final remaining = target - current;
+    final rewardSteps = <int>{
+      for (final r in status.rewards)
+        if (r.stamps != null && r.stamps! > 0) r.stamps!,
+    };
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D191F28),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+          BoxShadow(
+            color: Color(0x14191F28),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (category.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 16, 13),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Image.asset(
+                  'assets/images/stamp/stamp_tag.png',
+                  width: 32,
+                  height: 32,
+                ),
+                const SizedBox(width: 9),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        category,
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 15,
                           fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF797979),
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.4,
+                          color: Color(0xFF191F28),
                         ),
                       ),
-                    Text(
-                      name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF172133),
+                      const SizedBox(height: 2),
+                      Text(
+                        [
+                          if (category.isNotEmpty) category,
+                          remaining <= 0
+                              ? '리워드를 받을 수 있어요'
+                              : '$remaining개 더 모으면 리워드',
+                        ].join(' · '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w500,
+                          color: Color(0xFF8B95A1),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: '$current',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF312E81),
+                const SizedBox(width: 8),
+                Text.rich(
+                  TextSpan(
+                    children: [
+                      TextSpan(
+                        text: '$current',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.6,
+                          color: Color(0xFF4F46E5),
+                        ),
                       ),
-                    ),
-                    TextSpan(
-                      text: ' / $target',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF9CA3AF),
+                      TextSpan(
+                        text: ' / $target',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontFamily: 'Pretendard',
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF191F28),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-          const SizedBox(height: 12),
-          _buildDotGrid(current: current, target: target),
-          const SizedBox(height: 8),
-          Text(
-            remaining <= 0 ? '리워드 조건을 달성했어요!' : '$remaining개 더 모으면 리워드를 받아요',
-            style: TextStyle(
-              fontSize: 12,
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w600,
-              color: remaining <= 0
-                  ? const Color(0xFF312E81)
-                  : const Color(0xFF797979),
+          const _DashedDivider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: _buildStampGrid(
+              current: current,
+              target: target,
+              rewardSteps: rewardSteps,
             ),
           ),
         ],
@@ -288,39 +352,72 @@ class _StampTabState extends State<StampTab> {
     );
   }
 
-  /// target칸 점 그리드. 마지막 칸은 리워드 아이콘으로 표시.
-  Widget _buildDotGrid({required int current, required int target}) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        for (var i = 0; i < target; i++)
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: i < current
-                  ? const Color(0xFF312E81)
-                  : const Color(0xFFF3F4F6),
-              border: Border.all(
-                color: i < current
-                    ? const Color(0xFF312E81)
-                    : const Color(0xFFE5E7EB),
+  /// 5칸씩 줄바꿈되는 원형 도장. 리워드가 걸린 칸은 선물 도장으로 표시한다.
+  Widget _buildStampGrid({
+    required int current,
+    required int target,
+    required Set<int> rewardSteps,
+  }) {
+    const columns = 5;
+    const gap = 8.0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final size = (constraints.maxWidth - gap * (columns - 1)) / columns;
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (var i = 0; i < target; i++)
+              SizedBox(
+                width: size,
+                height: size,
+                child: Image.asset(
+                  (rewardSteps.contains(i + 1) || i == target - 1) &&
+                          i >= current
+                      ? 'assets/images/stamp/stamp_reward.png'
+                      : (i < current
+                          ? 'assets/images/stamp/stamp_filled.png'
+                          : 'assets/images/stamp/stamp_empty.png'),
+                  fit: BoxFit.contain,
+                ),
               ),
-            ),
-            child: i == target - 1
-                ? Icon(
-                    Icons.card_giftcard,
-                    size: 14,
-                    color:
-                        i < current ? Colors.white : const Color(0xFFE1B53E),
-                  )
-                : (i < current
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
-                    : null),
-          ),
-      ],
+          ],
+        );
+      },
     );
   }
+
+}
+
+/// 티켓 절취선.
+class _DashedDivider extends StatelessWidget {
+  const _DashedDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 1.5,
+      child: CustomPaint(painter: _DashedLinePainter(), size: Size.infinite),
+    );
+  }
+}
+
+class _DashedLinePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = const Color(0xFFE3E6EF)
+      ..strokeWidth = 1.5
+      ..strokeCap = StrokeCap.round;
+    const dash = 5.0;
+    const gap = 5.0;
+    var x = 0.0;
+    while (x < size.width) {
+      canvas.drawLine(Offset(x, 0.75), Offset(x + dash, 0.75), paint);
+      x += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

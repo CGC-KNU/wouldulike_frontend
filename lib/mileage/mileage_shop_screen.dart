@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import 'package:new1/mileage/my_raffle_entries_screen.dart';
+import 'package:new1/mileage/raffle_terms_screen.dart';
+import 'package:new1/mileage/raffle_winners_screen.dart';
 import 'package:new1/services/mileage_service.dart';
 
 /// 마일리지 상점 (프로토타입 화면 11, 스펙 7.2).
@@ -15,9 +18,12 @@ class MileageShopScreen extends StatefulWidget {
 
 class _MileageShopScreenState extends State<MileageShopScreen> {
   static const _ink = Color(0xFF191F28);
+  static const _sub = Color(0xFF4E5968);
   static const _faint = Color(0xFF8B95A1);
   static const _line = Color(0xFFE7E9EF);
-  static const _primary = Color(0xFF312E81);
+  static const _primary = Color(0xFF4F46E5);
+  static const _tint = Color(0xFFEEF1FE);
+  static const _bg = Color(0xFFFAFAFD);
 
   MileageSummary? _summary;
   List<Raffle> _raffles = const [];
@@ -64,9 +70,9 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: const Text(
-          '식사권에 응모할까요?',
+          '응모할까요?',
           style: TextStyle(
             fontFamily: 'Pretendard',
             fontSize: 17,
@@ -75,12 +81,13 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
           ),
         ),
         content: Text(
-          '${_comma(raffle.costMileage)} M이 차감돼요.\n미당첨 시 마일리지는 환급되지 않아요.',
+          '${_comma(raffle.costMileage)} M 차감 · 취소와 환급은 안 돼요.\n'
+          '당첨되면 쿠폰함으로 발급해 드려요.',
           style: const TextStyle(
             fontFamily: 'Pretendard',
             fontSize: 14,
             fontWeight: FontWeight.w500,
-            color: Color(0xFF4E5968),
+            color: _sub,
             height: 1.5,
           ),
         ),
@@ -133,13 +140,14 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
                       restaurantName: r.restaurantName,
                       entriesCount: result.entriesCount!,
                       entered: true,
+                      allStores: r.allStores,
                       closesAt: r.closesAt,
                     )
                   : r)
               .toList();
         }
       });
-      _snack(result.ok ? '응모를 완료했어요. 추첨 결과를 기다려 주세요.' : '이미 응모한 식사권이에요.');
+      _snack(result.ok ? '응모 완료! 당첨되면 쿠폰함으로 드려요.' : '이미 응모했어요.');
       return;
     }
 
@@ -164,78 +172,117 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFD),
+      backgroundColor: _bg,
       appBar: AppBar(
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
         scrolledUnderElevation: 0,
         elevation: 0,
+        centerTitle: true,
         title: const Text(
           '마일리지 상점',
           style: TextStyle(
             fontFamily: 'Pretendard',
             fontSize: 17,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.4,
             color: _ink,
           ),
         ),
         iconTheme: const IconThemeData(color: _ink),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MyRaffleEntriesScreen()),
+            ),
+            child: const Text(
+              '내 응모',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: _primary,
+              ),
+            ),
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: _primary))
           : RefreshIndicator(
-              color: const Color(0xFF6366F1),
+              color: _primary,
               backgroundColor: Colors.white,
               strokeWidth: 2,
               onRefresh: _load,
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(18, 12, 18, 40),
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 40),
                 children: [
-                  _buildHero(),
-                  const SizedBox(height: 20),
-                  const Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '식사권 응모',
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.48,
-                          color: _ink,
+                  FadeSlideIn(delayMs: 0, child: _buildHero()),
+                  const SizedBox(height: 26),
+                  FadeSlideIn(
+                    delayMs: 60,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          '식사권 응모',
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 19,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.6,
+                            color: _ink,
+                          ),
                         ),
-                      ),
-                      Text(
-                        '매주 추첨',
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w600,
-                          color: _faint,
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 11, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(color: _line),
+                          ),
+                          child: const Text(
+                            '매주 추첨',
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w700,
+                              color: _sub,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 14),
                   if (_raffles.isEmpty)
                     _buildEmpty()
                   else
-                    GridView.count(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 12,
-                      crossAxisSpacing: 12,
-                      childAspectRatio: 0.72,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      children: [
-                        for (var i = 0; i < _raffles.length; i++)
-                          _buildRaffleCard(_raffles[i], i),
-                      ],
-                    ),
+                    for (var i = 0; i < _raffles.length; i += 2)
+                      FadeSlideIn(
+                        delayMs: 120 + (i ~/ 2) * 70,
+                        child: Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: IntrinsicHeight(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Expanded(child: _buildRaffleCard(_raffles[i])),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: i + 1 < _raffles.length
+                                      ? _buildRaffleCard(_raffles[i + 1])
+                                      : const SizedBox.shrink(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                  const SizedBox(height: 6),
+                  FadeSlideIn(delayMs: 240, child: _buildLinks()),
                 ],
               ),
             ),
@@ -247,70 +294,139 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
     final monthEarned = _summary?.monthEarned ?? 0;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF4B47C4), Color(0xFF6A5AE6), Color(0xFF7C64EE)],
-          stops: [0.0, 0.55, 1.0],
-        ),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x8C4A42C4),
-            blurRadius: 28,
-            offset: Offset(0, 14),
-          ),
-        ],
+        color: _tint,
+        borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '보유 마일리지',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xD1FFFFFF),
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(
-                  text: _comma(balance),
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 28,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.84,
-                    color: Colors.white,
-                    height: 1,
-                  ),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '보유 마일리지',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _sub,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      // 잔액이 0에서 차오르며 카운트업된다.
+                      child: TweenAnimationBuilder<double>(
+                        key: ValueKey(balance),
+                        tween: Tween(begin: 0, end: balance.toDouble()),
+                        duration: const Duration(milliseconds: 900),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, value, _) => Text.rich(
+                          TextSpan(
+                            children: [
+                              TextSpan(
+                                text: _comma(value.round()),
+                                style: const TextStyle(
+                                  fontFamily: 'Pretendard',
+                                  fontSize: 36,
+                                  fontWeight: FontWeight.w800,
+                                  letterSpacing: -1.2,
+                                  color: _ink,
+                                  height: 1,
+                                ),
+                              ),
+                              const TextSpan(
+                                text: ' M',
+                                style: TextStyle(
+                                  fontFamily: 'Pretendard',
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w800,
+                                  color: _primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const TextSpan(
-                  text: ' M',
+              ),
+              const SizedBox(width: 12),
+              Container(
+                width: 58,
+                height: 58,
+                decoration: const BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Color(0x1A312E81),
+                      blurRadius: 14,
+                      offset: Offset(0, 6),
+                    ),
+                  ],
+                ),
+                alignment: Alignment.center,
+                child: const Text(
+                  'M',
                   style: TextStyle(
                     fontFamily: 'Pretendard',
-                    fontSize: 16,
+                    fontSize: 24,
                     fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                    color: _primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 17,
+                  height: 17,
+                  decoration: const BoxDecoration(
+                    color: _primary,
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: const Text(
+                    'M',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      height: 1,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  '이번 달 +${_comma(monthEarned)} M · 전 매장 공통',
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.3,
+                    color: _sub,
                   ),
                 ),
               ],
-            ),
-          ),
-          const SizedBox(height: 7),
-          Text(
-            '이번 달 +${_comma(monthEarned)} M 적립 · 응모에 사용해요',
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 11.5,
-              fontWeight: FontWeight.w500,
-              color: Color(0xCCFFFFFF),
             ),
           ),
         ],
@@ -328,12 +444,12 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
           Icon(Icons.confirmation_num_outlined, size: 44, color: _faint),
           SizedBox(height: 12),
           Text(
-            '진행 중인 식사권 응모가 없어요.',
+            '진행 중인 응모가 없어요.',
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF4E5968),
+              color: _sub,
             ),
           ),
         ],
@@ -341,13 +457,8 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
     );
   }
 
-  Widget _buildRaffleCard(Raffle raffle, int index) {
-    const gradients = [
-      [Color(0xFF4B47C4), Color(0xFF6A5AE6)],
-      [Color(0xFF5A57CE), Color(0xFF8481EC)],
-      [Color(0xFF3F3CA0), Color(0xFF5B57D6)],
-    ];
-    final gradient = gradients[index % gradients.length];
+  /// 티켓형 응모 카드. 가운데 절취선(점선 + 좌우 노치)으로 쿠폰 느낌을 준다.
+  Widget _buildRaffleCard(Raffle raffle) {
     final dday = _dday(raffle.closesAt);
     final isSoon = dday != null && dday <= 1;
     final entered = _enteredIds.contains(raffle.id);
@@ -356,157 +467,212 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _line),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0A191F28),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+          BoxShadow(
+            color: Color(0x0F191F28),
+            blurRadius: 14,
+            offset: Offset(0, 5),
+          ),
+        ],
       ),
-      clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          AspectRatio(
-            aspectRatio: 5 / 3,
-            child: Stack(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: gradient,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        raffle.title,
-                        style: const TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xD9FFFFFF),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_comma(raffle.prizeAmount)}원',
-                        style: const TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 19,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.38,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (dday != null)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding:
-                          const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isSoon
-                            ? const Color(0xFFE11D48)
-                            : const Color(0x5209071A),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        dday <= 0 ? '오늘 마감' : 'D-$dday',
-                        style: const TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 9,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 11, 12, 12),
+            padding: const EdgeInsets.fromLTRB(15, 14, 15, 14),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  raffle.restaurantName.isEmpty
-                      ? '제휴 매장'
-                      : raffle.restaurantName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13.5,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.27,
-                    color: _ink,
+                Row(
+                  children: [
+                    Flexible(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _tint,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          raffle.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.2,
+                            color: _primary,
+                            height: 1.1,
+                          ),
+                        ),
+                      ),
+                    ),
+                    if (dday != null) ...[
+                      const Spacer(),
+                      Text(
+                        dday <= 0 ? '오늘 마감' : 'D-$dday',
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: isSoon ? const Color(0xFFE11D48) : _faint,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 11),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: _comma(raffle.prizeAmount),
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 30,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -1.4,
+                            color: _ink,
+                            height: 1.1,
+                          ),
+                        ),
+                        const TextSpan(
+                          text: '원',
+                          style: TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.4,
+                            color: _ink,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      '${_comma(raffle.costMileage)} M',
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: _primary,
-                      ),
-                    ),
-                    Flexible(
+                    const Icon(Icons.check_circle_rounded,
+                        size: 13, color: _primary),
+                    const SizedBox(width: 4),
+                    Expanded(
                       child: Text(
-                        '${_comma(raffle.entriesCount)}명 응모',
+                        raffle.allStores || raffle.restaurantName.isEmpty
+                            ? '전 매장 공통'
+                            : raffle.restaurantName,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.right,
                         style: const TextStyle(
                           fontFamily: 'Pretendard',
-                          fontSize: 10,
+                          fontSize: 11.5,
                           fontWeight: FontWeight.w600,
-                          color: _faint,
+                          letterSpacing: -0.2,
+                          color: _sub,
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 11),
+              ],
+            ),
+          ),
+          const TicketPerforation(notchColor: _bg, dashColor: _line),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(15, 12, 15, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        '${_comma(raffle.costMileage)} M',
+                        maxLines: 1,
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.3,
+                          color: _primary,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${_comma(raffle.entriesCount)}명',
+                      maxLines: 1,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: _faint,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
+                  height: 44,
                   child: ElevatedButton(
                     onPressed:
                         entered || isSubmitting ? null : () => _enter(raffle),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _primary,
                       foregroundColor: Colors.white,
-                      disabledBackgroundColor: const Color(0xFFDDE0EF),
-                      disabledForegroundColor: _faint,
-                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      // 응모 완료는 회색 대신 톤 배경으로 둬 완료 상태가 긍정적으로 읽히게 한다.
+                      disabledBackgroundColor: _tint,
+                      disabledForegroundColor: _primary,
+                      elevation: 0,
+                      padding: EdgeInsets.zero,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(14),
                       ),
                       textStyle: const TextStyle(
                         fontFamily: 'Pretendard',
-                        fontSize: 12.5,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    child: isSubmitting
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(entered ? '응모 완료' : '응모하기'),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 250),
+                      transitionBuilder: (child, animation) => ScaleTransition(
+                        scale: animation,
+                        child: FadeTransition(opacity: animation, child: child),
+                      ),
+                      child: isSubmitting
+                          ? const SizedBox(
+                              key: ValueKey('loading'),
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : entered
+                              ? const Row(
+                                  key: ValueKey('done'),
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.check_rounded, size: 16),
+                                    SizedBox(width: 4),
+                                    Text('응모 완료'),
+                                  ],
+                                )
+                              : const Text('응모하기', key: ValueKey('idle')),
+                    ),
                   ),
                 ),
               ],
@@ -516,6 +682,172 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
       ),
     );
   }
+
+  Widget _buildLinks() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _line),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: [
+          _buildLinkRow(
+            icon: Icons.emoji_events_rounded,
+            title: '당첨자 발표',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RaffleWinnersScreen()),
+            ),
+          ),
+          const Divider(height: 1, thickness: 1, indent: 58, color: _line),
+          _buildLinkRow(
+            icon: Icons.description_rounded,
+            title: '응모 유의사항',
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RaffleTermsScreen()),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLinkRow({
+    required IconData icon,
+    required String title,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 15, 12, 15),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: const BoxDecoration(
+                color: _tint,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(icon, size: 16, color: _primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.3,
+                  color: _ink,
+                ),
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, size: 20, color: _faint),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 진입 시 아래에서 살짝 올라오며 나타난다. 목록에 지연을 주면 순차 등장이 된다.
+class FadeSlideIn extends StatefulWidget {
+  const FadeSlideIn({super.key, required this.child, this.delayMs = 0});
+
+  final Widget child;
+  final int delayMs;
+
+  @override
+  State<FadeSlideIn> createState() => _FadeSlideInState();
+}
+
+class _FadeSlideInState extends State<FadeSlideIn>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 420),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(Duration(milliseconds: widget.delayMs), () {
+      if (mounted) _controller.forward();
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final curved =
+        CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic);
+    return FadeTransition(
+      opacity: curved,
+      child: SlideTransition(
+        position:
+            Tween(begin: const Offset(0, 0.06), end: Offset.zero).animate(curved),
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+/// 티켓 절취선. 좌우 노치는 카드 밖으로 걸치므로 배경색과 같아야 파인 것처럼 보인다.
+class TicketPerforation extends StatelessWidget {
+  const TicketPerforation({
+    super.key,
+    required this.notchColor,
+    required this.dashColor,
+  });
+
+  final Color notchColor;
+  final Color dashColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 16,
+      child: Stack(
+        clipBehavior: Clip.none,
+        alignment: Alignment.center,
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 14),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final count = (constraints.maxWidth / 7).floor().clamp(1, 40);
+                return Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: List.generate(
+                    count,
+                    (_) => Container(width: 3, height: 1, color: dashColor),
+                  ),
+                );
+              },
+            ),
+          ),
+          Positioned(left: -8, child: _notch()),
+          Positioned(right: -8, child: _notch()),
+        ],
+      ),
+    );
+  }
+
+  Widget _notch() => Container(
+        width: 16,
+        height: 16,
+        decoration: BoxDecoration(color: notchColor, shape: BoxShape.circle),
+      );
 }
 
 String _comma(int value) {

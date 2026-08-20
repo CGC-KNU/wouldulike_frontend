@@ -3,10 +3,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
-import 'coupon/coupon_use_screen.dart';
+import 'services/affiliate_service.dart'
+    show AffiliateRestaurantSummary, AffiliateService;
+import 'package:new1/widgets/coupon_ticket_card.dart';
+
 import 'services/api_client.dart';
 import 'services/coupon_service.dart'
     show
@@ -17,26 +21,46 @@ import 'services/coupon_service.dart'
         kCouponBenefitFallbackSubtitle;
 
 class _CouponCategoryMeta {
-  const _CouponCategoryMeta(this.label, this.assetPath);
+  const _CouponCategoryMeta(this.label, this.assetPath, this.iconPath);
 
   final String label;
+
+  /// 카테고리 필터 칩 · 쿠폰 카드 우측 음식 컷아웃 (3D 렌더 PNG)
   final String assetPath;
+
+  /// 쿠폰 카드 좌상단 아바타. 대학가 근처 식당 화면과 동일한 소스를 쓴다.
+  final String iconPath;
 }
 
 const Map<String, _CouponCategoryMeta> _kCouponCategoryMeta = {
-  'ALL': _CouponCategoryMeta('전체', 'assets/images/total.png'),
-  'KOREAN': _CouponCategoryMeta('한식', 'assets/images/korean.png'),
-  'CHINESE': _CouponCategoryMeta('중식', 'assets/images/chinese.png'),
-  'JAPANESE': _CouponCategoryMeta('일식', 'assets/images/japanese.png'),
-  'WESTERN': _CouponCategoryMeta('양식', 'assets/images/western.png'),
-  'SNACK': _CouponCategoryMeta('분식', 'assets/images/snack.png'),
-  'PUB': _CouponCategoryMeta('술집', 'assets/images/pub.png'),
-  'CAFE': _CouponCategoryMeta('카페', 'assets/images/cafe.png'),
-  'DONKATSU': _CouponCategoryMeta('돈가스', 'assets/images/donkatsu.png'),
-  'HAMBURGER': _CouponCategoryMeta('햄버거', 'assets/images/hamburger.png'),
-  'ETC': _CouponCategoryMeta('기타', 'assets/images/total.png'),
-  'UNCLASSIFIED': _CouponCategoryMeta('미분류', 'assets/images/total.png'),
+  'ALL': _CouponCategoryMeta(
+      '전체', 'assets/images/total.png', 'assets/icons/category/all.svg'),
+  'KOREAN': _CouponCategoryMeta(
+      '한식', 'assets/images/korean.png', 'assets/icons/category/korean.svg'),
+  'CHINESE': _CouponCategoryMeta(
+      '중식', 'assets/images/chinese.png', 'assets/icons/category/chinese.svg'),
+  'JAPANESE': _CouponCategoryMeta('일식', 'assets/images/japanese.png',
+      'assets/icons/category/japanese.svg'),
+  'WESTERN': _CouponCategoryMeta(
+      '양식', 'assets/images/western.png', 'assets/icons/category/western.svg'),
+  'SNACK': _CouponCategoryMeta(
+      '분식', 'assets/images/snack.png', 'assets/icons/category/snack.svg'),
+  'PUB': _CouponCategoryMeta(
+      '술집', 'assets/images/pub.png', 'assets/icons/category/pub.svg'),
+  'CAFE': _CouponCategoryMeta(
+      '카페', 'assets/images/cafe.png', 'assets/icons/category/cafe.svg'),
+  'DONKATSU': _CouponCategoryMeta('돈가스', 'assets/images/donkatsu.png',
+      'assets/icons/category/donkatsu.svg'),
+  'HAMBURGER': _CouponCategoryMeta('햄버거', 'assets/images/hamburger.png',
+      'assets/icons/category/hamburger.svg'),
+  'ETC': _CouponCategoryMeta(
+      '기타', 'assets/images/total.png', 'assets/icons/category/etc.svg'),
+  'UNCLASSIFIED': _CouponCategoryMeta(
+      '미분류', 'assets/images/total.png', 'assets/icons/category/all.svg'),
 };
+
+/// 쿠폰 리스트 배경. 티켓 노치가 이 색으로 파여 보이므로 카드(흰색)와 반드시 달라야 한다.
+const Color _kListBackground = Color(0xFFF2F4F6);
 
 const Map<String, String> _kCouponCategoryAlias = {
   'ALL': 'ALL',
@@ -187,9 +211,11 @@ class _CouponListScreenState extends State<CouponListScreen> {
     return raw;
   }
 
+  /// 카테고리 줄은 보유 쿠폰과 무관하게 전체를 노출한다 (식당 탭과 동일 구성).
+  /// 분류가 안 된 쿠폰이 있을 때만 '미분류'가 뒤에 붙는다.
   List<String> _deriveCategories(List<UserCoupon> coupons) {
     return _sortCategories({
-      'ALL',
+      ..._kCouponCategoryMeta.keys.where((key) => key != 'UNCLASSIFIED'),
       ...coupons.map(_couponCategoryKey),
     });
   }
@@ -199,9 +225,11 @@ class _CouponListScreenState extends State<CouponListScreen> {
     final meta = _kCouponCategoryMeta[key];
     if (meta != null) return meta;
     final trimmed = category.trim();
+    final fallback = _kCouponCategoryMeta['ALL']!;
     return _CouponCategoryMeta(
       trimmed.isEmpty ? '기타' : trimmed,
-      _kCouponCategoryMeta['ALL']!.assetPath,
+      fallback.assetPath,
+      fallback.iconPath,
     );
   }
 
@@ -383,62 +411,66 @@ class _CouponListScreenState extends State<CouponListScreen> {
     );
   }
 
+  /// 카테고리 줄. 식당 탭(`affiliate_benefits_screen.dart`)과 같은 원형 SVG 아이콘을 쓴다.
   Widget _buildCategoryFilter() {
     if (_categories.isEmpty) {
       return const SizedBox.shrink();
     }
-    const double scale = 1.00;
     return SizedBox(
-      height: 90 * scale,
+      height: 82,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 2),
         itemCount: _categories.length,
-        separatorBuilder: (_, __) => SizedBox(width: 12 * scale),
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
         itemBuilder: (context, index) {
           final category = _categories[index];
           final selected = category == _selectedCategory;
           final meta = _resolveCategoryMeta(category);
-          final textStyle = TextStyle(
-            color: selected ? const Color(0xFF172133) : const Color(0xFF797979),
-            fontSize: 12 * scale,
-            fontFamily: 'Pretendard',
-            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-            height: 1.92,
-          );
 
           return InkWell(
             onTap: () => _selectCategory(category),
-            borderRadius: BorderRadius.circular(10),
-            child: Container(
-              width: 52 * scale,
-              height: 66 * scale,
-              decoration: ShapeDecoration(
-                color: selected
-                    ? const Color(0x99C7CDD1)
-                    : const Color(0xFFF9FAFB),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-              ),
-              padding: EdgeInsets.symmetric(
-                horizontal: 6 * scale,
-                vertical: 8 * scale,
-              ),
+            borderRadius: BorderRadius.circular(30),
+            child: SizedBox(
+              width: 60,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Expanded(
-                    child: Image.asset(
-                      meta.assetPath,
+                  Container(
+                    width: 58,
+                    height: 58,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: selected
+                            ? const Color(0xFF172133)
+                            : Colors.transparent,
+                        width: 2,
+                      ),
+                    ),
+                    child: SvgPicture.asset(
+                      meta.iconPath,
+                      width: 50,
+                      height: 50,
                       fit: BoxFit.contain,
                     ),
                   ),
-                  SizedBox(height: 4 * scale),
+                  const SizedBox(height: 5),
                   Text(
                     meta.label,
-                    style: textStyle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: selected
+                          ? const Color(0xFF172133)
+                          : const Color(0xFF6B7280),
+                      fontSize: 11.5,
+                      fontFamily: 'Pretendard',
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                      letterSpacing: -0.2,
+                    ),
                   ),
                 ],
               ),
@@ -453,7 +485,16 @@ class _CouponListScreenState extends State<CouponListScreen> {
   // 더 이상 별도 매핑이 필요 없어졌다.
 
   Future<void> _handleRedeem(UserCoupon coupon) async {
-    final restaurantId = coupon.restaurantId;
+    var restaurantId = coupon.restaurantId;
+    var restaurantName = coupon.benefit?.restaurantNameText;
+
+    // 전 매장 쿠폰(마일리지 식사권 당첨분)은 쓸 매장을 먼저 고른다.
+    if (restaurantId == null && coupon.benefit?.allStores == true) {
+      final picked = await _pickRestaurant();
+      if (!mounted || picked == null) return;
+      restaurantId = picked.id;
+      restaurantName = picked.name;
+    }
     if (restaurantId == null) {
       _showSnack('이 쿠폰은 사용 가능한 매장 정보가 없어요.');
       return;
@@ -461,23 +502,20 @@ class _CouponListScreenState extends State<CouponListScreen> {
 
     setState(() => _processingCouponCode = coupon.code);
     try {
-      // "쑥스러움 제거" 전체 화면 사용 화면으로 진입.
-      // 실제 사용 처리는 그 안의 "직원 확인"(관리자 PIN)에서 이뤄진다.
-      final success = await Navigator.of(context).push<bool>(
-        MaterialPageRoute<bool>(
-          builder: (_) => CouponUseScreen(
-            coupon: coupon,
-            restaurantId: restaurantId,
-          ),
-        ),
+      // 관리자 PIN 입력으로 즉시 사용 처리한다.
+      final success = await _showRedeemPinDialog(
+        coupon: coupon,
+        restaurantId: restaurantId,
+        restaurantName: restaurantName,
+        notes: coupon.benefit?.notesText,
       );
       if (!mounted) return;
-      if (success == true) {
+      if (success) {
         setState(() {
           _coupons =
               _coupons.where((element) => element.code != coupon.code).toList();
         });
-        _showSnack('쿠폰을 사용했어요.');
+        await _showRedeemDoneSheet();
       }
     } finally {
       if (mounted && _processingCouponCode == coupon.code) {
@@ -486,8 +524,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
-  /// 쿠폰 사용 PIN 다이얼로그 (레거시 — 현재는 CouponUseScreen 사용).
-  // ignore: unused_element
+  /// 쿠폰 사용 PIN 다이얼로그 — 직원이 관리자 비밀번호를 입력하면 즉시 사용 처리.
   Future<bool> _showRedeemPinDialog({
     required UserCoupon coupon,
     required int restaurantId,
@@ -788,6 +825,219 @@ class _CouponListScreenState extends State<CouponListScreen> {
         false;
   }
 
+  /// 전 매장 쿠폰을 쓸 매장 선택 (제휴 매장 목록 + 이름 검색).
+  Future<AffiliateRestaurantSummary?> _pickRestaurant() async {
+    final future = AffiliateService.fetchRestaurants();
+    if (!mounted) return null;
+    return showModalBottomSheet<AffiliateRestaurantSummary>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetContext) {
+        var keyword = '';
+        return StatefulBuilder(
+          builder: (context, setSheetState) => SizedBox(
+            height: MediaQuery.of(context).size.height * 0.72,
+            child: Column(
+              children: [
+                const SizedBox(height: 12),
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE7E9EF),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '어디서 쓸까요?',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF191F28),
+                      ),
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      '이 쿠폰은 제휴 매장 어디서나 쓸 수 있어요.',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF4E5968),
+                      ),
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: TextField(
+                    decoration: InputDecoration(
+                      hintText: '매장 이름 검색',
+                      prefixIcon: const Icon(Icons.search, size: 20),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                    onChanged: (value) =>
+                        setSheetState(() => keyword = value.trim()),
+                  ),
+                ),
+                Expanded(
+                  child: FutureBuilder<List<AffiliateRestaurantSummary>>(
+                    future: future,
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        );
+                      }
+                      final all = snapshot.data ?? const [];
+                      final items = keyword.isEmpty
+                          ? all
+                          : all
+                              .where((r) => r.name.contains(keyword))
+                              .toList();
+                      if (items.isEmpty) {
+                        return const Center(
+                          child: Text(
+                            '매장을 불러오지 못했어요.',
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 14,
+                              color: Color(0xFF4E5968),
+                            ),
+                          ),
+                        );
+                      }
+                      return ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1),
+                        itemBuilder: (context, index) {
+                          final item = items[index];
+                          return ListTile(
+                            title: Text(
+                              item.name,
+                              style: const TextStyle(
+                                fontFamily: 'Pretendard',
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: Color(0xFF191F28),
+                              ),
+                            ),
+                            subtitle: item.category.isEmpty
+                                ? null
+                                : Text(
+                                    item.category,
+                                    style: const TextStyle(
+                                      fontFamily: 'Pretendard',
+                                      fontSize: 12,
+                                      color: Color(0xFF8B95A1),
+                                    ),
+                                  ),
+                            trailing: const Icon(Icons.chevron_right, size: 18),
+                            onTap: () =>
+                                Navigator.of(sheetContext).pop(item),
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  /// 사용 완료 연출 (프로토타입 화면 6).
+  Future<void> _showRedeemDoneSheet() async {
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Color(0xFFEEF0FF),
+                ),
+                child: const Icon(Icons.check_rounded,
+                    size: 38, color: Color(0xFF4B47C4)),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '사용 완료!',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF191F28),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                '맛있게 드세요',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: Color(0xFF4E5968),
+                ),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF312E81),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: const Text('확인'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   void _showSnack(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context)
@@ -874,7 +1124,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
 
     if (widget.embedded) {
       return Container(
-        color: const Color(0xFFF9FAFB),
+        color: _kListBackground,
         child: content,
       );
     }
@@ -899,7 +1149,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
               ),
               iconTheme: const IconThemeData(color: Colors.black),
             ),
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: _kListBackground,
       body: content,
     );
   }
@@ -1072,171 +1322,73 @@ class _CouponListScreenState extends State<CouponListScreen> {
           )
         else ...[
           for (final coupon in filtered) _buildCouponTile(coupon),
+          const SizedBox(height: 4),
+          const _CouponUsageNotice(),
         ],
       ],
     );
   }
 
   Widget _buildCouponTile(UserCoupon coupon) {
-    final bool isProcessing = _processingCouponCode == coupon.code;
     final benefit = coupon.benefit;
-    final title = benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle;
-    final subtitle =
-        benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle;
+    final meta = _resolveCategoryMeta(_couponCategoryKey(coupon));
+
     final String? restaurantName = benefit?.restaurantNameText;
-    String? restaurantLabel;
-    if (restaurantName != null && restaurantName.isNotEmpty) {
+    final String restaurantLabel;
+    if (benefit?.allStores == true) {
+      restaurantLabel = '전 매장 사용 가능';
+    } else if (restaurantName != null && restaurantName.isNotEmpty) {
       restaurantLabel = restaurantName;
     } else if (coupon.restaurantId != null) {
       restaurantLabel = '적용 매장 ID: ${coupon.restaurantId}';
+    } else {
+      restaurantLabel = meta.label;
     }
-    final expiryText = _formatExpiryDate(coupon.expiresAt);
-    final isExpiryUrgent = coupon.expiresAt != null &&
-        coupon.expiresAt!.difference(DateTime.now()) <= const Duration(days: 7);
-    final expiryColor =
-        isExpiryUrgent ? const Color(0xFFB87270) : const Color(0xFFE1B53E);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: const Color(0xFF192132),
-      ),
-      child: IntrinsicHeight(
-        child: Row(
-          // ListView 안에서 높이가 무한대로 주어질 수 있기 때문에
-          // stretch를 직접 사용하면 h=Infinity 제약이 전달될 수 있어
-          // IntrinsicHeight로 한 번 감싸 높이를 한정한 뒤, 버튼을
-          // 우측 하단에 정렬한다.
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (restaurantLabel != null) ...[
-                    Text(
-                      restaurantLabel,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFCBD5FF),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                  ],
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      color: Colors.white,
-                    ),
-                  ),
-                  if (coupon.status != CouponStatus.redeemed) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      subtitle,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFFD1D6FF),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                  if (expiryText != null &&
-                      coupon.status == CouponStatus.issued) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        if (_isExpiringSoon(coupon)) ...[
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFB87270),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              '마감임박',
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                        ],
-                        Icon(
-                          Icons.access_time,
-                          size: 14,
-                          color: expiryColor,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          expiryText,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: expiryColor,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            if (coupon.status == CouponStatus.issued) ...[
-              const SizedBox(width: 12),
-              SizedBox(
-                height: double.infinity,
-                child: Align(
-                  alignment: Alignment.bottomRight,
-                  child: ElevatedButton(
-                    onPressed:
-                        isProcessing ? null : () => _handleRedeem(coupon),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: const Color(0xFF0B1033),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 12,
-                      ),
-                      textStyle: const TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 13,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: isProcessing
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFF0B1033),
-                            ),
-                          )
-                        : const Text('사용'),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
+    return CouponTicketCard(
+      iconPath: meta.iconPath,
+      storeLabel: restaurantLabel,
+      title: benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle,
+      subtitle: benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle,
+      notchColor: _kListBackground,
+      expiryText: _formatExpiryDate(coupon.expiresAt),
+      expiryUrgent: _isExpiringSoon(coupon),
+      isProcessing: _processingCouponCode == coupon.code,
+      onAction: () => _handleRedeem(coupon),
     );
   }
 
   // 쿠폰 상태 배지는 상단 탭으로 대체되었기 때문에,
   // 블록 내부에는 별도의 상태 텍스트를 표시하지 않는다.
+}
+
+/// 티켓 카드 좌우에 파인 반원. 리스트 배경과 같은 색으로 칠해
+/// 카드가 뜯어진 것처럼 보이게 한다.
+class _CouponUsageNotice extends StatelessWidget {
+  const _CouponUsageNotice();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.shield_outlined,
+          size: 15,
+          color: Color(0xFF8B95A1),
+        ),
+        SizedBox(width: 7),
+        Text(
+          '쿠폰은 주문 시 1개만 사용할 수 있어요',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.3,
+            color: Color(0xFF8B95A1),
+          ),
+        ),
+      ],
+    );
+  }
 }

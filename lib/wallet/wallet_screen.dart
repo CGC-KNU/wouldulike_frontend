@@ -21,6 +21,7 @@ class _WalletScreenState extends State<WalletScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
   MileageSummary? _summary;
+  WalletOverview? _overview;
 
   @override
   void initState() {
@@ -30,9 +31,14 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Future<void> _loadSummary() async {
-    final summary = await MileageService.fetchSummary();
+    // 배지 수치는 overview 한 번으로 받고, 미배포 구간에서는 summary로 폴백한다.
+    final overview = await MileageService.fetchWalletOverview();
+    final summary = overview?.mileage ?? await MileageService.fetchSummary();
     if (!mounted) return;
-    setState(() => _summary = summary);
+    setState(() {
+      _overview = overview;
+      _summary = summary;
+    });
   }
 
   Future<void> _openShop() async {
@@ -88,10 +94,10 @@ class _WalletScreenState extends State<WalletScreen>
               fontWeight: FontWeight.w500,
               fontSize: 14,
             ),
-            tabs: const [
-              Tab(text: '쿠폰'),
-              Tab(text: '스탬프'),
-              Tab(text: '마일리지'),
+            tabs: [
+              _buildTab('쿠폰', _overview?.usableCoupons),
+              _buildTab('스탬프', _overview?.activeStampStores),
+              const Tab(text: '마일리지'),
             ],
           ),
           Expanded(
@@ -106,6 +112,36 @@ class _WalletScreenState extends State<WalletScreen>
                 StampTab(onGoToAffiliate: _goToAffiliateTab),
                 const MileageTab(),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 탭 라벨 + 배지 숫자. 서버 수치가 없거나 0이면 배지를 붙이지 않는다.
+  Widget _buildTab(String label, int? count) {
+    if (count == null || count <= 0) return Tab(text: label);
+    return Tab(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label),
+          const SizedBox(width: 5),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+            decoration: BoxDecoration(
+              color: const Color(0xFF312E81),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              '$count',
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: Colors.white,
+              ),
             ),
           ),
         ],
@@ -172,7 +208,7 @@ class _WalletScreenState extends State<WalletScreen>
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '이번 달 +${_comma(summary?.monthEarned ?? 0)} M 적립',
+                  '이번 달 +${_comma(summary?.monthEarned ?? 0)} M 적립 · 전 매장 사용',
                   style: const TextStyle(
                     fontSize: 11.5,
                     fontFamily: 'Pretendard',

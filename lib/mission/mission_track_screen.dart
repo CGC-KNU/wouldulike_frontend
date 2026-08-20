@@ -140,13 +140,69 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
                         const SizedBox(height: 18),
                       ],
                       for (var i = 0; i < track.missions.length; i++)
-                        _buildNode(
-                          track.missions[i],
-                          isLast: i == track.missions.length - 1,
-                        ),
+                        _buildNode(track.missions[i], isLast: false),
+                      // 프로토타입 화면 7의 5번째 노드 — 완주 보너스
+                      if (track.completionBonus != null)
+                        _buildNode(track.completionBonus!, isLast: true)
+                      else
+                        _buildBonusPlaceholder(track.allCleared),
                     ],
                   ),
                 ),
+    );
+  }
+
+  /// 서버가 완주 보너스를 아직 안 내려줄 때의 표시 전용 노드 (수령 버튼 없음).
+  Widget _buildBonusPlaceholder(bool allCleared) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: allCleared ? _primary : const Color(0xFFEDEFF5),
+          ),
+          child: Icon(
+            Icons.emoji_events_outlined,
+            size: 16,
+            color: allCleared ? Colors.white : const Color(0xFF8B95A1),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '완주 보너스',
+                  style: TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: _ink,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  allCleared
+                      ? '랜덤 쿠폰 1장 · 최대 3,000원 — 곧 지급돼요'
+                      : '랜덤 쿠폰 1장 · 최대 3,000원',
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF4E5968),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 

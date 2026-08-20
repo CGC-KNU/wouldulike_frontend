@@ -461,7 +461,7 @@ class _MyScreenState extends State<MyScreen> {
       });
       return null;
     } on ApiHttpException catch (e) {
-      final message = _extractDetailMessage(e.body) ?? '추천 코드를 불러오지 못했어요.';
+      final message = _extractDetailMessage(e.body) ?? '초대 코드를 불러오지 못했어요.';
       if (!mounted) {
         _isInviteLoading = false;
         _inviteError = message;
@@ -516,7 +516,7 @@ class _MyScreenState extends State<MyScreen> {
     await Clipboard.setData(ClipboardData(text: code));
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('추천 코드를 복사했어요.')),
+      const SnackBar(content: Text('초대 코드를 복사했어요.')),
     );
   }
 
@@ -537,7 +537,7 @@ class _MyScreenState extends State<MyScreen> {
       if (!mounted) return;
       if (resolvedCode == null || resolvedCode.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('추천 코드를 불러오지 못했어요. 다시 시도해주세요.')),
+          const SnackBar(content: Text('초대 코드를 불러오지 못했어요. 다시 시도해주세요.')),
         );
         return;
       }
@@ -744,7 +744,7 @@ class _MyScreenState extends State<MyScreen> {
       children: [
         _buildMenuRow(
           leading: Text(
-            '내 추천코드',
+            '내 초대코드',
             style: isKakaoLoggedIn ? _kItemTitleStyle : _kPlaceholderItemStyle,
           ),
           trailing: const SizedBox.shrink(),
@@ -764,7 +764,7 @@ class _MyScreenState extends State<MyScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildMenuRow(
-          leading: const Text('추천 코드 입력하기', style: _kItemTitleStyle),
+          leading: const Text('초대 코드 입력하기', style: _kItemTitleStyle),
           trailing: _buildChevron(),
           onTap: () {
             AnalyticsLogger.logEvent('referral_code_input_click');
@@ -783,7 +783,7 @@ class _MyScreenState extends State<MyScreen> {
   Widget _buildInviteCodeBody() {
     if (!isKakaoLoggedIn) {
       return const Text(
-        '카카오 로그인을 하면 추천코드를 볼 수 있어요.',
+        '카카오 로그인을 하면 초대코드를 볼 수 있어요.',
         style: _kPlaceholderItemStyle,
       );
     }
@@ -798,7 +798,7 @@ class _MyScreenState extends State<MyScreen> {
           ),
           SizedBox(width: 12),
           Text(
-            '추천코드를 불러오는 중이에요.',
+            '초대코드를 불러오는 중이에요.',
             style: _kPlaceholderItemStyle,
           ),
         ],
@@ -832,7 +832,7 @@ class _MyScreenState extends State<MyScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '추천 코드를 불러오지 못했어요.',
+            '초대 코드를 불러오지 못했어요.',
             style: _kPlaceholderItemStyle,
           ),
           const SizedBox(height: 8),
@@ -1050,7 +1050,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
     final code = _controller.text.trim();
     if (code.isEmpty) {
       setState(() {
-        _inputError = '추천 코드를 입력해 주세요.';
+        _inputError = '초대 코드를 입력해 주세요.';
       });
       return;
     }
@@ -1074,7 +1074,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         _mode = _ReferralSheetMode.success;
       });
     } on ApiHttpException catch (e) {
-      final message = _parseApiError(e.body) ?? '추천 코드를 확인해 주세요.';
+      final message = _parseApiError(e.body) ?? '초대 코드를 확인해 주세요.';
       if (!mounted) return;
       if (e.statusCode == 409) {
         setState(() {
@@ -1098,7 +1098,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
     } catch (_) {
       if (!mounted) return;
       setState(() {
-        _inputError = '추천 코드를 입력하지 못했어요. 잠시 후 다시 시도해 주세요.';
+        _inputError = '초대 코드를 입력하지 못했어요. 잠시 후 다시 시도해 주세요.';
       });
     } finally {
       if (!mounted) return;
@@ -1174,7 +1174,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         _buildHandle(),
         const SizedBox(height: 20),
         const Text(
-          '추천 코드 입력하기',
+          '초대 코드 입력하기',
           style: TextStyle(
             fontSize: 19,
             fontWeight: FontWeight.w800,
@@ -1185,7 +1185,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         ),
         const SizedBox(height: 8),
         const Text(
-          '추천 코드를 입력하면 쿠폰 보상을 바로 받을 수 있어요!',
+          '초대 코드를 입력하면 쿠폰 보상을 바로 받을 수 있어요!',
           style: TextStyle(
             fontSize: 14,
             color: Color(0xFF797979),
@@ -1196,7 +1196,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         ),
         const SizedBox(height: 20),
         const Text(
-          '추천 코드',
+          '초대 코드',
           style: TextStyle(
             color: Color(0xFF797979),
             fontSize: 15,
@@ -1274,7 +1274,7 @@ class _ReferralCodeSheetState extends State<_ReferralCodeSheet> {
         ],
         const SizedBox(height: 8),
         const Text(
-          '※ 추천 코드는 대소문자를 구분하지 않아요.',
+          '※ 초대 코드는 대소문자를 구분하지 않아요.',
           style: TextStyle(
             fontSize: 12,
             color: Color(0xFF9CA3AF),

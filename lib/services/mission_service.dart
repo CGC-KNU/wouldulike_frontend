@@ -64,6 +64,7 @@ class MissionTrack {
   const MissionTrack({
     required this.missions,
     required this.rewardHeadline,
+    this.completionBonus,
     this.serverTime,
   });
 
@@ -75,16 +76,30 @@ class MissionTrack {
             .map((e) => MissionItem.fromJson(Map<String, dynamic>.from(e)))
             .toList()
         : const <MissionItem>[];
+    // 완주 보너스는 서버가 completion_bonus로 내려주거나 ALL_CLEAR 미션으로 내려준다.
+    final bonusRaw = json['completion_bonus'];
+    final bonus = bonusRaw is Map
+        ? MissionItem.fromJson(Map<String, dynamic>.from(bonusRaw))
+        : null;
     return MissionTrack(
-      missions: missions,
+      missions: missions.where((m) => m.code != 'ALL_CLEAR').toList(),
       rewardHeadline: json['reward_headline']?.toString() ?? '',
+      completionBonus: bonus ??
+          missions.where((m) => m.code == 'ALL_CLEAR').firstOrNull,
       serverTime: _asDate(json['server_time']),
     );
   }
 
   final List<MissionItem> missions;
   final String rewardHeadline;
+
+  /// 4단계 완주 보너스 노드. 서버가 안 내려주면 null (화면은 안내만 표시)
+  final MissionItem? completionBonus;
   final DateTime? serverTime;
+
+  /// 4단계를 모두 수령했는지 (완주 보너스 노드 활성 표기용)
+  bool get allCleared =>
+      missions.isNotEmpty && missions.every((m) => m.status == MissionStatus.claimed);
 
   /// 아직 완료하지 않은 미션 수 (홈 배너 문구용)
   int get remainingCount => missions.where((m) => !m.isDone).length;
