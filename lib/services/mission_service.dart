@@ -64,18 +64,14 @@ class MissionTrack {
   const MissionTrack({
     required this.missions,
     required this.rewardHeadline,
+    this.daily = const <MissionItem>[],
+    this.weekly = const <MissionItem>[],
     this.completionBonus,
     this.serverTime,
   });
 
   factory MissionTrack.fromJson(Map<String, dynamic> json) {
-    final raw = json['missions'];
-    final missions = raw is List
-        ? raw
-            .whereType<Map>()
-            .map((e) => MissionItem.fromJson(Map<String, dynamic>.from(e)))
-            .toList()
-        : const <MissionItem>[];
+    final missions = _parseItems(json['missions']);
     // 완주 보너스는 서버가 completion_bonus로 내려주거나 ALL_CLEAR 미션으로 내려준다.
     final bonusRaw = json['completion_bonus'];
     final bonus = bonusRaw is Map
@@ -84,14 +80,28 @@ class MissionTrack {
     return MissionTrack(
       missions: missions.where((m) => m.code != 'ALL_CLEAR').toList(),
       rewardHeadline: json['reward_headline']?.toString() ?? '',
-      completionBonus: bonus ??
-          missions.where((m) => m.code == 'ALL_CLEAR').firstOrNull,
+      daily: _parseItems(json['daily']),
+      weekly: _parseItems(json['weekly']),
+      completionBonus:
+          bonus ?? missions.where((m) => m.code == 'ALL_CLEAR').firstOrNull,
       serverTime: _asDate(json['server_time']),
     );
   }
 
+  static List<MissionItem> _parseItems(dynamic raw) => raw is List
+      ? raw
+          .whereType<Map>()
+          .map((e) => MissionItem.fromJson(Map<String, dynamic>.from(e)))
+          .toList()
+      : const <MissionItem>[];
+
+  /// 초보자 미션 (회원가입 → 스탬프 5개). 계정당 1회.
   final List<MissionItem> missions;
   final String rewardHeadline;
+
+  /// 초보자 미션을 끝낸 뒤 열리는 반복 미션. 마감(deadline_at)이 곧 초기화 시각.
+  final List<MissionItem> daily;
+  final List<MissionItem> weekly;
 
   /// 4단계 완주 보너스 노드. 서버가 안 내려주면 null (화면은 안내만 표시)
   final MissionItem? completionBonus;
@@ -105,6 +115,27 @@ class MissionTrack {
   int get remainingCount => missions.where((m) => !m.isDone).length;
 
   bool get hasOngoing => missions.isNotEmpty && remainingCount > 0;
+
+  /// 일간·주간 미션 보유 여부.
+  bool get hasRoutine => daily.isNotEmpty || weekly.isNotEmpty;
+
+  /// 초보자 미션을 전부 소진(수령 완료 또는 만료)했는지.
+  /// true면 홈 배너·미션 화면이 일간/주간 미션으로 전환된다.
+  bool get beginnerDone =>
+      missions.isEmpty ||
+      missions.every((m) =>
+          m.status == MissionStatus.claimed ||
+          m.status == MissionStatus.expired);
+
+  /// 지금 화면에 띄울 반복 미션 중 아직 못 끝낸 개수 (배너 문구용)
+  int get routineRemaining =>
+      daily.where((m) => !m.isDone).length +
+      weekly.where((m) => !m.isDone).length;
+
+  /// 수령 대기 중인 리워드 개수 (배지용)
+  int get claimableCount => [...missions, ...daily, ...weekly]
+      .where((m) => m.status == MissionStatus.ready)
+      .length;
 }
 
 class MissionService {
@@ -128,12 +159,24 @@ class MissionService {
     return null;
   }
 
+  /// 디버그 샘플에서 초보자 미션을 모두 끝낸 상태로 볼지 여부.
+  /// true면 홈 배너·미션 화면이 일간/주간 미션으로 바뀐다 (배포 후 삭제).
+  static const bool _devBeginnerDone = true;
+
   /// 스펙 6.2 응답 예시 기반 디버그 샘플 (배포 후 삭제)
   static Map<String, dynamic> _devSampleJson() {
     final now = DateTime.now();
+    final midnight = DateTime(now.year, now.month, now.day)
+        .add(const Duration(days: 1));
+    // 다음 주 월요일 0시 = 주간 미션 초기화 시각
+    final nextMonday = DateTime(now.year, now.month, now.day)
+        .add(Duration(days: 8 - now.weekday));
+    String beginner(String fallback) => _devBeginnerDone ? 'CLAIMED' : fallback;
     return <String, dynamic>{
       'server_time': now.toIso8601String(),
-      'reward_headline': '2개만 더 완료하면 랜덤 쿠폰이 열려요',
+      'reward_headline': _devBeginnerDone
+          ? '오늘의 미션을 끝내고 마일리지를 받아가세요'
+          : '2개만 더 완료하면 랜덤 쿠폰이 열려요',
       'missions': [
         {
           'code': 'SIGNUP',
@@ -148,7 +191,7 @@ class MissionService {
           'code': 'FIRST_COUPON',
           'title': '첫 쿠폰 받기',
           'reward_text': '제휴 매장 2,000원 할인 쿠폰',
-          'status': 'READY',
+          'status': beginner('READY'),
           'progress': 1,
           'target': 1,
           'deadline_at':
@@ -158,8 +201,8 @@ class MissionService {
           'code': 'FIRST_USE',
           'title': '쿠폰 한 번 사용하기',
           'reward_text': '마일리지 500 M',
-          'status': 'OPEN',
-          'progress': 0,
+          'status': beginner('OPEN'),
+          'progress': _devBeginnerDone ? 1 : 0,
           'target': 1,
           'deadline_at': now.add(const Duration(hours: 7)).toIso8601String(),
         },
@@ -167,12 +210,57 @@ class MissionService {
           'code': 'STAMP_5',
           'title': '스탬프 5개 모으기',
           'reward_text': '제휴 매장 랜덤 쿠폰 1종 지급',
-          'status': 'OPEN',
-          'progress': 2,
+          'status': beginner('OPEN'),
+          'progress': _devBeginnerDone ? 5 : 2,
           'target': 5,
           'deadline_at': now.add(const Duration(days: 5)).toIso8601String(),
         },
       ],
+      // 초보자 미션 완료 후 열리는 반복 미션. deadline_at = 다음 초기화 시각.
+      'daily': !_devBeginnerDone
+          ? const <Map<String, dynamic>>[]
+          : [
+              {
+                'code': 'DAILY_STAMP_1',
+                'title': '스탬프 1회 적립하기',
+                'reward_text': '마일리지 50 M',
+                'status': 'READY',
+                'progress': 1,
+                'target': 1,
+                'deadline_at': midnight.toIso8601String(),
+              },
+              {
+                'code': 'DAILY_COUPON_USE_1',
+                'title': '쿠폰 1회 사용하기',
+                'reward_text': '마일리지 50 M',
+                'status': 'OPEN',
+                'progress': 0,
+                'target': 1,
+                'deadline_at': midnight.toIso8601String(),
+              },
+            ],
+      'weekly': !_devBeginnerDone
+          ? const <Map<String, dynamic>>[]
+          : [
+              {
+                'code': 'WEEKLY_STAMP_3',
+                'title': '스탬프 3회 적립하기',
+                'reward_text': '제휴 매장 랜덤 쿠폰 1장',
+                'status': 'OPEN',
+                'progress': 1,
+                'target': 3,
+                'deadline_at': nextMonday.toIso8601String(),
+              },
+              {
+                'code': 'WEEKLY_COUPON_USE_3',
+                'title': '쿠폰 3회 사용하기',
+                'reward_text': '제휴 매장 랜덤 쿠폰 1장',
+                'status': 'OPEN',
+                'progress': 0,
+                'target': 3,
+                'deadline_at': nextMonday.toIso8601String(),
+              },
+            ],
     };
   }
 

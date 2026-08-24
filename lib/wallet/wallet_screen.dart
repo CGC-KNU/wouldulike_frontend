@@ -26,7 +26,12 @@ class _WalletScreenState extends State<WalletScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    // 시연 빌드에서 특정 탭부터 열 수 있게: --dart-define=DEMO_TAB=1 (0 쿠폰/1 스탬프/2 마일리지)
+    _tabController = TabController(
+      length: 3,
+      initialIndex: const int.fromEnvironment('DEMO_TAB'),
+      vsync: this,
+    );
     _loadSummary();
   }
 
@@ -74,10 +79,6 @@ class _WalletScreenState extends State<WalletScreen>
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-            child: _buildMileageHero(),
-          ),
           TabBar(
             controller: _tabController,
             labelColor: const Color(0xFF172133),
@@ -110,7 +111,17 @@ class _WalletScreenState extends State<WalletScreen>
                   onGoToAffiliate: _goToAffiliateTab,
                 ),
                 StampTab(onGoToAffiliate: _goToAffiliateTab),
-                const MileageTab(),
+                // 마일리지 히어로는 마일리지 탭에서만 보여준다.
+                // (쿠폰·스탬프 탭에서는 화면 위쪽을 잔액이 차지할 이유가 없다)
+                Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                      child: _buildMileageHero(),
+                    ),
+                    const Expanded(child: MileageTab()),
+                  ],
+                ),
               ],
             ),
           ),

@@ -49,7 +49,8 @@ class _WoodyMascotState extends State<WoodyMascot>
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     if (reduceMotion && _controller.isAnimating) {
       _controller.stop();
       _controller.value = 0;
@@ -198,7 +199,8 @@ class _WoodyPainter extends CustomPainter {
       canvas.drawPath(r, _outlineThin);
     } else {
       canvas.drawCircle(const Offset(81, 106), 6, eyePaint);
-      canvas.drawCircle(const Offset(81, 103), 2, Paint()..color = Colors.white);
+      canvas.drawCircle(
+          const Offset(81, 103), 2, Paint()..color = Colors.white);
       if (wink) {
         final r = Path()
           ..moveTo(111, 106)
@@ -253,8 +255,7 @@ class _WoodyPainter extends CustomPainter {
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2.5
         ..strokeCap = StrokeCap.round;
-      canvas.drawArc(
-          Rect.fromCircle(center: const Offset(20, -40), radius: 15),
+      canvas.drawArc(Rect.fromCircle(center: const Offset(20, -40), radius: 15),
           -1.2, 1.0, false, motion);
     }
     canvas.restore();

@@ -7,6 +7,8 @@ import 'package:http/http.dart' as http;
 import 'dart:async'; // Added for TimeoutException
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'demo_wallet.dart';
+
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
@@ -421,6 +423,60 @@ class StampStatus {
   final List<StampReward> rewards;
 }
 
+/// 스탬프 리워드 혜택 문구 (subtitle 우선, 없으면 title)
+String stampRewardBenefitText(StampReward r) =>
+    (r.subtitle != null && r.subtitle!.isNotEmpty)
+        ? r.subtitle!
+        : (r.title ?? '리워드 쿠폰');
+
+/// 서버 스탬프 현황(GET /api/coupons/stamps/my/)만으로 도장판을 그리기 위한 파생값.
+/// 화면마다 따로 계산하면 "몇 개 모으면 리워드" 문구가 서로 달라지므로 여기 모은다.
+extension StampStatusBoard on StampStatus {
+  /// THRESHOLD 리워드 (N개 적립 시). 개수 오름차순.
+  List<StampReward> get thresholdRewards {
+    final list =
+        rewards.where((r) => (r.stamps ?? 0) > 0).toList()
+          ..sort((a, b) => (a.stamps ?? 0).compareTo(b.stamps ?? 0));
+    return list;
+  }
+
+  /// VISIT 리워드 (N~M회 방문). 시작 회차 오름차순.
+  List<StampReward> get visitRewards {
+    final list =
+        rewards.where((r) => r.isVisitPattern && r.minVisit != null).toList()
+          ..sort((a, b) => (a.minVisit ?? 0).compareTo(b.minVisit ?? 0));
+    return list;
+  }
+
+  /// 도장판 칸 수 = 서버 target(cycle_target)과 최상단 리워드 중 큰 값.
+  /// 규칙이 어긋난 매장에서도 리워드 칸이 판 밖으로 밀려나지 않게 한다.
+  int get boardLength {
+    final top = thresholdRewards.isNotEmpty
+        ? (thresholdRewards.last.stamps ?? 0)
+        : 0;
+    return target > top ? target : top;
+  }
+
+  /// 아직 못 받은 가장 가까운 리워드. 없으면 null(= 이번 판 리워드 모두 받음).
+  StampReward? get nextReward {
+    for (final r in thresholdRewards) {
+      if ((r.stamps ?? 0) > current) return r;
+    }
+    for (final r in visitRewards) {
+      if ((r.minVisit ?? 0) > current) return r;
+    }
+    return null;
+  }
+
+  /// 다음 리워드까지 남은 개수. 리워드 목록이 비어 있으면 판 기준.
+  int get remainingToNextReward {
+    final r = nextReward;
+    final at = r != null ? (r.stamps ?? r.minVisit ?? 0) : boardLength;
+    final remain = at - current;
+    return remain > 0 ? remain : 0;
+  }
+}
+
 class StampStatusCollection {
   const StampStatusCollection({
     required this.statuses,
@@ -708,6 +764,10 @@ Future<void> _logNewCouponsFromDiff(
 
 class CouponService {
   static Future<List<UserCoupon>> fetchMyCoupons({CouponStatus? status}) async {
+    // 시연 빌드(--dart-define=DEMO_WALLET=true)에서는 서버 대신 데모 쿠폰 반환
+    if (kDemoWallet) {
+      return demoCouponsJson().map(UserCoupon.fromJson).toList();
+    }
     final Map<String, dynamic>? params;
     if (status != null && status != CouponStatus.unknown) {
       params = {'status': status.apiValue};
@@ -802,6 +862,11 @@ class CouponService {
 
   static Future<StampStatus> fetchStampStatus(
       {required int restaurantId}) async {
+    // 데모는 고니식탁만 가짜로 채운다. 다른 매장은 실제 API를 그대로 태워
+    // "적립은 됐다는데 도장이 안 찍히는" 반쪽 상태를 만들지 않는다.
+    if (kDemoWallet && restaurantId == kDemoRestaurantId) {
+      return StampStatus.fromJson(demoStampStatusJson());
+    }
     final response = await ApiClient.get(
       '/api/coupons/stamps/my/',
       queryParameters: {'restaurant_id': restaurantId},
@@ -820,6 +885,15 @@ class CouponService {
   }
 
   static Future<StampStatusCollection> fetchAllStampStatuses() async {
+    if (kDemoWallet) {
+      return StampStatusCollection(
+        statuses: <int, StampStatus>{
+          kDemoRestaurantId: StampStatus.fromJson(demoStampStatusJson()),
+        },
+        defaultTarget: 10,
+        hasResults: true,
+      );
+    }
     final response = await ApiClient.get(
       '/api/coupons/stamps/my/all/',
     );
@@ -874,6 +948,12 @@ class CouponService {
     String? idemKey,
   }) async {
     final safeCount = count.clamp(1, 4).toInt();
+    // 데모 모드는 서버를 안 쓴다. 메모리 상태를 올려 도장이 실제로 찍히게 한다.
+    if (kDemoWallet && restaurantId == kDemoRestaurantId) {
+      return StampAddResult.success(
+        StampActionResult.fromJson(demoAddStampJson(safeCount)),
+      );
+    }
     final resolvedIdemKey = (idemKey != null && idemKey.trim().isNotEmpty)
         ? idemKey.trim()
         : _generateIdempotencyKey();

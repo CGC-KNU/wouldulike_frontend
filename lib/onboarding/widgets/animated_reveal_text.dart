@@ -90,11 +90,13 @@ class AnimatedRevealTextState extends State<AnimatedRevealText>
 
   @override
   Widget build(BuildContext context) {
-    final reduceMotion = MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+    final reduceMotion =
+        MediaQuery.maybeOf(context)?.disableAnimations ?? false;
     if (reduceMotion) {
       // 접근성: 모션 최소화 시 즉시 표시
       WidgetsBinding.instance.addPostFrameCallback((_) => _notifyCompleted());
-      return Text(widget.text, style: widget.style, textAlign: widget.textAlign);
+      return Text(widget.text,
+          style: widget.style, textAlign: widget.textAlign);
     }
 
     final totalMs = _controller.duration!.inMilliseconds;
@@ -103,7 +105,9 @@ class AnimatedRevealTextState extends State<AnimatedRevealText>
 
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
+      // 줄마다 Wrap이 내용 너비로 줄어들기 때문에, 줄 사이 정렬은 Column이 결정한다.
+      // 여기를 고정하면 textAlign이 무시돼 짧은 줄이 가운데로 밀린다.
+      crossAxisAlignment: _columnAlignment(),
       children: lines.map((line) {
         return Wrap(
           alignment: _wrapAlignment(),
@@ -139,6 +143,19 @@ class AnimatedRevealTextState extends State<AnimatedRevealText>
         );
       }).toList(),
     );
+  }
+
+  CrossAxisAlignment _columnAlignment() {
+    switch (widget.textAlign) {
+      case TextAlign.start:
+      case TextAlign.left:
+        return CrossAxisAlignment.start;
+      case TextAlign.right:
+      case TextAlign.end:
+        return CrossAxisAlignment.end;
+      default:
+        return CrossAxisAlignment.center;
+    }
   }
 
   WrapAlignment _wrapAlignment() {

@@ -39,8 +39,8 @@ const Map<String, _CouponCategoryMeta> _kCouponCategoryMeta = {
       '한식', 'assets/images/korean.png', 'assets/icons/category/korean.svg'),
   'CHINESE': _CouponCategoryMeta(
       '중식', 'assets/images/chinese.png', 'assets/icons/category/chinese.svg'),
-  'JAPANESE': _CouponCategoryMeta('일식', 'assets/images/japanese.png',
-      'assets/icons/category/japanese.svg'),
+  'JAPANESE': _CouponCategoryMeta(
+      '일식', 'assets/images/japanese.png', 'assets/icons/category/japanese.svg'),
   'WESTERN': _CouponCategoryMeta(
       '양식', 'assets/images/western.png', 'assets/icons/category/western.svg'),
   'SNACK': _CouponCategoryMeta(
@@ -382,7 +382,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
             color: selected ? const Color(0xFF192132) : Colors.white,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: selected ? const Color(0xFF192132) : const Color(0xFFE5E7EB),
+              color:
+                  selected ? const Color(0xFF192132) : const Color(0xFFE5E7EB),
             ),
           ),
           child: Text(
@@ -407,8 +408,243 @@ class _CouponListScreenState extends State<CouponListScreen> {
         chip('만료임박', _expiringOnly, () {
           if (!_expiringOnly) setState(() => _expiringOnly = true);
         }),
+        const Spacer(),
+        _buildCouponCodeButton(),
       ],
     );
+  }
+
+  /// 문자·이벤트로 받은 쿠폰 번호를 직접 입력해 바로 사용 화면으로 넘어가는 버튼.
+  Widget _buildCouponCodeButton() {
+    return InkWell(
+      onTap: _showCouponCodeDialog,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: const Color(0xFFEEF0FF),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFC7CCFF)),
+        ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.keyboard_alt_outlined,
+                size: 15, color: Color(0xFF4F46E5)),
+            SizedBox(width: 5),
+            Text(
+              '쿠폰 번호 입력',
+              style: TextStyle(
+                fontSize: 13,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF4F46E5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 쿠폰 번호 입력 다이얼로그.
+  /// `POST /api/coupons/check/`는 로그인한 사용자 본인 쿠폰만 조회하므로,
+  /// 남의 쿠폰이나 발급되지 않은 번호는 조회되지 않는다(= 코드로 새 쿠폰을 받는 기능이 아니다).
+  Future<void> _showCouponCodeDialog() async {
+    final controller = TextEditingController();
+    String? error;
+    var isLoading = false;
+
+    final coupon = await showDialog<UserCoupon>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            Future<void> submit() async {
+              final code = controller.text.trim().toUpperCase();
+              if (code.isEmpty) {
+                setDialogState(() => error = '쿠폰 번호를 입력해 주세요.');
+                return;
+              }
+              setDialogState(() {
+                error = null;
+                isLoading = true;
+              });
+              try {
+                final found = await CouponService.checkCoupon(couponCode: code);
+                if (!dialogContext.mounted) return;
+                if (found.status != CouponStatus.issued) {
+                  setDialogState(() {
+                    error = found.status == CouponStatus.redeemed
+                        ? '이미 사용한 쿠폰이에요.'
+                        : '지금은 사용할 수 없는 쿠폰이에요.';
+                    isLoading = false;
+                  });
+                  return;
+                }
+                Navigator.of(dialogContext).pop(found);
+              } on ApiAuthException catch (e) {
+                if (!dialogContext.mounted) return;
+                setDialogState(() {
+                  error = e.message;
+                  isLoading = false;
+                });
+              } on ApiHttpException catch (e) {
+                if (!dialogContext.mounted) return;
+                setDialogState(() {
+                  error = e.statusCode == 404
+                      ? '이 번호로 발급된 쿠폰을 찾지 못했어요. 번호를 다시 확인해 주세요.'
+                      : '조회에 실패했어요 (HTTP ${e.statusCode})';
+                  isLoading = false;
+                });
+              } catch (_) {
+                if (!dialogContext.mounted) return;
+                setDialogState(() {
+                  error = '네트워크 오류로 조회하지 못했어요. 잠시 후 다시 시도해 주세요.';
+                  isLoading = false;
+                });
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text(
+                '쿠폰 번호 입력',
+                style: TextStyle(
+                  fontSize: 17,
+                  fontFamily: 'Pretendard',
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF111827),
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '문자·이벤트로 받은 쿠폰 번호를 입력하면\n바로 사용 화면으로 넘어가요.',
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      fontFamily: 'Pretendard',
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: controller,
+                    autofocus: true,
+                    enabled: !isLoading,
+                    textCapitalization: TextCapitalization.characters,
+                    textInputAction: TextInputAction.done,
+                    onSubmitted: (_) {
+                      if (!isLoading) submit();
+                    },
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1.2,
+                      color: Color(0xFF111827),
+                    ),
+                    decoration: InputDecoration(
+                      hintText: '예: WUL-8F2K9A',
+                      hintStyle: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0,
+                        color: Color(0xFFB0B5BF),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xFFF6F7F9),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 13,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      error!,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'Pretendard',
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFFEF4444),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+              actions: [
+                TextButton(
+                  onPressed: isLoading
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: const Text(
+                    '취소',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: isLoading ? null : submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1C203C),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    textStyle: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                  ),
+                  child: isLoading
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Text('확인'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    controller.dispose();
+    if (!mounted || coupon == null) return;
+    AnalyticsLogger.logEvent(
+      'coupon_code_lookup',
+      parameters: {AnalyticsEvents.paramCouponCode: coupon.code},
+    );
+    await _handleRedeem(coupon);
+    if (!mounted) return;
+    // 조회한 쿠폰이 목록에 없을 수 있으므로(만료 갱신 등) 사용 후 최신 목록으로 맞춘다.
+    await _loadCoupons();
   }
 
   /// 카테고리 줄. 식당 탭(`affiliate_benefits_screen.dart`)과 같은 원형 SVG 아이콘을 쓴다.
@@ -909,9 +1145,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
                       final all = snapshot.data ?? const [];
                       final items = keyword.isEmpty
                           ? all
-                          : all
-                              .where((r) => r.name.contains(keyword))
-                              .toList();
+                          : all.where((r) => r.name.contains(keyword)).toList();
                       if (items.isEmpty) {
                         return const Center(
                           child: Text(
@@ -950,8 +1184,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
                                     ),
                                   ),
                             trailing: const Icon(Icons.chevron_right, size: 18),
-                            onTap: () =>
-                                Navigator.of(sheetContext).pop(item),
+                            onTap: () => Navigator.of(sheetContext).pop(item),
                           );
                         },
                       );
@@ -1350,7 +1583,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
       storeLabel: restaurantLabel,
       title: benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle,
       subtitle: benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle,
-      notchColor: _kListBackground,
+      notes: benefit?.notesText,
       expiryText: _formatExpiryDate(coupon.expiresAt),
       expiryUrgent: _isExpiringSoon(coupon),
       isProcessing: _processingCouponCode == coupon.code,
@@ -1362,8 +1595,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   // 블록 내부에는 별도의 상태 텍스트를 표시하지 않는다.
 }
 
-/// 티켓 카드 좌우에 파인 반원. 리스트 배경과 같은 색으로 칠해
-/// 카드가 뜯어진 것처럼 보이게 한다.
+/// 쿠폰 목록 하단 사용 안내 문구.
 class _CouponUsageNotice extends StatelessWidget {
   const _CouponUsageNotice();
 

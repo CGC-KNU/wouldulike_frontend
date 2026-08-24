@@ -20,7 +20,8 @@ class MainAppScreen extends StatefulWidget {
 }
 
 class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserver {
-  int _selectedIndex = 0;
+  // 시연 빌드에서 시작 탭 지정: --dart-define=DEMO_NAV=2 (0 홈/1 식당/2 내 지갑/3 마이페이지)
+  int _selectedIndex = const int.fromEnvironment('DEMO_NAV');
   static const List<String> _tabNames = <String>['home', 'affiliate', 'wallet', 'my'];
   StreamSubscription<int>? _deepLinkSub;
 

@@ -4,6 +4,7 @@ import '../config/analytics_events.dart';
 import '../utils/analytics_logger.dart';
 import 'onboarding_style.dart';
 import 'widgets/animated_reveal_text.dart';
+import '../widgets/coupon_ticket_card.dart';
 
 // 좌상단 굵은 헤드라인 (메시지 컷 공용)
 const TextStyle _headline = TextStyle(
@@ -197,77 +198,21 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
     );
   }
 
-  // 화면 1: 쿠폰 카드 목업 (프로토타입 .rcpn.cpnhero)
+  // 화면 1: 쿠폰 히어로 — 지갑·식당 상세와 같은 공용 쿠폰 티켓 카드를 그대로 보여준다.
   Widget _buildCouponHero() {
     return Transform.rotate(
       angle: -1.5 * 3.141592 / 180,
-      child: Container(
-        width: 260,
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
-        decoration: BoxDecoration(
-          color: const Color(0xFF192132),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x6B192132),
-              blurRadius: 38,
-              offset: Offset(0, 22),
-            ),
-          ],
-        ),
-        child: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          // Center가 느슨한 제약을 주므로 min이 없으면 카드가 세로 전체로 늘어난다.
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '한끼갈비',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFCBD5FF),
-              ),
-            ),
-            SizedBox(height: 6),
-            Text(
-              '2,000원 할인',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.3,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 6),
-            Text(
-              '1만원 이상 주문 시 사용 가능',
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 12.5,
-                fontWeight: FontWeight.w500,
-                color: Color(0xFFD1D6FF),
-              ),
-            ),
-            SizedBox(height: 11),
-            Row(
-              children: [
-                Icon(Icons.access_time_rounded,
-                    size: 13, color: Color(0xFFE1B53E)),
-                SizedBox(width: 5),
-                Text(
-                  '받은 날부터 7일간 사용 가능',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFFE1B53E),
-                  ),
-                ),
-              ],
-            ),
-          ],
+      child: SizedBox(
+        width: 320,
+        child: CouponTicketCard(
+          iconPath: 'assets/icons/category/korean.svg',
+          storeLabel: '정든밤',
+          title: '2,000원 할인',
+          subtitle: '1만원 이상 주문 시 사용 가능',
+          expiryText: '받은 날부터 7일간',
+          onAction: () {},
+          margin: EdgeInsets.zero,
+          borderColor: const Color(0xFFE1E5EA),
         ),
       ),
     );

@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'onboarding/onboarding_style.dart';
 import 'services/auth_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
@@ -261,14 +262,21 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
+    final bottomInset = MediaQuery.of(context).padding.bottom;
 
     return Scaffold(
-      backgroundColor: const Color(0xFF1c203c),
-      body: SafeArea(
+      // 하단 세이프에어리어까지 흰색으로 채워, 시트 아래 보라색이 비치지 않게 한다.
+      backgroundColor: Colors.white,
+      // 리브랜딩: 구 네이비(#1C203C) 대신 테마색 단색.
+      body: Container(
+        color: OnboardingStyle.primary,
+        // bottom: false — 시트가 화면 맨 아래까지 닿도록 하단 인셋을 시트 내부에서 처리.
+        child: SafeArea(
+        bottom: false,
         child: _isLoggingIn
             ? const Center(
                 child: CircularProgressIndicator(
-                  color: Color(0xFFFEE500),
+                  color: Colors.white,
                 ),
               )
             : Stack(
@@ -353,7 +361,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             '내 주변 모든 혜택을 우주라이크와 함께',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: const Color(0xFFDADCFF),
+                              color: const Color(0xFFC7D2FE),
                               fontSize: 18, // 4. 텍스트 크기
                               fontFamily: 'Pretendard',
                               fontWeight: FontWeight.w600,
@@ -369,47 +377,50 @@ class _LoginScreenState extends State<LoginScreen> {
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    height: screenHeight * 0.344,
+                    // 하단 인셋만큼 시트를 키워, 홈 인디케이터 영역까지 흰색으로 채운다.
+                    height: screenHeight * 0.344 + bottomInset,
                     child: Container(
                       width: double.infinity,
+                      // 리브랜딩 확정안: 흰색 바텀시트 + 상단 radius 28 (기존 비대칭 100 정리)
                       decoration: const ShapeDecoration(
-                        color: Color(0xFFF5F5FA),
+                        color: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.only(
-                            topLeft: Radius.circular(100),
-                            topRight: Radius.circular(100),
-                            bottomRight: Radius.circular(4),
+                            topLeft: Radius.circular(28),
+                            topRight: Radius.circular(28),
                           ),
                         ),
                       ),
                       child: Padding(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: screenWidth * 0.08),
+                        padding: EdgeInsets.only(
+                          left: screenWidth * 0.08,
+                          right: screenWidth * 0.08,
+                          bottom: bottomInset,
+                        ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.start,
                           children: [
-                            SizedBox(height: 90 * (screenHeight / 844)),
+                            // 시트 상단 그래버(회색 선)
+                            Container(
+                              width: 36,
+                              height: 4,
+                              margin: const EdgeInsets.only(top: 10),
+                              decoration: BoxDecoration(
+                                color: OnboardingStyle.line,
+                                borderRadius: BorderRadius.circular(2),
+                              ),
+                            ),
+                            SizedBox(height: 62 * (screenHeight / 844)),
 
                             // 2. 버튼의 높이
                             //    현재: 50px로 조정하여 텍스트가 잘리지 않도록 함
                             SizedBox(
                               width: double.infinity,
-                              height: 50, // 버튼 높이를 약간 늘려 텍스트 여유 공간 확보
+                              height: 54, // 온보딩 버튼 규격과 통일
                               child: ElevatedButton(
                                 onPressed: _loginWithKakao,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFffe812),
-                                  foregroundColor: const Color(0xFF000000),
-                                  elevation: 0,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(5),
-                                  ),
-                                  // 버튼 내부 패딩을 균등하게 조정하여 텍스트가 중앙에 위치하도록 함
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: 0,
-                                    vertical: 0,
-                                  ),
-                                ),
+                                // 온보딩과 동일 규격(#FEE500 · radius 14 · 높이 54)
+                                style: OnboardingStyle.kakaoButton(),
                                 child: Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   // 5. Row 내부의 수직 정렬 (아이콘과 텍스트의 수직 정렬)
@@ -441,7 +452,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                         overflow: TextOverflow.visible,
                                         style: TextStyle(
                                           color: Colors.black,
-                                          fontSize: 19, // 8. 텍스트 크기
+                                          fontSize: 16, // 온보딩 버튼 타이포 규격
                                           fontFamily: 'Pretendard',
                                           fontWeight: FontWeight.w700,
                                           // 9. 텍스트의 줄 간격 (높이)을 1.0으로 설정하여 실제 텍스트 높이만 사용
@@ -459,8 +470,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               SizedBox(height: 12 * (screenHeight / 844)),
                               SignInWithAppleButton(
                                 onPressed: _loginWithApple,
-                                height: 50,
-                                borderRadius: BorderRadius.circular(5),
+                                height: 54,
+                                borderRadius: BorderRadius.circular(14),
                               ),
                             ],
                             SizedBox(height: 17 * (screenHeight / 844)),
@@ -480,7 +491,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   '지금은 괜찮아요',
                                   textAlign: TextAlign.center,
                                   style: TextStyle(
-                                    color: Color(0xFF1C203C),
+                                    color: OnboardingStyle.muted,
                                     fontSize: 16,
                                     fontFamily: 'Pretendard',
                                     fontWeight: FontWeight.w400,
@@ -496,6 +507,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ],
               ),
+        ),
       ),
     );
   }

@@ -33,6 +33,28 @@ import 'services/user_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 const MethodChannel _deviceInfoChannel = MethodChannel('app/device_info');
+
+/// 리브랜딩 기본 스플래시 배경 (보라)
+const Color _kBrandSplashColor = Color(0xFF4F46E5);
+
+/// 기본 스플래시: 보라 배경 + 흰 로고 블록 (splash_logo.png)
+class _BrandSplashView extends StatelessWidget {
+  const _BrandSplashView();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: _kBrandSplashColor,
+      child: Center(
+        child: Image.asset(
+          'assets/images/splash_logo.png',
+          width: MediaQuery.of(context).size.width * 0.3,
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+}
 class _CampaignSplashConfig {
   const _CampaignSplashConfig({
     required this.asset,
@@ -333,8 +355,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         fontFamily: 'Pretendard',
+        // Material 3 기본 surface(#FEF7FF)는 분홍기가 돌아 상단 안전영역이 분홍으로 보인다.
+        scaffoldBackgroundColor: Colors.white,
       ),
       home: AppEntryScreen(isLoggedIn: widget.isLoggedIn),
       navigatorObservers: [
@@ -428,8 +453,9 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
     if (_isCheckingProfile) {
       final showCampaignSplash = _shouldShowCampaignSplash();
       return Scaffold(
-        backgroundColor:
-            showCampaignSplash ? _campaignSplashBackground() : Colors.white,
+        backgroundColor: showCampaignSplash
+            ? _campaignSplashBackground()
+            : _kBrandSplashColor,
         body: const _AppEntryLoadingView(),
       );
     }
@@ -483,11 +509,7 @@ class _AppEntryLoadingView extends StatelessWidget {
     if (shouldShowSplash) {
       return SizedBox.expand(child: _buildCampaignSplashBody());
     }
-    return const Center(
-      child: CircularProgressIndicator(
-        color: Color(0xFF312E81),
-      ),
-    );
+    return const SizedBox.expand(child: _BrandSplashView());
   }
 }
 
@@ -998,23 +1020,12 @@ class MainScreenState extends State<MainScreen> {
     if (_isLoading) {
       final isSeasonalSplash = _isSeasonalSplashPeriod;
       return Scaffold(
-        backgroundColor:
-            isSeasonalSplash ? _campaignSplashBackground() : Colors.white,
+        backgroundColor: isSeasonalSplash
+            ? _campaignSplashBackground()
+            : _kBrandSplashColor,
         body: isSeasonalSplash
             ? SizedBox.expand(child: _buildCampaignSplashBody())
-            : Column(
-                children: [
-                  const Spacer(flex: 9),
-                  Center(
-                    child: Image.asset(
-                      'assets/images/Logo-Final.png',
-                      width: MediaQuery.of(context).size.width * 0.6,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                  const Spacer(flex: 10),
-                ],
-              ),
+            : const SizedBox.expand(child: _BrandSplashView()),
       );
     }
     // 濡쒕???꾨땺 ??? ?붾㈃

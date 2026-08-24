@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 
-/// 온보딩 화면 공용 스타일 — 앱 기존 인디고 팔레트를 그대로 사용한다.
+/// 온보딩 화면 공용 스타일 — 리브랜딩 보라 팔레트(#4F46E5)를 사용한다.
 class OnboardingStyle {
   OnboardingStyle._();
 
-  static const Color primary = Color(0xFF312E81);
+  static const Color primary = Color(0xFF4F46E5);
+
+  /// 룰렛 링 등 짙은 포인트가 필요한 곳의 딥 퍼플.
+  static const Color deep = Color(0xFF312E81);
   static const Color accent = Color(0xFF6366F1);
-  static const Color accentSoft = Color(0xFFEEF4FF);
+  static const Color accentSoft = Color(0xFFEEF0FF);
   static const Color ink = Color(0xFF111827);
   static const Color body = Color(0xFF4B5563);
   static const Color muted = Color(0xFF9CA3AF);
@@ -26,6 +29,25 @@ class OnboardingStyle {
         fontFamily: 'Pretendard',
         fontSize: 16,
         fontWeight: FontWeight.w700,
+      ),
+    );
+  }
+
+  /// 카카오 브랜드 버튼 (노란 배경 + 검정 글씨). 로그인 화면과 같은 규격.
+  static ButtonStyle kakaoButton() {
+    return ElevatedButton.styleFrom(
+      backgroundColor: const Color(0xFFFEE500),
+      foregroundColor: Colors.black,
+      disabledBackgroundColor: const Color(0xFFFEE500).withOpacity(0.45),
+      disabledForegroundColor: Colors.black45,
+      minimumSize: const Size.fromHeight(54),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 0,
+      textStyle: const TextStyle(
+        fontFamily: 'Pretendard',
+        fontSize: 16,
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.4,
       ),
     );
   }

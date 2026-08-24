@@ -15,6 +15,7 @@ import 'affiliate_benefits_screen.dart';
 import 'coupon_list_screen.dart';
 import 'featured/featured_campaign_screen.dart';
 import 'mission/mission_track_screen.dart';
+import 'mission/routine_missions.dart';
 import 'services/affiliate_service.dart';
 import 'services/coupon_service.dart';
 import 'services/api_client.dart';
@@ -136,7 +137,11 @@ class _HomeContentState extends State<HomeContent> {
   Future<void> _loadMissionTrack() async {
     final track = await MissionService.fetchTrack();
     if (!mounted) return;
-    setState(() => _missionTrack = (track?.hasOngoing ?? false) ? track : null);
+    // 초보자 미션이 끝나면 일간/주간 미션으로 이어진다. 둘 다 없을 때만 숨긴다.
+    setState(() => _missionTrack =
+        (track != null && (track.hasOngoing || track.hasRoutine))
+            ? track
+            : null);
   }
 
   Future<void> _loadFeaturedCampaign() async {
@@ -1702,6 +1707,8 @@ class _HomeContentState extends State<HomeContent> {
                     title: banner.title,
                     subtitle: banner.subtitle,
                     imageUrl: _featuredBannerImage(index),
+                    fallbackAsset:
+                        _kFeaturedFallbackAssets[index % _kFeaturedFallbackAssets.length],
                     onTap: _openFeaturedCampaign,
                   ),
                 );
@@ -1737,6 +1744,23 @@ class _HomeContentState extends State<HomeContent> {
   Widget _buildMissionBanner() {
     final track = _missionTrack;
     if (track == null) return const SizedBox.shrink();
+    // 초보자 미션을 다 끝냈으면 일간/주간 반복 미션 배너로 교체한다.
+    if (track.beginnerDone && track.hasRoutine) {
+      return RoutineMissionBanner(
+        track: track,
+        onTap: () {
+          AnalyticsLogger.logEvent('mission_banner_tap', parameters: {
+            'stage': 'routine',
+            'remaining': track.routineRemaining,
+          });
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => const MissionTrackScreen(),
+            ),
+          );
+        },
+      );
+    }
     final total = track.missions.length;
     final remaining = track.remainingCount;
 
@@ -1997,12 +2021,24 @@ class _HomeContentState extends State<HomeContent> {
   }
 }
 
+/// 이미지 준비 전까지 배너/썸네일 자리를 채우는 회색 플레이스홀더 색상.
+/// 기획전 배너 폴백 이미지. 배너 순서대로 돌려 쓴다.
+const List<String> _kFeaturedFallbackAssets = <String>[
+  'assets/images/food_image0.png',
+  'assets/images/food1.png',
+  'assets/images/onboarding_hero_plate.png',
+];
+
+const Color _placeholderGray = Color(0xFFD9D9D9);
+const Color _placeholderInk = Color(0xFF39393E);
+
 class _FeaturedBannerCard extends StatelessWidget {
   const _FeaturedBannerCard({
     required this.tag,
     required this.title,
     required this.subtitle,
     required this.imageUrl,
+    required this.fallbackAsset,
     required this.onTap,
   });
 
@@ -2010,11 +2046,27 @@ class _FeaturedBannerCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final String? imageUrl;
+
+  /// 기획전 매장 사진이 없을 때 쓸 로컬 이미지. 배너가 회색으로 비지 않게 한다.
+  final String fallbackAsset;
   final VoidCallback onTap;
+
+  Widget _buildBackground() {
+    final fallback = Image.asset(
+      fallbackAsset,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => const ColoredBox(color: _placeholderGray),
+    );
+    if (!_isValidHttpImageUrl(imageUrl)) return fallback;
+    return Image.network(
+      imageUrl!.trim(),
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => fallback,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final bool hasImage = _isValidHttpImageUrl(imageUrl);
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: onTap,
@@ -2023,34 +2075,16 @@ class _FeaturedBannerCard extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            if (hasImage)
-              Image.network(
-                imageUrl!.trim(),
-                fit: BoxFit.cover,
-                // 텍스트가 하단에 깔리므로 사진은 위쪽(음식)이 보이도록 정렬
-                alignment: Alignment.topCenter,
-                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-              ),
-            // 사진이 있으면 글자 영역(하단)만 어둡게. 위쪽은 사진 그대로 밝게 유지.
-            // 사진이 없으면 프로토타입 .hcollab 브랜드 그라데이션을 배경으로 사용.
-            DecoratedBox(
+            // 이미지 로딩 전 바탕. 그 위에 기획전 매장 사진(없으면 로컬 이미지)을 채운다.
+            const ColoredBox(color: _placeholderGray),
+            _buildBackground(),
+            // 사진 위에서도 문구가 읽히도록 하단 스크림을 깐다.
+            const DecoratedBox(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topCenter,
+                  begin: Alignment.center,
                   end: Alignment.bottomCenter,
-                  stops: hasImage ? const [0.0, 0.46, 0.72, 1.0] : null,
-                  colors: hasImage
-                      ? [
-                          Colors.transparent,
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.55),
-                          Colors.black.withOpacity(0.84),
-                        ]
-                      : [
-                          const Color(0xFF2A2670),
-                          const Color(0xFF4B47C4),
-                          Colors.black.withOpacity(0.35),
-                        ],
+                  colors: [Color(0x00000000), Color(0xCC000000)],
                 ),
               ),
             ),
@@ -2064,7 +2098,7 @@ class _FeaturedBannerCard extends StatelessWidget {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
+                      color: Colors.white.withOpacity(0.7),
                       borderRadius: BorderRadius.circular(999),
                     ),
                     child: Text(
@@ -2073,7 +2107,7 @@ class _FeaturedBannerCard extends StatelessWidget {
                         fontFamily: 'Pretendard',
                         fontSize: 10.5,
                         fontWeight: FontWeight.w700,
-                        color: Colors.white,
+                        color: _placeholderInk,
                       ),
                     ),
                   ),

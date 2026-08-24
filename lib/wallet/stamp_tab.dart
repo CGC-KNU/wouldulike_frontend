@@ -1,6 +1,7 @@
 import 'package:new1/widgets/category_strip.dart';
 import 'package:flutter/material.dart';
 
+import 'package:new1/affiliate_benefits_screen.dart';
 import 'package:new1/services/affiliate_service.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/services/coupon_service.dart';
@@ -62,6 +63,9 @@ class _StampTabState extends State<StampTab> {
       final byId = {for (final r in restaurants) r.id: r};
 
       final entries = collection.statuses.entries
+          // 스탬프를 1개라도 적립한 매장만 보여준다.
+          // (서버는 0개 매장도 함께 내려주므로 여기서 걸러야 목록이 비지 않는다)
+          .where((e) => e.value.current > 0)
           .map((e) => _StampEntry(
                 restaurantId: e.key,
                 status: e.value,
@@ -230,14 +234,16 @@ class _StampTabState extends State<StampTab> {
   /// 매장별 스탬프 티켓. 식당 상세와 같은 도장 에셋·절취선 구성을 쓴다.
   Widget _buildStampCard(_StampEntry entry) {
     final status = entry.status;
-    final target = status.target > 0 ? status.target : (_defaultTarget ?? 10);
-    final current = status.current.clamp(0, target);
+    // 칸 수·리워드 위치·남은 개수는 모두 서버 응답(target + rewards)에서 파생시킨다.
+    final board = status.boardLength > 0 ? status.boardLength : (_defaultTarget ?? 10);
+    final current = status.current.clamp(0, board);
     final name = entry.restaurant?.name ?? '매장 ${entry.restaurantId}';
     final category = entry.restaurant?.category ?? '';
-    final remaining = target - current;
+    final nextReward = status.nextReward;
+    final remaining = status.remainingToNextReward;
+    final rewardTiers = status.thresholdRewards;
     final rewardSteps = <int>{
-      for (final r in status.rewards)
-        if (r.stamps != null && r.stamps! > 0) r.stamps!,
+      for (final r in rewardTiers) r.stamps!,
     };
 
     return Container(
@@ -293,9 +299,10 @@ class _StampTabState extends State<StampTab> {
                       Text(
                         [
                           if (category.isNotEmpty) category,
-                          remaining <= 0
+                          nextReward == null || remaining <= 0
                               ? '리워드를 받을 수 있어요'
-                              : '$remaining개 더 모으면 리워드',
+                              : '$remaining개 더 모으면 '
+                                  '${stampRewardBenefitText(nextReward)}',
                         ].join(' · '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -324,7 +331,7 @@ class _StampTabState extends State<StampTab> {
                         ),
                       ),
                       TextSpan(
-                        text: ' / $target',
+                        text: ' / $board',
                         style: const TextStyle(
                           fontSize: 14,
                           fontFamily: 'Pretendard',
@@ -341,14 +348,142 @@ class _StampTabState extends State<StampTab> {
           const _DashedDivider(),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: _buildStampGrid(
-              current: current,
-              target: target,
-              rewardSteps: rewardSteps,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildStampGrid(
+                  current: current,
+                  target: board,
+                  rewardSteps: rewardSteps,
+                ),
+                if (rewardTiers.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _buildRewardTierList(rewardTiers, current),
+                ],
+                const SizedBox(height: 14),
+                _buildAddStampButton(entry),
+              ],
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// 카드에서 바로 스탬프를 적립한다.
+  /// PIN 입력·적립 처리는 식당 상세 시트의 기존 플로우를 그대로 재사용한다.
+  Widget _buildAddStampButton(_StampEntry entry) {
+    final restaurant = entry.restaurant;
+    return SizedBox(
+      width: double.infinity,
+      height: 44,
+      child: ElevatedButton.icon(
+        // 제휴 식당 목록에 없는 매장은 상세 시트를 열 수 없으므로 비활성화한다.
+        onPressed: restaurant == null ? null : () => _openStampAdd(entry),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: const Color(0xFF4F46E5),
+          foregroundColor: Colors.white,
+          disabledBackgroundColor: const Color(0xFFE5E7EB),
+          disabledForegroundColor: const Color(0xFF9CA3AF),
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          textStyle: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 14,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
+        icon: const Icon(Icons.add_circle_outline, size: 18),
+        label: const Text('적립하기'),
+      ),
+    );
+  }
+
+  /// 식당 상세 시트를 띄워 스탬프 적립(PIN 확인)을 진행하고, 닫히면 목록을 갱신한다.
+  Future<void> _openStampAdd(_StampEntry entry) async {
+    final restaurant = entry.restaurant;
+    if (restaurant == null) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return AffiliateRestaurantDetailSheet(
+          restaurant: restaurant,
+          coupons: const [],
+          requiresLogin: false,
+          source: 'wallet_stamp',
+          isFavorite: false,
+          onFavoriteChanged: (_) {},
+          initialStampStatus: entry.status,
+          onStampStatusUpdated: (_) {},
+          onCouponRedeemed: (_) {},
+          onRewardCouponsIssued: (_) {},
+        );
+      },
+    );
+    if (!mounted) return;
+    // 적립 결과(도장 수·리워드 쿠폰)를 목록에 반영한다.
+    await _load();
+  }
+
+  /// "N개 → 혜택" 목록. 서버 rewards 그대로 보여준다(하드코딩 없음).
+  Widget _buildRewardTierList(List<StampReward> tiers, int current) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final r in tiers)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                Container(
+                  width: 34,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  decoration: BoxDecoration(
+                    color: (r.stamps ?? 0) <= current
+                        ? const Color(0xFFEEF2FF)
+                        : const Color(0xFFF2F4F6),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    '${r.stamps}개',
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w800,
+                      color: (r.stamps ?? 0) <= current
+                          ? const Color(0xFF4F46E5)
+                          : const Color(0xFF8B95A1),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    stampRewardBenefitText(r),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'Pretendard',
+                      fontWeight: FontWeight.w600,
+                      color: (r.stamps ?? 0) <= current
+                          ? const Color(0xFF191F28)
+                          : const Color(0xFF6B7684),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 
@@ -372,8 +507,7 @@ class _StampTabState extends State<StampTab> {
                 width: size,
                 height: size,
                 child: Image.asset(
-                  (rewardSteps.contains(i + 1) || i == target - 1) &&
-                          i >= current
+                  rewardSteps.contains(i + 1) && i >= current
                       ? 'assets/images/stamp/stamp_reward.png'
                       : (i < current
                           ? 'assets/images/stamp/stamp_filled.png'

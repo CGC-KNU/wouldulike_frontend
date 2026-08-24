@@ -13,6 +13,7 @@ import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
 import 'models/coupon_benefits_summary.dart';
+import 'services/demo_wallet.dart';
 import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
@@ -128,6 +129,47 @@ class _Theme {
   static const track = Color(0xFFE7E9F5); // 미적립 도트
 }
 
+/// 찜한 일반 식당을 구분하는 키. id가 없으면 url, 그것도 없으면 이름+주소로 떨어진다.
+String generalRestaurantFavoriteKey(GeneralRestaurantSummary restaurant) {
+  if (restaurant.id > 0) {
+    return 'id:${restaurant.id}';
+  }
+  final normalizedUrl = restaurant.url.trim();
+  if (normalizedUrl.isNotEmpty) {
+    return 'url:$normalizedUrl';
+  }
+  return 'name:${restaurant.name.trim()}|addr:${restaurant.address.trim()}';
+}
+
+/// 찜한 일반 식당 목록 병합.
+/// 일반 식당은 20개씩 페이징이라 찜한 곳이 아직 로드되지 않았을 수 있다.
+/// 로드된 목록에 있으면 그 값을, 없으면 찜할 때 저장해 둔 스냅샷을 쓴다.
+List<GeneralRestaurantSummary> mergeFavoriteGeneralRestaurants({
+  required List<GeneralRestaurantSummary> loaded,
+  required Set<String> favoriteKeys,
+  required Map<String, dynamic> snapshots,
+}) {
+  final byKey = <String, GeneralRestaurantSummary>{};
+  for (final restaurant in loaded) {
+    final key = generalRestaurantFavoriteKey(restaurant);
+    if (favoriteKeys.contains(key)) {
+      byKey[key] = restaurant;
+    }
+  }
+  for (final key in favoriteKeys) {
+    if (byKey.containsKey(key)) continue;
+    final raw = snapshots[key];
+    if (raw is Map) {
+      try {
+        byKey[key] = GeneralRestaurantSummary.fromJson(
+          Map<String, dynamic>.from(raw),
+        );
+      } catch (_) {}
+    }
+  }
+  return byKey.values.toList();
+}
+
 String _categoryKeyOf(String category) {
   final normalized = category.trim().toUpperCase();
   return _kCategoryAlias[normalized] ??
@@ -189,6 +231,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   // 필터/정렬: 거리·영업시간 데이터가 API에 없어 쿠폰·스탬프 보유 여부로만 거른다.
   bool _couponOnly = false;
   bool _stampOnly = false;
+
+  /// 정렬 드롭다운의 '찜한 식당만' 항목. 정렬이 아니라 필터라 별도 상태로 둔다.
+  bool _favoriteOnly = false;
   _RestaurantSort _sortMode = _RestaurantSort.benefit;
   List<String> _categories = const ['ALL'];
   bool _isOpeningDetail = false;
@@ -197,23 +242,30 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   final ScrollController _scrollController = ScrollController();
   Timer? _searchDebounce;
   String _searchQuery = '';
+
   /// 스크롤을 내리면 카테고리 줄을 접어 카드가 더 보이게 한다.
   bool _categoryCollapsed = false;
   Set<int> _favoriteAffiliateRestaurantIds = <int>{};
   Set<String> _favoriteGeneralRestaurantKeys = <String>{};
+
+  /// 찜한 일반 식당의 저장본(key → 식당 JSON).
+  /// 일반 식당 목록은 20개씩 페이징이라, 아직 로드되지 않은 찜도 '찜한 식당만'에서 보이게 하려고 쓴다.
+  Map<String, dynamic> _favoriteGeneralSnapshots = <String, dynamic>{};
 
   @override
   void initState() {
     super.initState();
     _scrollController.addListener(_handleScroll);
     _searchFocusNode.addListener(() => setState(() {}));
-    DeepLinkService.instance.pendingRestaurantId.addListener(_handleDeepLinkRestaurant);
+    DeepLinkService.instance.pendingRestaurantId
+        .addListener(_handleDeepLinkRestaurant);
     _load();
   }
 
   @override
   void dispose() {
-    DeepLinkService.instance.pendingRestaurantId.removeListener(_handleDeepLinkRestaurant);
+    DeepLinkService.instance.pendingRestaurantId
+        .removeListener(_handleDeepLinkRestaurant);
     _searchDebounce?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
@@ -224,10 +276,12 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   void _handleDeepLinkRestaurant() {
     final id = DeepLinkService.instance.pendingRestaurantId.value;
     if (id == null) return;
-    final restaurant = _affiliateRestaurants.where((r) => r.id == id).firstOrNull;
+    final restaurant =
+        _affiliateRestaurants.where((r) => r.id == id).firstOrNull;
     if (restaurant == null) {
       // 로딩이 완료됐는데도 없으면 해당 식당이 목록에 없는 것이므로 pending 값 초기화
-      if (!_isLoading) DeepLinkService.instance.pendingRestaurantId.value = null;
+      if (!_isLoading)
+        DeepLinkService.instance.pendingRestaurantId.value = null;
       return;
     }
     DeepLinkService.instance.pendingRestaurantId.value = null;
@@ -293,6 +347,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         }
         _favoriteAffiliateRestaurantIds = favoriteState.$1;
         _favoriteGeneralRestaurantKeys = favoriteState.$2;
+        _favoriteGeneralSnapshots = favoriteState.$3;
         _hasMoreGeneralRestaurants = response.generalPagination.hasMore;
         _nextGeneralOffset = response.generalPagination.nextOffset;
       });
@@ -339,7 +394,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     }
   }
 
-  Future<(Set<int>, Set<String>)> _loadFavoriteState() async {
+  Future<(Set<int>, Set<String>, Map<String, dynamic>)>
+      _loadFavoriteState() async {
     final prefs = await SharedPreferences.getInstance();
     final rawAffiliate =
         prefs.getStringList(_kFavoriteAffiliateRestaurantIdsKey) ??
@@ -355,7 +411,17 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         .map((value) => value.trim())
         .where((value) => value.isNotEmpty)
         .toSet();
-    return (affiliateIds, generalKeys);
+    final snapshots = <String, dynamic>{};
+    final rawItems = prefs.getString(_kFavoriteGeneralRestaurantItemsKey);
+    if (rawItems != null && rawItems.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(rawItems);
+        if (decoded is Map<String, dynamic>) {
+          snapshots.addAll(decoded);
+        }
+      } catch (_) {}
+    }
+    return (affiliateIds, generalKeys, snapshots);
   }
 
   Future<void> _persistFavoriteState() async {
@@ -373,16 +439,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     return _favoriteAffiliateRestaurantIds.contains(restaurantId);
   }
 
-  String _generalRestaurantFavoriteKey(GeneralRestaurantSummary restaurant) {
-    if (restaurant.id > 0) {
-      return 'id:${restaurant.id}';
-    }
-    final normalizedUrl = restaurant.url.trim();
-    if (normalizedUrl.isNotEmpty) {
-      return 'url:$normalizedUrl';
-    }
-    return 'name:${restaurant.name.trim()}|addr:${restaurant.address.trim()}';
-  }
+  String _generalRestaurantFavoriteKey(GeneralRestaurantSummary restaurant) =>
+      generalRestaurantFavoriteKey(restaurant);
 
   bool _isFavoriteGeneralRestaurant(GeneralRestaurantSummary restaurant) {
     return _favoriteGeneralRestaurantKeys
@@ -474,6 +532,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       _kFavoriteGeneralRestaurantItemsKey,
       jsonEncode(snapshots),
     );
+    if (mounted) {
+      setState(() => _favoriteGeneralSnapshots = snapshots);
+    }
   }
 
   Future<void> _toggleFavoriteAffiliateRestaurant(int restaurantId) async {
@@ -730,6 +791,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                   _selectedCategory,
             )
             .toList();
+    if (_favoriteOnly) {
+      list = list.where((r) => _isFavoriteAffiliateRestaurant(r.id)).toList();
+    }
     if (_couponOnly) {
       list = list.where((r) => _usableCouponCount(r.id) > 0).toList();
     }
@@ -740,9 +804,31 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     return list;
   }
 
+  /// 찜한 일반 식당 목록.
+  /// 로드된 페이지에 없는 찜은 저장해 둔 스냅샷으로 되살려, 스크롤 위치와 무관하게 전부 보이게 한다.
+  List<GeneralRestaurantSummary> get _favoriteGeneralRestaurants =>
+      mergeFavoriteGeneralRestaurants(
+        loaded: _generalRestaurants,
+        favoriteKeys: _favoriteGeneralRestaurantKeys,
+        snapshots: _favoriteGeneralSnapshots,
+      );
+
   List<GeneralRestaurantSummary> get _filteredGeneralRestaurants {
     // 쿠폰·스탬프 필터가 켜지면 일반 식당은 해당 혜택이 없으므로 숨긴다.
     if (_hasBenefitFilter) return const [];
+    if (_favoriteOnly) {
+      final favorites = _selectedCategory == 'ALL'
+          ? _favoriteGeneralRestaurants
+          : _favoriteGeneralRestaurants
+              .where(
+                (restaurant) =>
+                    _normalizedCategoryForState(restaurant.category) ==
+                    _selectedCategory,
+              )
+              .toList();
+      favorites.sort((a, b) => a.name.compareTo(b.name));
+      return favorites;
+    }
     final list = _selectedCategory == 'ALL'
         ? List<GeneralRestaurantSummary>.from(_generalRestaurants)
         : _generalRestaurants
@@ -790,9 +876,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
     // 히스테리시스: 접힘 80px / 펼침 40px — 경계에서 떨리지 않게 한다.
-    final shouldCollapse = _categoryCollapsed
-        ? position.pixels > 40
-        : position.pixels > 80;
+    final shouldCollapse =
+        _categoryCollapsed ? position.pixels > 40 : position.pixels > 80;
     if (shouldCollapse != _categoryCollapsed) {
       setState(() => _categoryCollapsed = shouldCollapse);
     }
@@ -1340,7 +1425,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     String? leading,
     IconData? trailingIcon,
   }) {
-    final Color foreground = selected ? _Theme.primary : const Color(0xFF4B5563);
+    final Color foreground =
+        selected ? _Theme.primary : const Color(0xFF4B5563);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(999),
@@ -1391,25 +1477,87 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     );
   }
 
+  /// 찜한 식당 수 (제휴 + 일반). 드롭다운 항목 옆 배지에 쓴다.
+  int get _favoriteCount =>
+      _favoriteAffiliateRestaurantIds.length +
+      _favoriteGeneralRestaurantKeys.length;
+
   /// 정렬 선택. 칩 아래에 붙는 드롭다운 메뉴 (바텀시트 대신).
+  /// 맨 위 '찜한 식당만'은 정렬이 아니라 필터라, 값 타입을 Object로 두고 분기한다.
   Widget _buildSortDropdown() {
-    return PopupMenuButton<_RestaurantSort>(
+    const favoriteMenuValue = 'favorite_only';
+    return PopupMenuButton<Object>(
       offset: const Offset(0, 36),
       color: Colors.white,
       elevation: 3,
       position: PopupMenuPosition.under,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      onSelected: (mode) {
-        if (mode == _sortMode) return;
+      onSelected: (value) {
+        if (value == favoriteMenuValue) {
+          AnalyticsLogger.logEvent(
+            'affiliate_filter_click',
+            parameters: {
+              'filter': 'favorite_only',
+              'enabled': !_favoriteOnly,
+            },
+          );
+          setState(() => _favoriteOnly = !_favoriteOnly);
+          return;
+        }
+        if (value is! _RestaurantSort || value == _sortMode) return;
         AnalyticsLogger.logEvent(
           'affiliate_sort_click',
-          parameters: {'sort': mode.name},
+          parameters: {'sort': value.name},
         );
-        setState(() => _sortMode = mode);
+        setState(() => _sortMode = value);
       },
       itemBuilder: (context) => [
+        PopupMenuItem<Object>(
+          value: favoriteMenuValue,
+          height: 42,
+          child: Row(
+            children: [
+              Icon(
+                _favoriteOnly ? Icons.favorite_rounded : Icons.favorite_border,
+                size: 17,
+                color: _favoriteOnly
+                    ? const Color(0xFF4F46E5)
+                    : const Color(0xFF9CA3AF),
+              ),
+              const SizedBox(width: 7),
+              Expanded(
+                child: Text(
+                  '찜한 식당만',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight:
+                        _favoriteOnly ? FontWeight.w700 : FontWeight.w500,
+                    color: _favoriteOnly
+                        ? const Color(0xFF4F46E5)
+                        : const Color(0xFF111827),
+                  ),
+                ),
+              ),
+              if (_favoriteCount > 0)
+                Text(
+                  '$_favoriteCount',
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF9CA3AF),
+                  ),
+                ),
+              if (_favoriteOnly) ...[
+                const SizedBox(width: 6),
+                const Icon(Icons.check_rounded,
+                    size: 18, color: Color(0xFF4F46E5)),
+              ],
+            ],
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
         for (final mode in _RestaurantSort.values)
-          PopupMenuItem<_RestaurantSort>(
+          PopupMenuItem<Object>(
             value: mode,
             height: 42,
             child: Row(
@@ -1435,8 +1583,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
           ),
       ],
       child: _buildFilterChip(
-        label: _sortMode.label,
-        selected: _sortMode != _RestaurantSort.benefit,
+        label: _favoriteOnly ? '찜한 식당만' : _sortMode.label,
+        selected: _favoriteOnly || _sortMode != _RestaurantSort.benefit,
         trailingIcon: Icons.keyboard_arrow_down_rounded,
         onTap: null,
       ),
@@ -1538,6 +1686,11 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     if (hasQuery) {
       title = '‘$query’ 검색 결과가 없어요';
       description = '철자를 확인하거나\n다른 카테고리에서 찾아보세요';
+    } else if (_favoriteOnly) {
+      title = _favoriteCount == 0 ? '아직 찜한 식당이 없어요' : '조건에 맞는 찜한 식당이 없어요';
+      description = _favoriteCount == 0
+          ? '식당 카드의 하트를 눌러\n자주 가는 곳을 모아보세요'
+          : '필터를 끄면 찜한 식당을\n모두 볼 수 있어요';
     } else if (_hasBenefitFilter) {
       title = _couponOnly && !_stampOnly
           ? '쓸 수 있는 쿠폰이 있는 식당이 없어요'
@@ -1593,7 +1746,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
               color: Color(0xFF6B7280),
             ),
           ),
-          if (hasQuery || isFiltered || _hasBenefitFilter) ...[
+          if (hasQuery || isFiltered || _hasBenefitFilter || _favoriteOnly) ...[
             const SizedBox(height: 18),
             SizedBox(
               height: 44,
@@ -1603,10 +1756,11 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                     _searchController.clear();
                     _handleSearchSubmitted('');
                   }
-                  if (_hasBenefitFilter) {
+                  if (_hasBenefitFilter || _favoriteOnly) {
                     setState(() {
                       _couponOnly = false;
                       _stampOnly = false;
+                      _favoriteOnly = false;
                     });
                   }
                   if (isFiltered) {
@@ -1753,7 +1907,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     final stampCurrent =
         stampStatus != null ? stampStatus.current : restaurant.stampCurrent;
     final stampTarget =
-        stampStatus != null ? stampStatus.target : restaurant.stampTarget;
+        stampStatus != null ? stampStatus.boardLength : restaurant.stampTarget;
     final isFavorite = _isFavoriteAffiliateRestaurant(restaurant.id);
     final categoryLabel = _resolveCategoryMeta(
       _normalizedCategoryForState(restaurant.category),
@@ -1780,7 +1934,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     }
 
     final showStampProgress = !_requiresLogin && stampTarget > 0;
-    final remainingStamp = stampTarget - stampCurrent;
+    final remainingStamp = stampStatus != null
+        ? stampStatus.remainingToNextReward
+        : stampTarget - stampCurrent;
     // 리워드 달성 / 임박(1~2개 남음)은 카드 자체를 테마색으로 띄운다.
     final rewardReady = showStampProgress && remainingStamp <= 0;
     final rewardSoon =
@@ -2068,8 +2224,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
               left: 6,
               top: 6,
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
                 decoration: ShapeDecoration(
                   color: const Color(0xE0172133),
                   shape: RoundedRectangleBorder(
@@ -2107,9 +2262,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         icon: Icon(
           isFavorite ? Icons.favorite : Icons.favorite_border,
           size: 21,
-          color: isFavorite
-              ? const Color(0xFFE11D48)
-              : const Color(0xFFC9CED8),
+          color: isFavorite ? const Color(0xFFE11D48) : const Color(0xFFC9CED8),
         ),
         tooltip: isFavorite ? '찜 해제' : '찜하기',
       ),
@@ -2345,16 +2498,6 @@ class AffiliateRestaurantDetailSheet extends StatefulWidget {
       _AffiliateRestaurantDetailSheetState();
 }
 
-/// rewards가 비어 있을 때 사용하는 레거시 fallback
-/// target=9만으로는 3·6·9 vs 5만 등 구분 불가 → 모두 5·10 패턴 사용
-/// (다이와스시: target=9인데 5만 혜택 → 3·6·9 fallback 시 잘못된 3 표기)
-List<StampReward> _fallbackRewardsForEmpty({int? target}) {
-  return const [
-    StampReward(stamps: 5, title: '5개 보상', subtitle: '3,000원 할인'),
-    StampReward(stamps: 10, title: '10개 보상', subtitle: '10,000원 할인'),
-  ];
-}
-
 class _AffiliateRestaurantDetailSheetState
     extends State<AffiliateRestaurantDetailSheet> {
   late List<UserCoupon> _coupons;
@@ -2411,29 +2554,25 @@ class _AffiliateRestaurantDetailSheetState
 
   /// API rewards 또는 레거시 fallback에서 threshold별 혜택 문구 반환 (THRESHOLD 패턴용)
 
-  /// StampReward의 혜택 문구 반환 (subtitle 또는 title)
-  String _benefitTextFor(StampReward r) {
-    return (r.subtitle != null && r.subtitle!.isNotEmpty)
-        ? r.subtitle!
-        : (r.title ?? '리워드 쿠폰');
-  }
+  /// 화면에 쓸 스탬프 현황. 개인 현황에 판 정보가 없으면 매장 공개 요약으로 채운다.
+  StampStatus get _effectiveStampStatus => resolveStampStatus(
+        personal: _stampStatus,
+        // 목록 API 응답에는 coupon_benefits_summary 가 없어서
+        // 상세 진입 시 따로 받아둔 요약(_couponBenefitsSummary)을 쓴다.
+        summary:
+            (_couponBenefitsSummary ?? widget.restaurant.couponBenefitsSummary)
+                ?.stamp,
+        fallbackCurrent: widget.restaurant.stampCurrent,
+      );
+
+  /// StampReward의 혜택 문구 (coupon_service의 공용 helper 사용)
+  String _benefitTextFor(StampReward r) => stampRewardBenefitText(r);
 
   /// 현재 스탬프 수가 속한 구간의 혜택 (VISIT 패턴: 1~3개일 때 1~4 구간 혜택 표시 등)
   StampReward? _getCurrentReward() {
-    final status = _stampStatus;
-    if (status == null) return null;
-    final apiRewards = status.rewards.isNotEmpty
-        ? status.rewards
-        : _fallbackRewardsForEmpty(target: status.target);
+    final status = _effectiveStampStatus;
     final current = status.current;
-
-    final visitRewards = apiRewards
-        .where((r) => r.isVisitPattern && r.minVisit != null)
-        .toList();
-    if (visitRewards.isEmpty) return null;
-
-    visitRewards.sort((a, b) => (a.minVisit ?? 0).compareTo(b.minVisit ?? 0));
-    for (final r in visitRewards) {
+    for (final r in status.visitRewards) {
       final min = r.minVisit ?? 0;
       final max = r.maxVisit;
       if (current >= min && (max == null || current <= max)) {
@@ -2443,35 +2582,8 @@ class _AffiliateRestaurantDetailSheetState
     return null;
   }
 
-  /// 앞으로 받을 수 있는 가장 가까운 혜택 (THRESHOLD: stamps>current, VISIT: minVisit>current)
-  StampReward? _getNextReward() {
-    final status = _stampStatus;
-    if (status == null) return null;
-    final apiRewards = status.rewards.isNotEmpty
-        ? status.rewards
-        : _fallbackRewardsForEmpty(target: status.target);
-    final current = status.current;
-
-    final thresholdRewards =
-        apiRewards.where((r) => r.stamps != null && r.stamps! > 0).toList();
-    final visitRewards = apiRewards
-        .where((r) => r.isVisitPattern && r.minVisit != null)
-        .toList();
-
-    if (thresholdRewards.isNotEmpty) {
-      thresholdRewards.sort((a, b) => (a.stamps ?? 0).compareTo(b.stamps ?? 0));
-      for (final r in thresholdRewards) {
-        if ((r.stamps ?? 0) > current) return r;
-      }
-    }
-    if (visitRewards.isNotEmpty) {
-      visitRewards.sort((a, b) => (a.minVisit ?? 0).compareTo(b.minVisit ?? 0));
-      for (final r in visitRewards) {
-        if ((r.minVisit ?? 0) > current) return r;
-      }
-    }
-    return null;
-  }
+  /// 앞으로 받을 수 있는 가장 가까운 혜택 (서버 rewards 기준)
+  StampReward? _getNextReward() => _effectiveStampStatus.nextReward;
 
   /// 다음 혜택에 대한 헤드라인 문구 생성
   String _formatRewardHeadline(StampReward r) {
@@ -2485,24 +2597,15 @@ class _AffiliateRestaurantDetailSheetState
     return '스탬프 적립 시 $benefit 제공';
   }
 
-  /// API rewards 또는 fallback에서 threshold 목록 반환 (정렬됨, 그리드 milestone용)
+  /// 리워드가 걸린 칸 번호. 서버 rewards만 사용하고, 없으면 빈 목록.
   List<int> _stampThresholds() {
-    final status = _stampStatus;
-    if (status == null) return const [5, 10];
-    final apiRewards = status.rewards.isNotEmpty
-        ? status.rewards
-        : _fallbackRewardsForEmpty(target: status.target);
-    final list = <int>[];
-    for (final r in apiRewards) {
-      if (r.stamps != null && r.stamps! > 0) {
-        list.add(r.stamps!);
-      } else if (r.isVisitPattern && r.minVisit != null) {
-        list.add(r.minVisit!);
-      }
-    }
-    list.sort();
-    final unique = list.toSet().toList()..sort();
-    return unique.isNotEmpty ? unique : [5, 10];
+    final status = _effectiveStampStatus;
+    final list = <int>{
+      for (final r in status.thresholdRewards) r.stamps!,
+      for (final r in status.visitRewards) r.minVisit!,
+    }.toList()
+      ..sort();
+    return list;
   }
 
   @override
@@ -2555,7 +2658,8 @@ class _AffiliateRestaurantDetailSheetState
 
     _couponBenefitsSummary = widget.restaurant.couponBenefitsSummary;
     if (_couponBenefitsSummary == null &&
-        (widget.restaurant.id > 0 || widget.restaurant.name.trim().isNotEmpty)) {
+        (widget.restaurant.id > 0 ||
+            widget.restaurant.name.trim().isNotEmpty)) {
       _isCouponBenefitsLoading = true;
       _loadCouponBenefitsSummary();
     }
@@ -2715,7 +2819,10 @@ class _AffiliateRestaurantDetailSheetState
 
   Future<void> _handleAddStamp() async {
     _logDetailCta('stamp_add');
-    final request = await _promptForStampAdd();
+    // 데모 빌드는 서버 PIN 검증이 없으므로 입력 단계를 건너뛴다.
+    final request = kDemoWallet
+        ? const _StampAddRequest(pin: 'demo', count: 1)
+        : await _promptForStampAdd();
     if (request == null) return;
 
     setState(() {
@@ -2794,14 +2901,14 @@ class _AffiliateRestaurantDetailSheetState
       final currentAfter = after?.current ?? result.status.current;
       // 최대 스탬프에 도달하면 서버가 리워드를 주고 판을 0으로 되돌린다.
       // 그대로 두면 "적립했는데 도장이 안 찍혔다"로 보이므로 따로 안내한다.
-      final cycleReset = currentAfter < result.status.current;
+      // 재조회로 확인된 판이 있을 때만 "라운드 리셋"으로 본다.
+      // 재조회가 0/0을 주면(비로그인·미운영) 리셋으로 오인해 "리워드 도착"이 뜬다.
+      final cycleReset =
+          (after?.boardLength ?? 0) > 0 && currentAfter < result.status.current;
       await _showStampStampedDialog(
         added: addedCount,
         current: currentAfter,
-        total: math.max(
-          after?.target ?? result.status.target,
-          _stampThresholds().isNotEmpty ? _stampThresholds().last : 10,
-        ),
+        total: after?.boardLength ?? result.status.target,
         cycleReset: cycleReset,
       );
       final rewardCodesSet = <String>{
@@ -3237,7 +3344,7 @@ class _AffiliateRestaurantDetailSheetState
                                           }
                                         },
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFF1C203C),
+                                    backgroundColor: _Theme.deep,
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 13),
@@ -3488,7 +3595,7 @@ class _AffiliateRestaurantDetailSheetState
                                 );
                               },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1C203C),
+                                backgroundColor: _Theme.deep,
                                 foregroundColor: Colors.white,
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 13),
@@ -3629,8 +3736,12 @@ class _AffiliateRestaurantDetailSheetState
     bool cycleReset = false,
   }) async {
     if (!mounted) return;
-    final remaining = math.max(total - current, 0);
-    final celebrate = cycleReset || remaining == 0;
+    final status = _effectiveStampStatus;
+    // 남은 개수는 다음 리워드 기준. 판 크기로 세면 중간 단계 보상이 무시된다.
+    final remaining = status.remainingToNextReward;
+    final nextReward = status.nextReward;
+    // 판 정보가 없을 때(total<=0)를 "리워드 도착"으로 오인하지 않는다.
+    final celebrate = cycleReset || (total > 0 && remaining == 0);
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -3673,9 +3784,12 @@ class _AffiliateRestaurantDetailSheetState
               Text(
                 cycleReset
                     ? '리워드 쿠폰이 쿠폰함에 도착했어요\n스탬프판은 $current / $total 부터 다시 시작돼요'
-                    : (remaining == 0
+                    : (celebrate
                         ? '리워드 쿠폰을 쿠폰함에서 확인하세요'
-                        : '$current / $total · $remaining개 더 모으면 리워드'),
+                        : nextReward != null
+                            ? '$current / $total · $remaining개 더 모으면 '
+                                '${stampRewardBenefitText(nextReward)}'
+                            : '$current / $total 적립했어요'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 13.5,
@@ -3851,9 +3965,8 @@ class _AffiliateRestaurantDetailSheetState
                   border: Border(
                     bottom: BorderSide(
                       width: 2.5,
-                      color: _detailTab == i
-                          ? _Theme.primary
-                          : Colors.transparent,
+                      color:
+                          _detailTab == i ? _Theme.primary : Colors.transparent,
                     ),
                   ),
                 ),
@@ -3941,7 +4054,6 @@ class _AffiliateRestaurantDetailSheetState
       ),
     );
   }
-
 
   Widget _buildHeroSection(AffiliateRestaurantSummary restaurant) {
     final couponCount = _coupons.length;
@@ -4137,7 +4249,6 @@ class _AffiliateRestaurantDetailSheetState
     );
   }
 
-
   Widget _buildRestaurantBenefitDetailSection() {
     if (!_shouldShowBenefitDetailSection) {
       return const SizedBox.shrink();
@@ -4243,17 +4354,17 @@ class _AffiliateRestaurantDetailSheetState
 
   /// 스탬프 티켓 (시안 Option C). 흰 티켓 + 절취선 + 원형 스탬프 그리드.
   Widget _buildStampSection() {
-    final status = _stampStatus;
-    final total = status == null
-        ? math.max(widget.restaurant.stampTarget, 10)
-        : math.max(
-            status.target,
-            _stampThresholds().isNotEmpty ? _stampThresholds().last : 10,
-          );
-    final current = status?.current ?? widget.restaurant.stampCurrent;
+    final status = _effectiveStampStatus;
+    // 칸 수는 서버 target(cycle_target)과 최상단 리워드에서 나온다.
+    // 예전엔 최소 10칸을 강제해 리워드가 3개뿐인 매장도 10칸으로 그려졌다.
+    final total = status.boardLength;
+    // 스탬프 프로그램 정보가 없으면 0/0 판을 그리지 않고 섹션을 숨긴다.
+    if (total <= 0) return const SizedBox.shrink();
+    final current = status.current;
     final filled = math.min(current, total);
-    final remaining = math.max(total - filled, 0);
-    final ready = remaining == 0 && total > 0;
+    // 남은 개수는 "다음 리워드까지"다. 판 끝까지가 아니다.
+    final remaining = status.remainingToNextReward;
+    final ready = remaining == 0;
 
     return Container(
       width: double.infinity,
@@ -4379,8 +4490,7 @@ class _AffiliateRestaurantDetailSheetState
                   )
                 : _buildStampGrid(filled: filled, total: total),
           ),
-          if (_stampError != null ||
-              (_stampStatus?.notes?.isNotEmpty ?? false))
+          if (_stampError != null || (_stampStatus?.notes?.isNotEmpty ?? false))
             Container(
               width: double.infinity,
               color: const Color(0xFFF7F8FB),
@@ -4488,7 +4598,8 @@ class _AffiliateRestaurantDetailSheetState
                       fontSize: 13.5,
                       fontWeight: FontWeight.w800,
                       letterSpacing: -0.3,
-                      color: disabled ? const Color(0xFF9CA3AF) : _Theme.primary,
+                      color:
+                          disabled ? const Color(0xFF9CA3AF) : _Theme.primary,
                     ),
                   ),
                   const SizedBox(width: 3),
@@ -4521,7 +4632,7 @@ class _AffiliateRestaurantDetailSheetState
                 height: size,
                 child: Image.asset(
                   // 리워드가 걸린 칸(예: 1·3·5·10)은 아직 못 받았으면 선물 도장.
-                  (rewardSteps.contains(i + 1) || i == total - 1) && i >= filled
+                  rewardSteps.contains(i + 1) && i >= filled
                       ? 'assets/images/stamp/stamp_reward.png'
                       : (i < filled
                           ? 'assets/images/stamp/stamp_filled.png'
@@ -4534,7 +4645,6 @@ class _AffiliateRestaurantDetailSheetState
       },
     );
   }
-
 
   /// 스탬프 비고(유의사항) 표시. 오버플로우 방지를 위해 maxHeight + 스크롤 적용
 
@@ -4560,11 +4670,6 @@ class _AffiliateRestaurantDetailSheetState
       return a.code.compareTo(b.code);
     });
   }
-
-
-
-
-
 
   Widget _buildCouponSection() {
     return Column(
@@ -4672,7 +4777,7 @@ class _AffiliateRestaurantDetailSheetState
       storeLabel: storeLabel,
       title: benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle,
       subtitle: benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle,
-      notchColor: Colors.white,
+      notes: benefit?.notesText,
       expiryText: _formatExpiryDate(expiresAt),
       expiryUrgent: expiresAt != null &&
           expiresAt.difference(DateTime.now()) <= const Duration(days: 7),
@@ -4773,8 +4878,6 @@ class _AffiliateRestaurantDetailSheetState
     );
   }
 
-
-
   /// 전화·지도·매장 링크 공용 실행기.
   Future<void> _launchExternal(String raw) async {
     final uri = Uri.tryParse(raw);
@@ -4786,11 +4889,6 @@ class _AffiliateRestaurantDetailSheetState
       _showSnack('열 수 없어요.');
     }
   }
-
-
-
-
-
 
   String? _extractDetailMessage(String body) {
     if (body.isEmpty) return null;

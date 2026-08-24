@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'package:new1/mission/routine_missions.dart';
 import 'package:new1/services/mission_service.dart';
 
 /// 미션 리워드 트랙 (프로토타입 화면 7, 스펙 7.3).
@@ -114,7 +115,7 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: _primary))
-          : track == null || track.missions.isEmpty
+          : track == null || (track.missions.isEmpty && !track.hasRoutine)
               ? _buildEmpty()
               : RefreshIndicator(
                   color: const Color(0xFF6366F1),
@@ -139,13 +140,35 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
                         ),
                         const SizedBox(height: 18),
                       ],
-                      for (var i = 0; i < track.missions.length; i++)
-                        _buildNode(track.missions[i], isLast: false),
-                      // 프로토타입 화면 7의 5번째 노드 — 완주 보너스
-                      if (track.completionBonus != null)
-                        _buildNode(track.completionBonus!, isLast: true)
-                      else
-                        _buildBonusPlaceholder(track.allCleared),
+                      // 초보자 미션을 모두 소진하면 트랙은 접고 반복 미션만 보여준다.
+                      if (!track.beginnerDone || !track.hasRoutine) ...[
+                        for (var i = 0; i < track.missions.length; i++)
+                          _buildNode(track.missions[i], isLast: false),
+                        // 프로토타입 화면 7의 5번째 노드 — 완주 보너스
+                        if (track.completionBonus != null)
+                          _buildNode(track.completionBonus!, isLast: true)
+                        else
+                          _buildBonusPlaceholder(track.allCleared),
+                      ],
+                      if (track.hasRoutine) ...[
+                        if (!track.beginnerDone) const SizedBox(height: 28),
+                        RoutineMissionSection(
+                          title: '일간 미션',
+                          description: '매일 0시에 초기화돼요.',
+                          missions: track.daily,
+                          serverOffset: _serverOffset,
+                          claimingCode: _claimingCode,
+                          onClaim: _claim,
+                        ),
+                        RoutineMissionSection(
+                          title: '주간 미션',
+                          description: '매주 월요일 0시에 초기화돼요.',
+                          missions: track.weekly,
+                          serverOffset: _serverOffset,
+                          claimingCode: _claimingCode,
+                          onClaim: _claim,
+                        ),
+                      ],
                     ],
                   ),
                 ),

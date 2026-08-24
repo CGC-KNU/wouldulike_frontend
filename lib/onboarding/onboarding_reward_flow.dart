@@ -1,15 +1,18 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/analytics_events.dart';
 import '../services/affiliate_service.dart';
 import '../services/coupon_service.dart';
 import '../utils/analytics_logger.dart';
+import '../widgets/category_strip.dart';
 import 'onboarding_prefs.dart';
 import 'onboarding_style.dart';
 import 'widgets/restaurant_pick_list.dart';
 import 'widgets/roulette_wheel.dart';
+import '../widgets/coupon_ticket_card.dart';
 
 enum _RewardStep { pick, spin, guide }
 
@@ -45,7 +48,12 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   bool _isLoadingRestaurants = true;
   bool _restaurantLoadFailed = false;
   List<AffiliateRestaurantSummary> _restaurants = const [];
+
+  /// 필터링된 목록(_visibleRestaurants) 기준 인덱스. 필터가 바뀌면 초기화한다.
   int? _selectedIndex;
+  String _categoryKey = 'ALL';
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   // 룰렛
   late final AnimationController _spinController;
@@ -82,7 +90,23 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   @override
   void dispose() {
     _spinController.dispose();
+    _searchController.dispose();
     super.dispose();
+  }
+
+  /// 카테고리·검색어로 걸러낸 목록. 선택 인덱스는 이 목록 기준이다.
+  List<AffiliateRestaurantSummary> get _visibleRestaurants {
+    final query = _searchQuery.trim().toLowerCase();
+    return _restaurants.where((r) {
+      if (_categoryKey != 'ALL' &&
+          normalizeCategoryKey(r.category) != _categoryKey) {
+        return false;
+      }
+      if (query.isEmpty) return true;
+      return r.name.toLowerCase().contains(query) ||
+          r.category.toLowerCase().contains(query) ||
+          r.zone.toLowerCase().contains(query);
+    }).toList();
   }
 
   Future<void> _loadRestaurants() async {
@@ -117,7 +141,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     if (!mounted) return;
     var name = _savedPickName ?? '';
     final id = _savedPickId;
-    if (name.isEmpty && id != null) {
+    if (name.isEmpty) {
       for (final r in _restaurants) {
         if (r.id == id) {
           name = r.name;
@@ -131,7 +155,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   }
 
   void _startSpin() {
-    final selected = _restaurants[_selectedIndex!];
+    final selected = _visibleRestaurants[_selectedIndex!];
     _beginSpin(name: selected.name, id: selected.id, logPick: true);
   }
 
@@ -151,15 +175,8 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
       OnboardingPrefs.savePickedRestaurant(id ?? 0, name);
     }
 
-    // 휠에는 고른 식당 + 다른 식당 최대 7곳
-    final others = _restaurants
-        .where((r) => r.name != name)
-        .map((r) => r.name)
-        .take(7)
-        .toList();
-    final labels = [name, ...others];
-    // 세그먼트가 2개는 돼야 룰렛처럼 보인다.
-    if (labels.length < 2) labels.add('우주라이크');
+    // 휠에는 꽝·마일리지·쿠폰·한 번 더만 올리고, 당첨 칸(0번)은 항상 쿠폰이다.
+    const labels = RouletteWheel.prizeLabels;
 
     final targetRotation =
         2 * math.pi * 4 + RouletteWheel.rotationForIndex(0, labels.length);
@@ -292,11 +309,23 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
           const Text('어디서 쓸까요?', style: OnboardingStyle.title),
           const SizedBox(height: 8),
           const Text('원하는 식당을 선택해 주세요.', style: OnboardingStyle.subtitle),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
+          _buildSearchBar(),
+          const SizedBox(height: 4),
+          // 식당 탭과 같은 카테고리 아이콘 줄 (widgets/category_strip.dart 공용)
+          CategoryStrip(
+            selected: _categoryKey,
+            onSelect: (key) => setState(() {
+              _categoryKey = key;
+              _selectedIndex = null; // 목록이 바뀌면 인덱스가 어긋난다
+            }),
+          ),
+          const SizedBox(height: 8),
           Expanded(child: _buildRestaurantList()),
           const SizedBox(height: 12),
           ElevatedButton(
-            style: OnboardingStyle.primaryButton(enabled: _selectedIndex != null),
+            style:
+                OnboardingStyle.primaryButton(enabled: _selectedIndex != null),
             onPressed: _selectedIndex == null ? null : _startSpin,
             child: const Text('이 식당으로 뽑기'),
           ),
@@ -319,11 +348,76 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     );
   }
 
+  Widget _buildSearchBar() {
+    return Container(
+      height: 46,
+      decoration: ShapeDecoration(
+        color: const Color(0xFFF4F5F7),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+        ),
+      ),
+      alignment: Alignment.center,
+      child: TextField(
+        controller: _searchController,
+        textInputAction: TextInputAction.search,
+        style: const TextStyle(
+          color: Color(0xFF39393E),
+          fontSize: 14,
+          fontFamily: 'Pretendard',
+          fontWeight: FontWeight.w600,
+        ),
+        onChanged: (value) => setState(() {
+          _searchQuery = value;
+          _selectedIndex = null;
+        }),
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          isCollapsed: true,
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          hintText: '식당 검색',
+          hintStyle: const TextStyle(
+            color: Color(0xFF9CA3AF),
+            fontSize: 14.5,
+            fontFamily: 'Pretendard',
+            fontWeight: FontWeight.w500,
+          ),
+          prefixIcon:
+              const Icon(Icons.search, color: Color(0xFF6B7280), size: 20),
+          suffixIcon: _searchQuery.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  color: const Color(0xFF6B7280),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchQuery = '';
+                      _selectedIndex = null;
+                    });
+                  },
+                ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildRestaurantList() {
+    final visible = _visibleRestaurants;
+    // 불러오기는 됐는데 필터 결과만 빈 경우 — '다시 시도'가 아니라 필터 안내를 보여준다.
+    if (!_isLoadingRestaurants &&
+        !_restaurantLoadFailed &&
+        visible.isEmpty &&
+        _restaurants.isNotEmpty) {
+      return const Center(
+        child: Text('조건에 맞는 식당이 없어요', style: OnboardingStyle.subtitle),
+      );
+    }
     return RestaurantPickList(
       loading: _isLoadingRestaurants,
       failed: _restaurantLoadFailed,
-      restaurants: _restaurants,
+      restaurants: visible,
       selectedIndex: _selectedIndex,
       onSelect: (i) => setState(() => _selectedIndex = i),
       onRetry: _loadRestaurants,
@@ -337,6 +431,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
       key: const ValueKey('spin'),
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           const SizedBox(height: 8),
           Text(
@@ -344,7 +439,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
                 ? (widget.preLogin ? '당첨을 축하해요! 🎉' : '축하해요! 🎉')
                 : '어떤 쿠폰이 나올까요?',
             style: OnboardingStyle.title,
-            textAlign: TextAlign.center,
+            textAlign: TextAlign.left,
           ),
           const SizedBox(height: 6),
           Text(
@@ -352,17 +447,23 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
                 ? (widget.preLogin ? '로그인하면 지갑에 담아드려요' : '첫 쿠폰이 도착했어요')
                 : '두구두구…',
             style: OnboardingStyle.subtitle,
-            textAlign: TextAlign.center,
+            textAlign: TextAlign.left,
           ),
-          const Spacer(),
-          AnimatedBuilder(
-            animation: _spinController,
-            builder: (context, _) => RouletteWheel(
-              labels: _wheelLabels,
-              rotation: _spinAnimation.value,
+          // 남는 세로 공간만큼 키우되 가로 폭은 넘지 않게 — 작은 화면에서도 안 깨진다.
+          Expanded(
+            // Center로 감싸면 느슨한 제약이 내려가 FittedBox가 확대를 안 한다.
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: AnimatedBuilder(
+                animation: _spinController,
+                builder: (context, _) => RouletteWheel(
+                  labels: _wheelLabels,
+                  rotation: _spinAnimation.value,
+                ),
+              ),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           AnimatedScale(
             scale: _revealReady ? 1 : 0.8,
             duration: const Duration(milliseconds: 250),
@@ -373,96 +474,76 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
               child: _buildRevealCard(),
             ),
           ),
-          const Spacer(),
-          ElevatedButton(
-            style: OnboardingStyle.primaryButton(enabled: _revealReady),
-            // 로그인 전에는 당첨 후 바로 카카오 로그인으로 유도 (프로토타입 화면 3)
-            onPressed: !_revealReady
-                ? null
-                : widget.preLogin
-                    ? () => _finish(skipped: false)
-                    : _goGuide,
-            child: Text(widget.preLogin ? '카카오 로그인하고 쿠폰 받기' : '내 쿠폰에 담기'),
-          ),
+          const SizedBox(height: 20),
+          // 로그인 전에는 당첨 후 바로 카카오 로그인으로 유도 (프로토타입 화면 3).
+          // 카카오 버튼은 브랜드 규격대로 노란 배경 + 좌측 카카오 아이콘.
+          widget.preLogin
+              ? ElevatedButton(
+                  style: OnboardingStyle.kakaoButton(),
+                  onPressed:
+                      _revealReady ? () => _finish(skipped: false) : null,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SvgPicture.asset(
+                        'assets/icons/kakaotalk.svg',
+                        width: 22,
+                        height: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      // 좁은 화면에서 버튼 문구가 넘치지 않게 줄여 맞춘다.
+                      const Flexible(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text('카카오 로그인하고 쿠폰 받기'),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : ElevatedButton(
+                  style: OnboardingStyle.primaryButton(enabled: _revealReady),
+                  onPressed: _revealReady ? _goGuide : null,
+                  child: const Text('내 쿠폰에 담기'),
+                ),
         ],
       ),
     );
   }
 
+  /// 당첨 결과는 쿠폰함·식당 상세와 같은 티켓 카드로 보여준다.
   Widget _buildRevealCard() {
     final coupon = _revealedCoupon;
-    final title = coupon?.benefit?.resolvedTitle ??
-        (widget.preLogin ? '첫 쿠폰 당첨!' : '첫 쿠폰을 준비하고 있어요');
-    final restaurantName = coupon?.benefit?.restaurantNameText ??
-        (widget.preLogin && _pickedName.isNotEmpty ? _pickedName : null);
+    final benefit = coupon?.benefit;
     final expiresAt = coupon?.expiresAt;
-    String? ddayText;
+    String? expiryText;
+    var expiryUrgent = false;
     if (expiresAt != null) {
       final days = expiresAt.difference(DateTime.now()).inDays;
-      ddayText = days <= 0 ? '오늘까지!' : 'D-$days · 잊기 전에 쓰기';
+      expiryUrgent = days <= 1;
+      expiryText = days <= 0 ? '오늘까지' : 'D-$days · 잊기 전에 쓰기';
     }
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFC7D2FE), width: 1.5),
-        boxShadow: [
-          BoxShadow(
-            color: OnboardingStyle.primary.withOpacity(0.10),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          if (restaurantName != null)
-            Text(restaurantName, style: OnboardingStyle.caption),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: OnboardingStyle.primary,
-              height: 1.4,
-            ),
-          ),
-          if (coupon == null)
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                widget.preLogin ? '로그인하면 바로 쓸 수 있어요' : '곧 보유 쿠폰함에서 확인할 수 있어요',
-                style: OnboardingStyle.caption,
-              ),
-            ),
-          if (ddayText != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFFF1F2),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-                child: Text(
-                  ddayText,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: OnboardingStyle.danger,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+    return CouponTicketCard(
+      iconPath: 'assets/icons/category/all.svg',
+      storeLabel: benefit?.restaurantNameText ??
+          (_pickedName.isNotEmpty ? _pickedName : '우주라이크'),
+      title: benefit?.resolvedTitle ??
+          (widget.preLogin ? '첫 쿠폰 당첨!' : '첫 쿠폰을 준비하고 있어요'),
+      subtitle: benefit?.resolvedSubtitle ??
+          (widget.preLogin ? '로그인하면 바로 쓸 수 있어요' : '곧 보유 쿠폰함에서 확인할 수 있어요'),
+      notes: benefit?.notesText,
+      expiryText: expiryText,
+      expiryUrgent: expiryUrgent,
+      // 흰 배경과 구분되게 테두리 + 그림자로 입체감만 준다.
+      borderColor: const Color(0xFFE1E5EA),
+      // 지갑 쿠폰함과 같은 카드 그대로 — 버튼을 누르면 아래 CTA와 같은 동작.
+      onAction: !_revealReady
+          ? null
+          : widget.preLogin
+              ? () => _finish(skipped: false)
+              : _goGuide,
+      margin: EdgeInsets.zero,
     );
   }
 

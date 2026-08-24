@@ -4,6 +4,7 @@ import 'package:new1/mileage/my_raffle_entries_screen.dart';
 import 'package:new1/mileage/raffle_terms_screen.dart';
 import 'package:new1/mileage/raffle_winners_screen.dart';
 import 'package:new1/services/mileage_service.dart';
+import '../widgets/ticket_shell.dart';
 
 /// 마일리지 상점 (프로토타입 화면 11, 스펙 7.2).
 /// 지갑 마일리지 히어로에서만 진입한다. 하단 탭에 노출하지 않는다.
@@ -32,6 +33,9 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
 
   /// 응모 진행 중인 건의 멱등 키. 재시도해도 같은 키를 보내 중복 차감을 막는다.
   final Map<int, String> _pendingKeys = {};
+
+  /// 티켓 노치를 절취선 높이에 맞추기 위한 앵커. 카드마다 하나씩 유지한다.
+  final Map<int, GlobalKey> _notchKeys = {};
   final Set<int> _enteredIds = {};
 
   @override
@@ -464,23 +468,22 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
     final entered = _enteredIds.contains(raffle.id);
     final isSubmitting = _submittingId == raffle.id;
 
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0A191F28),
-            blurRadius: 2,
-            offset: Offset(0, 1),
-          ),
-          BoxShadow(
-            color: Color(0x0F191F28),
-            blurRadius: 14,
-            offset: Offset(0, 5),
-          ),
-        ],
-      ),
+    return TicketShell(
+      borderRadius: 20,
+      notchRadius: 8,
+      notchAnchorKey: _notchKeys.putIfAbsent(raffle.id, GlobalKey.new),
+      shadows: const [
+        BoxShadow(
+          color: Color(0x0A191F28),
+          blurRadius: 2,
+          offset: Offset(0, 1),
+        ),
+        BoxShadow(
+          color: Color(0x0F191F28),
+          blurRadius: 14,
+          offset: Offset(0, 5),
+        ),
+      ],
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -587,7 +590,10 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
               ],
             ),
           ),
-          const TicketPerforation(notchColor: _bg, dashColor: _line),
+          TicketPerforation(
+            key: _notchKeys[raffle.id],
+            dashColor: _line,
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(15, 12, 15, 14),
             child: Column(
@@ -794,60 +800,43 @@ class _FadeSlideInState extends State<FadeSlideIn>
     return FadeTransition(
       opacity: curved,
       child: SlideTransition(
-        position:
-            Tween(begin: const Offset(0, 0.06), end: Offset.zero).animate(curved),
+        position: Tween(begin: const Offset(0, 0.06), end: Offset.zero)
+            .animate(curved),
         child: widget.child,
       ),
     );
   }
 }
 
-/// 티켓 절취선. 좌우 노치는 카드 밖으로 걸치므로 배경색과 같아야 파인 것처럼 보인다.
+/// 티켓 절취선의 점선. 좌우 노치는 [TicketShell]이 카드 모양에서 파낸다.
 class TicketPerforation extends StatelessWidget {
-  const TicketPerforation({
-    super.key,
-    required this.notchColor,
-    required this.dashColor,
-  });
+  const TicketPerforation({super.key, required this.dashColor});
 
-  final Color notchColor;
   final Color dashColor;
 
   @override
   Widget build(BuildContext context) {
     return SizedBox(
       height: 16,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.center,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final count = (constraints.maxWidth / 7).floor().clamp(1, 40);
-                return Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: List.generate(
-                    count,
-                    (_) => Container(width: 3, height: 1, color: dashColor),
-                  ),
-                );
-              },
-            ),
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final count = (constraints.maxWidth / 7).floor().clamp(1, 40);
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: List.generate(
+                  count,
+                  (_) => Container(width: 3, height: 1, color: dashColor),
+                ),
+              );
+            },
           ),
-          Positioned(left: -8, child: _notch()),
-          Positioned(right: -8, child: _notch()),
-        ],
+        ),
       ),
     );
   }
-
-  Widget _notch() => Container(
-        width: 16,
-        height: 16,
-        decoration: BoxDecoration(color: notchColor, shape: BoxShape.circle),
-      );
 }
 
 String _comma(int value) {
