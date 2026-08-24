@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
+import 'coupon/coupon_use_screen.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart'
     show
@@ -83,9 +84,20 @@ const List<String> _kCouponCategoryOrder = [
 ];
 
 class CouponListScreen extends StatefulWidget {
-  const CouponListScreen({super.key, this.source});
+  const CouponListScreen({
+    super.key,
+    this.source,
+    this.embedded = false,
+    this.onGoToAffiliate,
+  });
 
   final String? source;
+
+  /// 지갑 탭 안에 임베드될 때 true — Scaffold 없이 본문만 렌더링
+  final bool embedded;
+
+  /// 빈 상태에서 "대학가 근처 식당 보러 가기" 이동 콜백 (지갑 임베드 시)
+  final VoidCallback? onGoToAffiliate;
 
   @override
   State<CouponListScreen> createState() => _CouponListScreenState();
@@ -99,6 +111,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   bool _requiresLogin = false;
   String _selectedCategory = 'ALL';
   List<String> _categories = const ['ALL'];
+  bool _expiringOnly = false;
 
   int _statusPriority(CouponStatus status) {
     switch (status) {
@@ -309,13 +322,65 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
+  /// 만료임박 = 잔여 3일 이하 (스펙 7.1)
+  bool _isExpiringSoon(UserCoupon coupon) {
+    final expiresAt = coupon.expiresAt;
+    if (expiresAt == null) return false;
+    final diff = expiresAt.difference(DateTime.now());
+    return !diff.isNegative && diff <= const Duration(days: 3);
+  }
+
   List<UserCoupon> get _filteredCoupons {
-    if (_selectedCategory == 'ALL') {
-      return _coupons;
+    Iterable<UserCoupon> result = _coupons;
+    if (_selectedCategory != 'ALL') {
+      result = result
+          .where((coupon) => _couponCategoryKey(coupon) == _selectedCategory);
     }
-    return _coupons
-        .where((coupon) => _couponCategoryKey(coupon) == _selectedCategory)
-        .toList();
+    if (_expiringOnly) {
+      result = result.where(_isExpiringSoon);
+    }
+    return result.toList();
+  }
+
+  /// 지갑 임베드 시 상태 필터 칩 (전체 / 만료임박)
+  Widget _buildStatusFilter() {
+    Widget chip(String label, bool selected, VoidCallback onTap) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF192132) : Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected ? const Color(0xFF192132) : const Color(0xFFE5E7EB),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontFamily: 'Pretendard',
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              color: selected ? Colors.white : const Color(0xFF797979),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        chip('전체', !_expiringOnly, () {
+          if (_expiringOnly) setState(() => _expiringOnly = false);
+        }),
+        const SizedBox(width: 8),
+        chip('만료임박', _expiringOnly, () {
+          if (!_expiringOnly) setState(() => _expiringOnly = true);
+        }),
+      ],
+    );
   }
 
   Widget _buildCategoryFilter() {
@@ -396,14 +461,18 @@ class _CouponListScreenState extends State<CouponListScreen> {
 
     setState(() => _processingCouponCode = coupon.code);
     try {
-      final success = await _showRedeemPinDialog(
-        coupon: coupon,
-        restaurantId: restaurantId,
-        restaurantName: coupon.benefit?.restaurantNameText,
-        notes: coupon.benefit?.notesText,
+      // "쑥스러움 제거" 전체 화면 사용 화면으로 진입.
+      // 실제 사용 처리는 그 안의 "직원 확인"(관리자 PIN)에서 이뤄진다.
+      final success = await Navigator.of(context).push<bool>(
+        MaterialPageRoute<bool>(
+          builder: (_) => CouponUseScreen(
+            coupon: coupon,
+            restaurantId: restaurantId,
+          ),
+        ),
       );
       if (!mounted) return;
-      if (success) {
+      if (success == true) {
         setState(() {
           _coupons =
               _coupons.where((element) => element.code != coupon.code).toList();
@@ -417,7 +486,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
-  /// 쿠폰 사용 PIN 다이얼로그. redeem 실패 시 입력창 내 에러 표시
+  /// 쿠폰 사용 PIN 다이얼로그 (레거시 — 현재는 CouponUseScreen 사용).
+  // ignore: unused_element
   Future<bool> _showRedeemPinDialog({
     required UserCoupon coupon,
     required int restaurantId,
@@ -793,6 +863,22 @@ class _CouponListScreenState extends State<CouponListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final content = RefreshIndicator(
+      // 일반 화면 진입 로딩과 동일한 톤의 인디케이터 사용
+      color: const Color(0xFF6366F1),
+      backgroundColor: Colors.white,
+      strokeWidth: 2,
+      onRefresh: _loadCoupons,
+      child: _buildBody(),
+    );
+
+    if (widget.embedded) {
+      return Container(
+        color: const Color(0xFFF9FAFB),
+        child: content,
+      );
+    }
+
     return Scaffold(
       appBar: widget.source == 'tab'
           ? AppBar(
@@ -814,14 +900,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
               iconTheme: const IconThemeData(color: Colors.black),
             ),
       backgroundColor: const Color(0xFFF9FAFB),
-      body: RefreshIndicator(
-        // 일반 화면 진입 로딩과 동일한 톤의 인디케이터 사용
-        color: const Color(0xFF6366F1),
-        backgroundColor: Colors.white,
-        strokeWidth: 2,
-        onRefresh: _loadCoupons,
-        child: _buildBody(),
-      ),
+      body: content,
     );
   }
 
@@ -937,10 +1016,22 @@ class _CouponListScreenState extends State<CouponListScreen> {
         children: [
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.4,
-            child: const Center(
-              child: Text(
-                '보유한 쿠폰이 아직 없어요.',
-                style: TextStyle(fontSize: 16),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '보유한 쿠폰이 아직 없어요.',
+                    style: TextStyle(fontSize: 16),
+                  ),
+                  if (widget.onGoToAffiliate != null) ...[
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: widget.onGoToAffiliate,
+                      child: const Text('대학가 근처 식당 보러 가기'),
+                    ),
+                  ],
+                ],
               ),
             ),
           ),
@@ -960,15 +1051,21 @@ class _CouponListScreenState extends State<CouponListScreen> {
       ),
       children: [
         _buildCategoryFilter(),
+        if (widget.embedded) ...[
+          const SizedBox(height: 12),
+          _buildStatusFilter(),
+        ],
         const SizedBox(height: 12),
         if (filtered.isEmpty)
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.25,
             child: Center(
               child: Text(
-                _selectedCategory != 'ALL'
-                    ? '선택한 카테고리의 쿠폰이 없어요.'
-                    : '사용 가능한 쿠폰이 없어요.',
+                _expiringOnly
+                    ? '만료 임박한 쿠폰이 없어요.'
+                    : _selectedCategory != 'ALL'
+                        ? '선택한 카테고리의 쿠폰이 없어요.'
+                        : '사용 가능한 쿠폰이 없어요.',
                 style: const TextStyle(fontSize: 15),
               ),
             ),
@@ -1056,6 +1153,26 @@ class _CouponListScreenState extends State<CouponListScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
+                        if (_isExpiringSoon(coupon)) ...[
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFB87270),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              '마감임박',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontFamily: 'Pretendard',
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
                         Icon(
                           Icons.access_time,
                           size: 14,

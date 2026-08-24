@@ -72,6 +72,11 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
+  # Swift Package Manager 모드에서 구버전 flutter_native_splash가
+  # "public headers directory path is invalid" 오류를 내므로 CocoaPods로 고정
+  config:
+    enable-swift-package-manager: false
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.

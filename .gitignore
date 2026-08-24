@@ -72,3 +72,15 @@ app.*.map.json
 android/app/*.der
 android/*.der
 *.der
+
+# 로컬 개발 잔재 (실수로 커밋 방지)
+.gitconfig
+.viminfo
+.lesshst
+ls
+diff_main.txt
+lib/printtest.dart
+android/Run
+android/startup
+# 프로젝트와 무관한 회로설계 툴(OrCAD/PSpice) 설정
+cdssetup/

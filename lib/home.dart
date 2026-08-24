@@ -1687,6 +1687,213 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
+  // ===== 홈 다이어트: 내 혜택 요약 섹션 (곧 만료 쿠폰 · 단골 스탬프) =====
+
+  Widget _dietSectionLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Text(
+          text,
+          style: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF6B7280),
+          ),
+        ),
+      );
+
+  String? _ddayLabel(DateTime? exp) {
+    if (exp == null) return null;
+    final now = DateTime.now();
+    final e = DateTime(exp.year, exp.month, exp.day);
+    final t = DateTime(now.year, now.month, now.day);
+    final d = e.difference(t).inDays;
+    if (d < 0) return '기한 만료';
+    if (d == 0) return '오늘까지';
+    return 'D-$d';
+  }
+
+  Widget _buildDietGreeting() => const Padding(
+        padding: EdgeInsets.only(bottom: 16),
+        child: Text(
+          '오늘 뭐 먹지?',
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 24,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+            color: Color(0xFF111827),
+          ),
+        ),
+      );
+
+  Widget _buildExpiringCouponHighlight() {
+    if (_affiliateRequiresLogin || _homeCouponShowcase.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final c = _homeCouponShowcase.first;
+    final title = c.benefit?.resolvedTitle ?? '할인 쿠폰';
+    final restaurant = c.benefit?.restaurantNameText;
+    final dday = _ddayLabel(c.expiresAt);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _dietSectionLabel('곧 사라지는 쿠폰'),
+          GestureDetector(
+            onTap: _openCouponList,
+            child: Container(
+              width: double.infinity,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFF312E81),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (restaurant != null)
+                    Text(
+                      restaurant,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFFC7D2FE),
+                      ),
+                    ),
+                  const SizedBox(height: 2),
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  if (dday != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 9, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(7),
+                      ),
+                      child: Text(
+                        '$dday · 이번 주에 쓰기',
+                        style: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF312E81),
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStampHighlight() {
+    if (_affiliateRequiresLogin) return const SizedBox.shrink();
+    AffiliateRestaurantSummary? best;
+    StampStatus? bestStatus;
+    double bestPct = -1;
+    for (final r in _affiliateRestaurants) {
+      final s = _resolvedStampStatusForAffiliate(r);
+      if (s.target > 0 && s.current > 0 && s.current < s.target) {
+        final pct = s.current / s.target;
+        if (pct > bestPct) {
+          bestPct = pct;
+          best = r;
+          bestStatus = s;
+        }
+      }
+    }
+    if (best == null || bestStatus == null) return const SizedBox.shrink();
+    final r = best;
+    final s = bestStatus;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _dietSectionLabel('내 단골 스탬프'),
+          GestureDetector(
+            onTap: () => _openAffiliateRestaurantDetail(r),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(13),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          r.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF111827),
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 9, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEEF4FF),
+                          borderRadius: BorderRadius.circular(7),
+                        ),
+                        child: Text(
+                          '${s.current}/${s.target}',
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF312E81),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      value: (s.current / s.target).clamp(0.0, 1.0),
+                      minHeight: 6,
+                      backgroundColor: const Color(0xFFF3F4F8),
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                          Color(0xFF6366F1)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1786,16 +1993,11 @@ class _HomeContentState extends State<HomeContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildPromotionBanner(screenWidth),
-                // 배너와 "내 주변에서 즐기는 우주라이크 혜택" 섹션 사이 간격을 조금 더 넉넉하게 확보
-                SizedBox(height: padding * 1.5),
-                if (_hasAffiliateContent) ...[
-                  _buildAffiliateRestaurantsSection(),
-                  if (!_affiliateRequiresLogin && _homeCouponShowcase.isNotEmpty) ...[
-                    SizedBox(height: padding * 1.2),
-                    _buildHomeCouponsSection(),
-                  ],
-                ],
+                // 홈 다이어트: 기획전·배너 제거 → 내 혜택 요약 중심
+                _buildDietGreeting(),
+                _buildExpiringCouponHighlight(),
+                _buildStampHighlight(),
+                if (_hasAffiliateContent) _buildAffiliateRestaurantsSection(),
               ],
             ),
           ),

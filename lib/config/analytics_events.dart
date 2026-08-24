@@ -20,6 +20,17 @@ class AnalyticsEvents {
   /// 쿠폰 발급 경로별 보유량 (issue_key 기반)
   static const String couponIssueBreakdown = 'coupon_issue_breakdown';
 
+  // ===== 온보딩(튜토리얼) =====
+  /// 로그인 전 인삿말 컷 노출 (step: 1부터)
+  static const String onboardingIntroView = 'onboarding_intro_view';
+  static const String onboardingIntroComplete = 'onboarding_intro_complete';
+  /// 보상 플로우에서 식당 선택
+  static const String onboardingRestaurantPick = 'onboarding_restaurant_pick';
+  /// 룰렛 연출 후 쿠폰 공개 (coupon_count: 0이면 조회 실패/미발급)
+  static const String onboardingCouponReveal = 'onboarding_coupon_reveal';
+  static const String onboardingGuideView = 'onboarding_guide_view';
+  static const String onboardingComplete = 'onboarding_complete';
+
   // ========== 파라미터 키 ==========
   static const String paramCouponCode = 'coupon_code';
   static const String paramRestaurantId = 'restaurant_id';
@@ -49,4 +60,8 @@ class AnalyticsEvents {
   static const String paramCouponTypeCode = 'coupon_type_code';
   /// 이번 요청으로 적립된 스탬프 수량
   static const String paramStampAddedCount = 'stamp_added_count';
+  /// 온보딩 컷/단계 번호 (1부터)
+  static const String paramStep = 'step';
+  /// 사용자가 건너뛰기로 종료했는지
+  static const String paramSkipped = 'skipped';
 }

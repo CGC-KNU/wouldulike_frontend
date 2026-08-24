@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:new1/affiliate_benefits_screen.dart';
-import 'package:new1/coupon_list_screen.dart';
+import 'package:new1/wallet/wallet_screen.dart';
 import 'home.dart';
 import 'my.dart';
 import 'package:new1/services/api_client.dart';
@@ -21,7 +21,7 @@ class MainAppScreen extends StatefulWidget {
 
 class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserver {
   int _selectedIndex = 0;
-  static const List<String> _tabNames = <String>['home', 'affiliate', 'coupon', 'my'];
+  static const List<String> _tabNames = <String>['home', 'affiliate', 'wallet', 'my'];
   StreamSubscription<int>? _deepLinkSub;
 
   @override
@@ -99,7 +99,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       case 1:
         return const AffiliateBenefitsScreen();
       case 2:
-        return const CouponListScreen(source: 'tab');
+        return WalletScreen(onRequestTab: _onItemTapped);
       case 3:
         return const MyScreen();
       default:
@@ -154,7 +154,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
             assetPath: 'assets/images/fork.svg',
           ),
           LiquidGlassTab(
-            label: '보유 쿠폰',
+            label: '내 지갑',
             assetPath: 'assets/images/coupon.svg',
           ),
           LiquidGlassTab(

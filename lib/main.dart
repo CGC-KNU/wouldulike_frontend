@@ -21,6 +21,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
 import 'config/analytics_events.dart';
+import 'onboarding/onboarding_intro_screen.dart';
+import 'onboarding/onboarding_prefs.dart';
+import 'onboarding/onboarding_reward_flow.dart';
+import 'onboarding/signup_onboarding_gate.dart';
 import 'utils/analytics_logger.dart';
 import 'utils/analytics_navigator_observer.dart';
 import 'services/auth_service.dart';
@@ -358,6 +362,9 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   bool _isCheckingProfile = true;
   bool _isProfileIncomplete = false;
   Map<String, dynamic>? _profile;
+  // 온보딩(튜토리얼) 게이트: 첫 실행 인삿말 컷 / 가입 직후 보상 플로우
+  bool _introSeen = true;
+  bool _showRewardFlow = false;
 
   @override
   void initState() {
@@ -367,19 +374,24 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
 
   Future<void> _bootstrap() async {
     if (!widget.isLoggedIn) {
+      final introSeen = await OnboardingPrefs.isIntroSeen();
       if (!mounted) return;
       setState(() {
+        _introSeen = introSeen;
         _isCheckingProfile = false;
       });
       return;
     }
 
     final profile = await UserService.fetchCurrentUserProfile();
+    // 앱 종료 등으로 보상 온보딩을 못 본 가입자는 다음 실행에서 이어서 보여준다.
+    final showRewardFlow = await OnboardingPrefs.shouldShowRewardFlow();
     if (!mounted) return;
     AnalyticsLogger.setUserPropertiesFromProfile(profile);
     setState(() {
       _profile = profile;
       _isProfileIncomplete = UserService.isRequiredProfileIncomplete(profile);
+      _showRewardFlow = showRewardFlow;
       _isCheckingProfile = false;
     });
   }
@@ -389,13 +401,25 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
     setState(() {
       _isProfileIncomplete = false;
     });
+    // 방금 가입을 마쳤으면(플래그는 프로필 저장 시 세팅) 보상 온보딩으로 진입
+    OnboardingPrefs.shouldShowRewardFlow().then((show) {
+      if (!mounted) return;
+      setState(() {
+        _showRewardFlow = show;
+      });
+    });
+  }
+
+  void _handleIntroFinished() {
+    OnboardingPrefs.markIntroSeen();
+    if (!mounted) return;
+    setState(() {
+      _introSeen = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.isLoggedIn) {
-      return const LoginScreen();
-    }
     if (_isCheckingProfile) {
       final showCampaignSplash = _shouldShowCampaignSplash();
       return Scaffold(
@@ -404,6 +428,13 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
         body: const _AppEntryLoadingView(),
       );
     }
+    if (!widget.isLoggedIn) {
+      // 첫 실행: 홈/로그인 직행 대신 인삿말 컷부터
+      if (!_introSeen) {
+        return OnboardingIntroScreen(onFinished: _handleIntroFinished);
+      }
+      return const LoginScreen();
+    }
     if (_isProfileIncomplete) {
       return ProfileSetupScreen(
         initialProfile: _profile,
@@ -411,7 +442,18 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
         isRequiredFlow: true,
       );
     }
-    return const MainScreen();
+    if (_showRewardFlow) {
+      return OnboardingRewardFlow(
+        onFinished: () {
+          if (!mounted) return;
+          setState(() {
+            _showRewardFlow = false;
+          });
+        },
+      );
+    }
+    // 이 화면에서 이미 프로필/온보딩 게이트를 통과했으므로 중복 확인 생략
+    return const MainScreen(skipOnboardingGate: true);
   }
 }
 
@@ -433,7 +475,12 @@ class _AppEntryLoadingView extends StatelessWidget {
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  const MainScreen({super.key, this.skipOnboardingGate = false});
+
+  /// AppEntryScreen이 이미 프로필/온보딩 게이트를 통과시킨 경우 true.
+  /// false면(로그인 직후 '/main' 라우트 등) 신규 가입자의 홈 직행을 막기 위해
+  /// 프로필 완성 여부와 보상 온보딩 플래그를 확인한다.
+  final bool skipOnboardingGate;
 
   @override
   MainScreenState createState() => MainScreenState();
@@ -459,12 +506,35 @@ class MainScreenState extends State<MainScreen> {
     final jwt = prefs.getString('jwt_access_token');
     final isLoggedIn = jwt != null && jwt.isNotEmpty;
 
+    Widget destination;
+    if (!isLoggedIn) {
+      destination = const LoginScreen();
+    } else if (widget.skipOnboardingGate) {
+      destination = const MainAppScreen();
+    } else {
+      // 로그인 직후 경로: 신규 가입자는 홈 직행 대신
+      // 프로필 설정 → 보상 온보딩(식당 선택→룰렛→사용법)을 거친다.
+      Map<String, dynamic>? profile;
+      bool profileIncomplete = false;
+      try {
+        profile = await UserService.fetchCurrentUserProfile();
+        profileIncomplete = UserService.isRequiredProfileIncomplete(profile);
+      } catch (_) {
+        // 프로필 확인 실패 시 기존 동작(메인 진입) 유지
+      }
+      final showRewardFlow = await OnboardingPrefs.shouldShowRewardFlow();
+      destination = (profileIncomplete || showRewardFlow)
+          ? SignupOnboardingGate(
+              profileIncomplete: profileIncomplete,
+              initialProfile: profile,
+            )
+          : const MainAppScreen();
+    }
+
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute<void>(
-        builder: (_) => isLoggedIn ? const MainAppScreen() : const LoginScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => destination),
     );
   }
 
@@ -737,7 +807,9 @@ class MainScreenState extends State<MainScreen> {
       print('FCM token fetch error/timeout: $e');
     }
     if (token != null) {
-      print('FCM Token: $token');
+      if (kDebugMode) {
+        print('FCM Token: $token');
+      }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('fcm_token', token);
       await _updateFcmToken(token);
@@ -746,7 +818,9 @@ class MainScreenState extends State<MainScreen> {
     // 토큰이 회전/갱신될 때마다 서버에 최신 토큰을 업로드
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       try {
-        print('FCM Token refreshed: $newToken');
+        if (kDebugMode) {
+          print('FCM Token refreshed: $newToken');
+        }
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('fcm_token', newToken);
         await _updateFcmToken(newToken);

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'config/analytics_events.dart';
 import 'data/knu_profile_options.dart';
+import 'onboarding/onboarding_prefs.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
 import 'utils/analytics_logger.dart';
@@ -116,6 +117,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         await CouponService.signupComplete();
       } catch (_) {
         // 쿠폰 발급 실패는 프로필 저장 성공을 막지 않음
+      }
+      if (widget.isRequiredFlow) {
+        // 가입 완료 → 보상 온보딩(식당 선택→룰렛→사용법) 1회 노출 예약
+        await OnboardingPrefs.markRewardPending();
       }
       if (!mounted) return;
       AnalyticsLogger.logEvent(
