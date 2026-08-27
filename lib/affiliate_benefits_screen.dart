@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:new1/widgets/coupon_ticket_card.dart';
+import 'package:new1/widgets/stamp_asset_grid.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
@@ -17,6 +18,7 @@ import 'services/demo_wallet.dart';
 import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
+import 'widgets/coupon_issued_dialog.dart';
 import 'services/deep_link_service.dart';
 import 'widgets/restaurant_coupon_benefits_content.dart';
 
@@ -2989,15 +2991,18 @@ class _AffiliateRestaurantDetailSheetState
                 .onRewardCouponsIssued(newCoupons.map((c) => c.code).toList());
           }
 
-          final buffer = StringBuffer();
+          // 발급은 스낵바로 흘리지 않는다. 팝업 → 쿠폰함이 기본 동선.
           if (newCoupons.isNotEmpty) {
-            buffer.write(
-                '새 리워드 쿠폰이 발급되었어요: ${newCoupons.map((c) => c.code).join(', ')}');
+            await showCouponIssuedDialog(
+              context,
+              tag: '스탬프 리워드',
+              title: newCoupons.length == 1
+                  ? '리워드 쿠폰 1장'
+                  : '리워드 쿠폰 ${newCoupons.length}장',
+            );
           } else {
-            buffer.write('보유 중인 리워드 쿠폰을 다시 안내해드려요.');
+            _showSnack('보유 중인 리워드 쿠폰: ${rewardCodes.join(', ')}');
           }
-          buffer.write('\n현재 리워드 쿠폰: ${rewardCodes.join(', ')}');
-          _showSnack(buffer.toString());
         } catch (e) {
           // 쿠폰 목록을 가져오는 데 실패한 경우, 기존 방식대로 처리
           final existingCodes = _coupons.map((coupon) => coupon.code).toSet();
@@ -3021,14 +3026,17 @@ class _AffiliateRestaurantDetailSheetState
             });
             widget.onRewardCouponsIssued(newCodes);
           }
-          final buffer = StringBuffer();
           if (newCodes.isNotEmpty) {
-            buffer.write('새 리워드 쿠폰이 발급되었어요: ${newCodes.join(', ')}');
+            await showCouponIssuedDialog(
+              context,
+              tag: '스탬프 리워드',
+              title: newCodes.length == 1
+                  ? '리워드 쿠폰 1장'
+                  : '리워드 쿠폰 ${newCodes.length}장',
+            );
           } else {
-            buffer.write('보유 중인 리워드 쿠폰을 다시 안내해드려요.');
+            _showSnack('보유 중인 리워드 쿠폰: ${rewardCodes.join(', ')}');
           }
-          buffer.write('\n현재 리워드 쿠폰: ${rewardCodes.join(', ')}');
-          _showSnack(buffer.toString());
         }
       }
     } on ApiAuthException catch (e) {
@@ -4616,33 +4624,10 @@ class _AffiliateRestaurantDetailSheetState
 
   /// 5칸씩 줄바꿈되는 원형 스탬프 그리드. 마지막 칸은 리워드(선물) 도장.
   Widget _buildStampGrid({required int filled, required int total}) {
-    const columns = 5;
-    const gap = 8.0;
-    final rewardSteps = _stampThresholds().toSet();
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (var i = 0; i < total; i++)
-              SizedBox(
-                width: size,
-                height: size,
-                child: Image.asset(
-                  // 리워드가 걸린 칸(예: 1·3·5·10)은 아직 못 받았으면 선물 도장.
-                  rewardSteps.contains(i + 1) && i >= filled
-                      ? 'assets/images/stamp/stamp_reward.png'
-                      : (i < filled
-                          ? 'assets/images/stamp/stamp_filled.png'
-                          : 'assets/images/stamp/stamp_empty.png'),
-                  fit: BoxFit.contain,
-                ),
-              ),
-          ],
-        );
-      },
+    return StampAssetGrid(
+      current: filled,
+      target: total,
+      rewardSteps: _stampThresholds().toSet(),
     );
   }
 

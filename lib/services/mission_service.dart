@@ -60,88 +60,64 @@ class MissionItem {
       status == MissionStatus.claimed || status == MissionStatus.ready;
 }
 
+List<MissionItem> _parseItems(dynamic raw) => raw is List
+    ? raw
+        .whereType<Map>()
+        .map((e) => MissionItem.fromJson(Map<String, dynamic>.from(e)))
+        .toList()
+    : const <MissionItem>[];
+
+/// 미션 트랙 전체 상태. 미션은 환영 미션 하나뿐이고,
+/// 그게 끝나면 친구 초대(stage == invite)만 남는다.
 class MissionTrack {
   const MissionTrack({
-    required this.missions,
-    required this.rewardHeadline,
-    this.daily = const <MissionItem>[],
-    this.weekly = const <MissionItem>[],
-    this.completionBonus,
+    required this.stage,
+    this.welcome,
+    this.promoBlock,
     this.serverTime,
   });
 
   factory MissionTrack.fromJson(Map<String, dynamic> json) {
-    final missions = _parseItems(json['missions']);
-    // 완주 보너스는 서버가 completion_bonus로 내려주거나 ALL_CLEAR 미션으로 내려준다.
-    final bonusRaw = json['completion_bonus'];
-    final bonus = bonusRaw is Map
-        ? MissionItem.fromJson(Map<String, dynamic>.from(bonusRaw))
-        : null;
+    final welcomeRaw = json['welcome'];
+    final promoRaw = json['promo_block'];
     return MissionTrack(
-      missions: missions.where((m) => m.code != 'ALL_CLEAR').toList(),
-      rewardHeadline: json['reward_headline']?.toString() ?? '',
-      daily: _parseItems(json['daily']),
-      weekly: _parseItems(json['weekly']),
-      completionBonus:
-          bonus ?? missions.where((m) => m.code == 'ALL_CLEAR').firstOrNull,
+      stage: _stageFrom(json['stage'], hasWelcome: welcomeRaw is Map),
+      welcome: welcomeRaw is Map
+          ? WelcomeMissions.fromJson(Map<String, dynamic>.from(welcomeRaw))
+          : null,
+      promoBlock: promoRaw is Map
+          ? PromoBlock.fromJson(Map<String, dynamic>.from(promoRaw))
+          : null,
       serverTime: _asDate(json['server_time']),
     );
   }
 
-  static List<MissionItem> _parseItems(dynamic raw) => raw is List
-      ? raw
-          .whereType<Map>()
-          .map((e) => MissionItem.fromJson(Map<String, dynamic>.from(e)))
-          .toList()
-      : const <MissionItem>[];
+  final MissionStage stage;
 
-  /// 초보자 미션 (회원가입 → 스탬프 5개). 계정당 1회.
-  final List<MissionItem> missions;
-  final String rewardHeadline;
+  /// 환영 미션 (stage == welcome일 때만 유효)
+  final WelcomeMissions? welcome;
 
-  /// 초보자 미션을 끝낸 뒤 열리는 반복 미션. 마감(deadline_at)이 곧 초기화 시각.
-  final List<MissionItem> daily;
-  final List<MissionItem> weekly;
-
-  /// 4단계 완주 보너스 노드. 서버가 안 내려주면 null (화면은 안내만 표시)
-  final MissionItem? completionBonus;
+  /// 운영이 켰을 때만 내려오는 프로모 블록. null이면 홈에 렌더링하지 않는다.
+  final PromoBlock? promoBlock;
   final DateTime? serverTime;
 
-  /// 4단계를 모두 수령했는지 (완주 보너스 노드 활성 표기용)
-  bool get allCleared =>
-      missions.isNotEmpty && missions.every((m) => m.status == MissionStatus.claimed);
-
-  /// 아직 완료하지 않은 미션 수 (홈 배너 문구용)
-  int get remainingCount => missions.where((m) => !m.isDone).length;
-
-  bool get hasOngoing => missions.isNotEmpty && remainingCount > 0;
-
-  /// 일간·주간 미션 보유 여부.
-  bool get hasRoutine => daily.isNotEmpty || weekly.isNotEmpty;
-
-  /// 초보자 미션을 전부 소진(수령 완료 또는 만료)했는지.
-  /// true면 홈 배너·미션 화면이 일간/주간 미션으로 전환된다.
-  bool get beginnerDone =>
-      missions.isEmpty ||
-      missions.every((m) =>
-          m.status == MissionStatus.claimed ||
-          m.status == MissionStatus.expired);
-
-  /// 지금 화면에 띄울 반복 미션 중 아직 못 끝낸 개수 (배너 문구용)
-  int get routineRemaining =>
-      daily.where((m) => !m.isDone).length +
-      weekly.where((m) => !m.isDone).length;
-
   /// 수령 대기 중인 리워드 개수 (배지용)
-  int get claimableCount => [...missions, ...daily, ...weekly]
-      .where((m) => m.status == MissionStatus.ready)
-      .length;
+  int get claimableCount =>
+      (welcome?.rewardReady ?? false) && !(welcome?.rewardClaimed ?? false)
+          ? 1
+          : 0;
 }
 
 class MissionService {
   /// GET /api/missions/track/ — 미션 트랙 전체 상태.
   /// 홈 배너와 미션 트랙 화면이 같은 응답을 공유한다 (스펙 7.3).
   static Future<MissionTrack?> fetchTrack() async {
+    // 개편 UI 미리보기용. 백엔드가 아직 stage를 안 내려주므로 디버그에서만
+    // 서버 응답을 건너뛰고 샘플을 쓴다. 릴리스 빌드에는 영향이 없다.
+    // 배포 전 _devForceSample·_devStage·_devSampleJson을 함께 삭제할 것.
+    if (kDebugMode && _devForceSample) {
+      return MissionTrack.fromJson(_devSampleJson());
+    }
     try {
       final http.Response response = await ApiClient.get(
         '/api/missions/track/',
@@ -159,108 +135,52 @@ class MissionService {
     return null;
   }
 
-  /// 디버그 샘플에서 초보자 미션을 모두 끝낸 상태로 볼지 여부.
-  /// true면 홈 배너·미션 화면이 일간/주간 미션으로 바뀐다 (배포 후 삭제).
-  static const bool _devBeginnerDone = true;
+  /// true면 서버 응답을 무시하고 아래 샘플로 개편 UI를 그린다 (배포 후 삭제).
+  static const bool _devForceSample = true;
 
-  /// 스펙 6.2 응답 예시 기반 디버그 샘플 (배포 후 삭제)
+  /// 디버그 샘플에서 볼 단계. 'welcome' | 'invite' (배포 후 삭제)
+  static const String _devStage = 'welcome';
+
+  /// 미션 응답 예시 (배포 후 _devForceSample·_devStage와 함께 삭제)
   static Map<String, dynamic> _devSampleJson() {
     final now = DateTime.now();
-    final midnight = DateTime(now.year, now.month, now.day)
-        .add(const Duration(days: 1));
-    // 다음 주 월요일 0시 = 주간 미션 초기화 시각
-    final nextMonday = DateTime(now.year, now.month, now.day)
-        .add(Duration(days: 8 - now.weekday));
-    String beginner(String fallback) => _devBeginnerDone ? 'CLAIMED' : fallback;
     return <String, dynamic>{
       'server_time': now.toIso8601String(),
-      'reward_headline': _devBeginnerDone
-          ? '오늘의 미션을 끝내고 마일리지를 받아가세요'
-          : '2개만 더 완료하면 랜덤 쿠폰이 열려요',
-      'missions': [
-        {
-          'code': 'SIGNUP',
-          'title': '회원가입 하기',
-          'reward_text': '첫 쿠폰 1장',
-          'status': 'CLAIMED',
-          'progress': 1,
-          'target': 1,
-          'deadline_at': null,
-        },
-        {
-          'code': 'FIRST_COUPON',
-          'title': '첫 쿠폰 받기',
-          'reward_text': '제휴 매장 2,000원 할인 쿠폰',
-          'status': beginner('READY'),
-          'progress': 1,
-          'target': 1,
-          'deadline_at':
-              now.add(const Duration(days: 2, hours: 5)).toIso8601String(),
-        },
-        {
-          'code': 'FIRST_USE',
-          'title': '쿠폰 한 번 사용하기',
-          'reward_text': '마일리지 500 M',
-          'status': beginner('OPEN'),
-          'progress': _devBeginnerDone ? 1 : 0,
-          'target': 1,
-          'deadline_at': now.add(const Duration(hours: 7)).toIso8601String(),
-        },
-        {
-          'code': 'STAMP_5',
-          'title': '스탬프 5개 모으기',
-          'reward_text': '제휴 매장 랜덤 쿠폰 1종 지급',
-          'status': beginner('OPEN'),
-          'progress': _devBeginnerDone ? 5 : 2,
-          'target': 5,
-          'deadline_at': now.add(const Duration(days: 5)).toIso8601String(),
-        },
-      ],
-      // 초보자 미션 완료 후 열리는 반복 미션. deadline_at = 다음 초기화 시각.
-      'daily': !_devBeginnerDone
-          ? const <Map<String, dynamic>>[]
-          : [
-              {
-                'code': 'DAILY_STAMP_1',
-                'title': '스탬프 1회 적립하기',
-                'reward_text': '마일리지 50 M',
-                'status': 'READY',
-                'progress': 1,
-                'target': 1,
-                'deadline_at': midnight.toIso8601String(),
-              },
-              {
-                'code': 'DAILY_COUPON_USE_1',
-                'title': '쿠폰 1회 사용하기',
-                'reward_text': '마일리지 50 M',
-                'status': 'OPEN',
+      'stage': _devStage,
+      // 프로모 블록은 운영이 켰을 때만 내려온다. 평소에는 null.
+      'promo_block': null,
+      'welcome': _devStage != 'welcome'
+          ? null
+          : {
+              'ends_at':
+                  now.add(const Duration(days: 2, hours: 23)).toIso8601String(),
+              'missions': [
+                {
+                  'code': 'WELCOME_COUPON_USE',
+                  'title': '우주라이크 쿠폰 사용하기',
+                  'reward_text': '가입 축하 쿠폰·기획전 쿠폰 모두 인정돼요',
+                  'status': 'CLAIMED',
+                  'progress': 1,
+                  'target': 1,
+                },
+                {
+                  'code': 'WELCOME_STAMP_2',
+                  'title': '스탬프 2회 적립하기',
+                  'reward_text': '어느 매장이든 상관없어요',
+                  'status': 'OPEN',
+                  'progress': 1,
+                  'target': 2,
+                },
+              ],
+              'reward': {
+                'code': 'WELCOME_ALL',
+                'title': '환영 미션 완주 리워드',
+                'reward_text': '우주라이크 제휴 매장 쿠폰 1장',
+                'status': 'LOCKED',
                 'progress': 0,
                 'target': 1,
-                'deadline_at': midnight.toIso8601String(),
               },
-            ],
-      'weekly': !_devBeginnerDone
-          ? const <Map<String, dynamic>>[]
-          : [
-              {
-                'code': 'WEEKLY_STAMP_3',
-                'title': '스탬프 3회 적립하기',
-                'reward_text': '제휴 매장 랜덤 쿠폰 1장',
-                'status': 'OPEN',
-                'progress': 1,
-                'target': 3,
-                'deadline_at': nextMonday.toIso8601String(),
-              },
-              {
-                'code': 'WEEKLY_COUPON_USE_3',
-                'title': '쿠폰 3회 사용하기',
-                'reward_text': '제휴 매장 랜덤 쿠폰 1장',
-                'status': 'OPEN',
-                'progress': 0,
-                'target': 3,
-                'deadline_at': nextMonday.toIso8601String(),
-              },
-            ],
+            },
     };
   }
 
@@ -278,6 +198,152 @@ class MissionService {
     } catch (_) {
       return null;
     }
+  }
+}
+
+/// ===== 미션 개편 (환영 미션 → 스탬프북) =====
+
+/// 미션 단계. 환영 미션이 끝나면 친구 초대만 남는다.
+enum MissionStage { welcome, invite }
+
+MissionStage _stageFrom(dynamic raw, {required bool hasWelcome}) {
+  switch (raw?.toString().toUpperCase()) {
+    case 'WELCOME':
+      return MissionStage.welcome;
+    case 'INVITE':
+      return MissionStage.invite;
+  }
+  // stage를 안 내려주면 환영 미션 데이터 유무로 판별한다.
+  return hasWelcome ? MissionStage.welcome : MissionStage.invite;
+}
+
+/// 튜토리얼 직후 최대 3일간 열리는 환영 미션.
+/// 2개를 모두 끝내거나 기간이 지나면 스탬프북으로 넘어간다.
+class WelcomeMissions {
+  const WelcomeMissions({
+    required this.missions,
+    this.reward,
+    this.endsAt,
+  });
+
+  factory WelcomeMissions.fromJson(Map<String, dynamic> json) {
+    final rewardRaw = json['reward'];
+    return WelcomeMissions(
+      missions: _parseItems(json['missions']),
+      reward: rewardRaw is Map
+          ? MissionItem.fromJson(Map<String, dynamic>.from(rewardRaw))
+          : null,
+      endsAt: _asDate(json['ends_at']),
+    );
+  }
+
+  final List<MissionItem> missions;
+
+  /// 완주 리워드 노드. 서버가 안 내려주면 안내만 표시한다.
+  final MissionItem? reward;
+
+  /// 환영 미션 종료 시각(발급 + 3일).
+  final DateTime? endsAt;
+
+  bool get allCleared => missions.isNotEmpty && missions.every((m) => m.isDone);
+
+  /// 리워드 수령 버튼을 열어줄지. 서버 status를 우선하고,
+  /// 아직 안 내려줄 때만 클라이언트 판단으로 대체한다.
+  bool get rewardReady =>
+      reward == null ? allCleared : reward!.status == MissionStatus.ready;
+
+  bool get rewardClaimed => reward?.status == MissionStatus.claimed;
+
+  int get remainingCount => missions.where((m) => !m.isDone).length;
+
+  /// 발급 후 3일이 지났고 받을 리워드도 없으면 환영 미션은 닫힌 것으로 본다.
+  /// 서버가 stage를 아직 invite로 안 넘겼어도 화면은 친구 초대로 넘어간다.
+  /// [now]는 기기 시간이 아닌 서버 보정 시각을 넘겨받는다.
+  bool isClosedAt(DateTime now) {
+    final at = endsAt;
+    return at != null && now.isAfter(at) && !rewardReady;
+  }
+}
+
+/// 홈 상단 프로모 블록. 운영이 켰을 때만 내려온다.
+/// 링크는 https + 허용 도메인만 연다 (앱 내에서 임의 스킴 실행 차단).
+class PromoBlock {
+  const PromoBlock({
+    required this.active,
+    required this.title,
+    this.subtitle = '',
+    this.ctaText = '',
+    this.note = '',
+    this.imageUrl,
+    this.link,
+    this.startsAt,
+    this.endsAt,
+  });
+
+  factory PromoBlock.fromJson(Map<String, dynamic> json) {
+    final image = json['image_url']?.toString();
+    return PromoBlock(
+      active: json['active'] == true,
+      title: json['title']?.toString() ?? '',
+      subtitle: json['subtitle']?.toString() ?? '',
+      ctaText: json['cta_text']?.toString() ?? '',
+      note: json['note']?.toString() ?? '',
+      imageUrl: _isSafeImageUrl(image) ? image : null,
+      link: sanitizeLink(json['link_url']?.toString()),
+      startsAt: _asDate(json['starts_at']),
+      endsAt: _asDate(json['ends_at']),
+    );
+  }
+
+  final bool active;
+  final String title;
+  final String subtitle;
+  final String ctaText;
+  final String note;
+
+  /// null이면 텍스트형으로 렌더링한다.
+  final String? imageUrl;
+
+  /// 검증을 통과한 링크만 담긴다. null이면 탭 비활성.
+  final Uri? link;
+  final DateTime? startsAt;
+  final DateTime? endsAt;
+
+  /// 프로모 블록 링크로 허용하는 호스트. 서브도메인까지 허용한다.
+  static const Set<String> allowedLinkHosts = <String>{
+    'wouldulike.com',
+    'deliberate-lenette-coggiri-5ee7b85e.koyeb.app',
+  };
+
+  /// https + 허용 도메인만 통과시킨다.
+  /// intent:// · javascript: · 외부 도메인은 전부 null로 떨어뜨린다.
+  static Uri? sanitizeLink(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return null;
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null || uri.scheme != 'https') return null;
+    final host = uri.host.toLowerCase();
+    if (host.isEmpty) return null;
+    for (final allowed in allowedLinkHosts) {
+      if (host == allowed || host.endsWith('.$allowed')) return uri;
+    }
+    return null;
+  }
+
+  static bool _isSafeImageUrl(String? raw) {
+    if (raw == null || raw.trim().isEmpty) return false;
+    final uri = Uri.tryParse(raw.trim());
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
+  }
+
+  /// 켜져 있고 노출 기간 안이며 보여줄 내용이 있는지.
+  /// 기준 시각은 기기 시간이 아니라 서버 보정 시각을 넘겨받는다.
+  bool isVisibleAt(DateTime now) {
+    if (!active || title.trim().isEmpty) return false;
+    final from = startsAt;
+    final to = endsAt;
+    if (from != null && now.isBefore(from)) return false;
+    if (to != null && now.isAfter(to)) return false;
+    return true;
   }
 }
 

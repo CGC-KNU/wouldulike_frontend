@@ -84,3 +84,5 @@ android/Run
 android/startup
 # 프로젝트와 무관한 회로설계 툴(OrCAD/PSpice) 설정
 cdssetup/
+# 골든 테스트 실패 시 자동 생성되는 diff 이미지
+test/failures/

@@ -5,6 +5,7 @@ import 'package:new1/affiliate_benefits_screen.dart';
 import 'package:new1/services/affiliate_service.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/services/coupon_service.dart';
+import 'package:new1/widgets/stamp_asset_grid.dart';
 
 /// 지갑 스탬프 탭: 매장별 스탬프 현황 카드 목록.
 /// /api/coupons/stamps/my/all/ 결과를 제휴 식당 목록과 restaurant_id로 매칭한다.
@@ -493,31 +494,10 @@ class _StampTabState extends State<StampTab> {
     required int target,
     required Set<int> rewardSteps,
   }) {
-    const columns = 5;
-    const gap = 8.0;
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final size = (constraints.maxWidth - gap * (columns - 1)) / columns;
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children: [
-            for (var i = 0; i < target; i++)
-              SizedBox(
-                width: size,
-                height: size,
-                child: Image.asset(
-                  rewardSteps.contains(i + 1) && i >= current
-                      ? 'assets/images/stamp/stamp_reward.png'
-                      : (i < current
-                          ? 'assets/images/stamp/stamp_filled.png'
-                          : 'assets/images/stamp/stamp_empty.png'),
-                  fit: BoxFit.contain,
-                ),
-              ),
-          ],
-        );
-      },
+    return StampAssetGrid(
+      current: current,
+      target: target,
+      rewardSteps: rewardSteps,
     );
   }
 

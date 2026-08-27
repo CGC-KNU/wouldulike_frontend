@@ -7,8 +7,8 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
-import 'services/affiliate_service.dart'
-    show AffiliateRestaurantSummary, AffiliateService;
+import 'coupon/store_select_field.dart';
+import 'services/affiliate_service.dart' show AffiliateRestaurantSummary;
 import 'package:new1/widgets/coupon_ticket_card.dart';
 
 import 'services/api_client.dart';
@@ -451,191 +451,10 @@ class _CouponListScreenState extends State<CouponListScreen> {
   /// `POST /api/coupons/check/`는 로그인한 사용자 본인 쿠폰만 조회하므로,
   /// 남의 쿠폰이나 발급되지 않은 번호는 조회되지 않는다(= 코드로 새 쿠폰을 받는 기능이 아니다).
   Future<void> _showCouponCodeDialog() async {
-    final controller = TextEditingController();
-    String? error;
-    var isLoading = false;
-
     final coupon = await showDialog<UserCoupon>(
       context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            Future<void> submit() async {
-              final code = controller.text.trim().toUpperCase();
-              if (code.isEmpty) {
-                setDialogState(() => error = '쿠폰 번호를 입력해 주세요.');
-                return;
-              }
-              setDialogState(() {
-                error = null;
-                isLoading = true;
-              });
-              try {
-                final found = await CouponService.checkCoupon(couponCode: code);
-                if (!dialogContext.mounted) return;
-                if (found.status != CouponStatus.issued) {
-                  setDialogState(() {
-                    error = found.status == CouponStatus.redeemed
-                        ? '이미 사용한 쿠폰이에요.'
-                        : '지금은 사용할 수 없는 쿠폰이에요.';
-                    isLoading = false;
-                  });
-                  return;
-                }
-                Navigator.of(dialogContext).pop(found);
-              } on ApiAuthException catch (e) {
-                if (!dialogContext.mounted) return;
-                setDialogState(() {
-                  error = e.message;
-                  isLoading = false;
-                });
-              } on ApiHttpException catch (e) {
-                if (!dialogContext.mounted) return;
-                setDialogState(() {
-                  error = e.statusCode == 404
-                      ? '이 번호로 발급된 쿠폰을 찾지 못했어요. 번호를 다시 확인해 주세요.'
-                      : '조회에 실패했어요 (HTTP ${e.statusCode})';
-                  isLoading = false;
-                });
-              } catch (_) {
-                if (!dialogContext.mounted) return;
-                setDialogState(() {
-                  error = '네트워크 오류로 조회하지 못했어요. 잠시 후 다시 시도해 주세요.';
-                  isLoading = false;
-                });
-              }
-            }
-
-            return AlertDialog(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              title: const Text(
-                '쿠폰 번호 입력',
-                style: TextStyle(
-                  fontSize: 17,
-                  fontFamily: 'Pretendard',
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF111827),
-                ),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    '문자·이벤트로 받은 쿠폰 번호를 입력하면\n바로 사용 화면으로 넘어가요.',
-                    style: TextStyle(
-                      fontSize: 13,
-                      height: 1.5,
-                      fontFamily: 'Pretendard',
-                      color: Color(0xFF6B7280),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  TextField(
-                    controller: controller,
-                    autofocus: true,
-                    enabled: !isLoading,
-                    textCapitalization: TextCapitalization.characters,
-                    textInputAction: TextInputAction.done,
-                    onSubmitted: (_) {
-                      if (!isLoading) submit();
-                    },
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 1.2,
-                      color: Color(0xFF111827),
-                    ),
-                    decoration: InputDecoration(
-                      hintText: '예: WUL-8F2K9A',
-                      hintStyle: const TextStyle(
-                        fontWeight: FontWeight.w500,
-                        letterSpacing: 0,
-                        color: Color(0xFFB0B5BF),
-                      ),
-                      filled: true,
-                      fillColor: const Color(0xFFF6F7F9),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 13,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                  if (error != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      error!,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFFEF4444),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-              actions: [
-                TextButton(
-                  onPressed: isLoading
-                      ? null
-                      : () => Navigator.of(dialogContext).pop(),
-                  child: const Text(
-                    '취소',
-                    style: TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF6B7280),
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  onPressed: isLoading ? null : submit,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1C203C),
-                    foregroundColor: Colors.white,
-                    elevation: 0,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(13),
-                    ),
-                    textStyle: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
-                  ),
-                  child: isLoading
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Text('확인'),
-                ),
-              ],
-            );
-          },
-        );
-      },
+      builder: (_) => const _CouponCodeDialog(),
     );
-
-    controller.dispose();
     if (!mounted || coupon == null) return;
     AnalyticsLogger.logEvent(
       'coupon_code_lookup',
@@ -721,17 +540,12 @@ class _CouponListScreenState extends State<CouponListScreen> {
   // 더 이상 별도 매핑이 필요 없어졌다.
 
   Future<void> _handleRedeem(UserCoupon coupon) async {
-    var restaurantId = coupon.restaurantId;
-    var restaurantName = coupon.benefit?.restaurantNameText;
+    final restaurantId = coupon.restaurantId;
+    final restaurantName = coupon.benefit?.restaurantNameText;
 
-    // 전 매장 쿠폰(마일리지 식사권 당첨분)은 쓸 매장을 먼저 고른다.
-    if (restaurantId == null && coupon.benefit?.allStores == true) {
-      final picked = await _pickRestaurant();
-      if (!mounted || picked == null) return;
-      restaurantId = picked.id;
-      restaurantName = picked.name;
-    }
-    if (restaurantId == null) {
+    // 전 매장 쿠폰(마일리지 식사권 당첨분)은 매장이 안 정해져 있다.
+    // 쓸 매장은 PIN 다이얼로그 안 드롭다운에서 고른다 — PIN이 그 매장 것이라 같이 둬야 한다.
+    if (restaurantId == null && coupon.benefit?.allStores != true) {
       _showSnack('이 쿠폰은 사용 가능한 매장 정보가 없어요.');
       return;
     }
@@ -763,7 +577,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   /// 쿠폰 사용 PIN 다이얼로그 — 직원이 관리자 비밀번호를 입력하면 즉시 사용 처리.
   Future<bool> _showRedeemPinDialog({
     required UserCoupon coupon,
-    required int restaurantId,
+    required int? restaurantId,
     String? restaurantName,
     String? notes,
   }) async {
@@ -771,6 +585,9 @@ class _CouponListScreenState extends State<CouponListScreen> {
     String? error;
     bool isLoading = false;
     final hasNotes = notes != null && notes.isNotEmpty;
+    // restaurantId가 없으면 전 매장 쿠폰이다. 다이얼로그 안에서 매장을 고르게 한다.
+    final needsStorePick = restaurantId == null;
+    AffiliateRestaurantSummary? pickedStore;
     return (await showDialog<bool>(
           context: context,
           barrierDismissible: false,
@@ -883,6 +700,17 @@ class _CouponListScreenState extends State<CouponListScreen> {
                             ),
                           ),
                         ],
+                        if (needsStorePick) ...[
+                          const SizedBox(height: 20),
+                          StoreSelectField(
+                            selected: pickedStore,
+                            enabled: !isLoading,
+                            onSelected: (store) => setState(() {
+                              pickedStore = store;
+                              error = null;
+                            }),
+                          ),
+                        ],
                         const SizedBox(height: 20),
                         const Text(
                           '비밀번호',
@@ -978,6 +806,15 @@ class _CouponListScreenState extends State<CouponListScreen> {
                                 onPressed: isLoading
                                     ? null
                                     : () async {
+                                        // 전 매장 쿠폰은 매장을 고르기 전엔 PIN을 검증할 수 없다.
+                                        final targetId =
+                                            restaurantId ?? pickedStore?.id;
+                                        if (targetId == null) {
+                                          setState(() {
+                                            error = '사용할 매장을 먼저 선택해 주세요.';
+                                          });
+                                          return;
+                                        }
                                         final value = controller.text.trim();
                                         if (value.length != 4) {
                                           setState(() {
@@ -992,7 +829,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
                                         final result = await CouponService
                                             .redeemCouponWithoutThrow(
                                           couponCode: coupon.code,
-                                          restaurantId: restaurantId,
+                                          restaurantId: targetId,
                                           pin: value,
                                         );
                                         if (!dialogContext.mounted) return;
@@ -1003,10 +840,12 @@ class _CouponListScreenState extends State<CouponListScreen> {
                                               AnalyticsEvents.paramCouponCode:
                                                   coupon.code,
                                               AnalyticsEvents.paramRestaurantId:
-                                                  restaurantId,
+                                                  targetId,
                                               AnalyticsEvents
                                                       .paramRestaurantName:
-                                                  restaurantName ?? '',
+                                                  pickedStore?.name ??
+                                                      restaurantName ??
+                                                      '',
                                               AnalyticsEvents
                                                       .paramCouponIssueSource:
                                                   coupon.couponIssueSource,
@@ -1061,143 +900,6 @@ class _CouponListScreenState extends State<CouponListScreen> {
         false;
   }
 
-  /// 전 매장 쿠폰을 쓸 매장 선택 (제휴 매장 목록 + 이름 검색).
-  Future<AffiliateRestaurantSummary?> _pickRestaurant() async {
-    final future = AffiliateService.fetchRestaurants();
-    if (!mounted) return null;
-    return showModalBottomSheet<AffiliateRestaurantSummary>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetContext) {
-        var keyword = '';
-        return StatefulBuilder(
-          builder: (context, setSheetState) => SizedBox(
-            height: MediaQuery.of(context).size.height * 0.72,
-            child: Column(
-              children: [
-                const SizedBox(height: 12),
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE7E9EF),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 16, 20, 4),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '어디서 쓸까요?',
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF191F28),
-                      ),
-                    ),
-                  ),
-                ),
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 0, 20, 10),
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      '이 쿠폰은 제휴 매장 어디서나 쓸 수 있어요.',
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF4E5968),
-                      ),
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: TextField(
-                    decoration: InputDecoration(
-                      hintText: '매장 이름 검색',
-                      prefixIcon: const Icon(Icons.search, size: 20),
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    onChanged: (value) =>
-                        setSheetState(() => keyword = value.trim()),
-                  ),
-                ),
-                Expanded(
-                  child: FutureBuilder<List<AffiliateRestaurantSummary>>(
-                    future: future,
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return const Center(
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        );
-                      }
-                      final all = snapshot.data ?? const [];
-                      final items = keyword.isEmpty
-                          ? all
-                          : all.where((r) => r.name.contains(keyword)).toList();
-                      if (items.isEmpty) {
-                        return const Center(
-                          child: Text(
-                            '매장을 불러오지 못했어요.',
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 14,
-                              color: Color(0xFF4E5968),
-                            ),
-                          ),
-                        );
-                      }
-                      return ListView.separated(
-                        itemCount: items.length,
-                        separatorBuilder: (_, __) => const Divider(height: 1),
-                        itemBuilder: (context, index) {
-                          final item = items[index];
-                          return ListTile(
-                            title: Text(
-                              item.name,
-                              style: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF191F28),
-                              ),
-                            ),
-                            subtitle: item.category.isEmpty
-                                ? null
-                                : Text(
-                                    item.category,
-                                    style: const TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontSize: 12,
-                                      color: Color(0xFF8B95A1),
-                                    ),
-                                  ),
-                            trailing: const Icon(Icons.chevron_right, size: 18),
-                            onTap: () => Navigator.of(sheetContext).pop(item),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
 
   /// 사용 완료 연출 (프로토타입 화면 6).
   Future<void> _showRedeemDoneSheet() async {
@@ -1619,6 +1321,201 @@ class _CouponUsageNotice extends StatelessWidget {
             letterSpacing: -0.3,
             color: Color(0xFF8B95A1),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 쿠폰 번호 입력 다이얼로그.
+/// 컨트롤러를 다이얼로그 자신이 들고 있어야 한다. 호출부에서
+/// `await showDialog(...)` 뒤에 dispose하면 닫힘 애니메이션이 끝나기 전에
+/// 정리돼, 아직 살아 있는 TextField가 사라진 컨트롤러를 건드린다.
+class _CouponCodeDialog extends StatefulWidget {
+  const _CouponCodeDialog();
+
+  @override
+  State<_CouponCodeDialog> createState() => _CouponCodeDialogState();
+}
+
+class _CouponCodeDialogState extends State<_CouponCodeDialog> {
+  final TextEditingController _controller = TextEditingController();
+  String? error;
+  bool isLoading = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final code = _controller.text.trim().toUpperCase();
+    if (code.isEmpty) {
+      setState(() => error = '쿠폰 번호를 입력해 주세요.');
+      return;
+    }
+    setState(() {
+      error = null;
+      isLoading = true;
+    });
+    try {
+      final found = await CouponService.checkCoupon(couponCode: code);
+      if (!mounted) return;
+      if (found.status != CouponStatus.issued) {
+        setState(() {
+          error = found.status == CouponStatus.redeemed
+              ? '이미 사용한 쿠폰이에요.'
+              : '지금은 사용할 수 없는 쿠폰이에요.';
+          isLoading = false;
+        });
+        return;
+      }
+      Navigator.of(context).pop(found);
+    } on ApiAuthException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.message;
+        isLoading = false;
+      });
+    } on ApiHttpException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        error = e.statusCode == 404
+            ? '이 번호로 발급된 쿠폰을 찾지 못했어요. 번호를 다시 확인해 주세요.'
+            : '조회에 실패했어요 (HTTP ${e.statusCode})';
+        isLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        error = '네트워크 오류로 조회하지 못했어요. 잠시 후 다시 시도해 주세요.';
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+      ),
+      title: const Text(
+        '쿠폰 번호 입력',
+        style: TextStyle(
+          fontSize: 17,
+          fontFamily: 'Pretendard',
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF111827),
+        ),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '문자·이벤트로 받은 쿠폰 번호를 입력하면\n바로 사용 화면으로 넘어가요.',
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.5,
+              fontFamily: 'Pretendard',
+              color: Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 14),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            enabled: !isLoading,
+            textCapitalization: TextCapitalization.characters,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) {
+              if (!isLoading) _submit();
+            },
+            style: const TextStyle(
+              fontSize: 16,
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+              color: Color(0xFF111827),
+            ),
+            decoration: InputDecoration(
+              hintText: '예: WUL-8F2K9A',
+              hintStyle: const TextStyle(
+                fontWeight: FontWeight.w500,
+                letterSpacing: 0,
+                color: Color(0xFFB0B5BF),
+              ),
+              filled: true,
+              fillColor: const Color(0xFFF6F7F9),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 13,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+          if (error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              error!,
+              style: const TextStyle(
+                fontSize: 12,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w600,
+                color: Color(0xFFEF4444),
+              ),
+            ),
+          ],
+        ],
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      actions: [
+        TextButton(
+          onPressed: isLoading ? null : () => Navigator.of(context).pop(),
+          child: const Text(
+            '취소',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF6B7280),
+            ),
+          ),
+        ),
+        ElevatedButton(
+          onPressed: isLoading ? null : _submit,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: const Color(0xFF1C203C),
+            foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 12,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(13),
+            ),
+            textStyle: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w700,
+              fontSize: 15,
+            ),
+          ),
+          child: isLoading
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Text('확인'),
         ),
       ],
     );
