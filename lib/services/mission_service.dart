@@ -119,6 +119,10 @@ class MissionService {
       return MissionTrack.fromJson(_devSampleJson());
     }
     try {
+      if (!await ApiClient.hasAccessToken()) {
+        if (kDebugMode) return MissionTrack.fromJson(_devSampleJson());
+        return null;
+      }
       final http.Response response = await ApiClient.get(
         '/api/missions/track/',
       ).timeout(const Duration(seconds: 8));

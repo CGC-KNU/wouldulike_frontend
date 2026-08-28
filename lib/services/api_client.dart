@@ -74,6 +74,12 @@ class ApiClient {
     return ensureTokenValid();
   }
 
+  static Future<bool> hasAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('jwt_access_token');
+    return token != null && token.isNotEmpty;
+  }
+
   static Future<Map<String, String>> _headers({
     bool authenticated = true,
     Map<String, String>? extra,
@@ -92,21 +98,11 @@ class ApiClient {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_access_token');
-    if (token == null || token.isEmpty) {
-      throw const ApiAuthException('로그인이 필요해요. 다시 로그인해 주세요.');
-    }
-
-    // 토큰이 곧 만료될 것 같으면 미리 갱신 시도
     await _ensureTokenValid();
-
-    // 갱신 후 최신 토큰 가져오기
     final latestToken = prefs.getString('jwt_access_token');
-    if (latestToken == null || latestToken.isEmpty) {
-      throw const ApiAuthException('로그인이 필요해요. 다시 로그인해 주세요.');
+    if (latestToken != null && latestToken.isNotEmpty) {
+      headers[HttpHeaders.authorizationHeader] = 'Bearer $latestToken';
     }
-
-    headers[HttpHeaders.authorizationHeader] = 'Bearer $latestToken';
     return headers;
   }
 
@@ -249,6 +245,23 @@ class ApiClient {
 
     // 요청 전에 토큰이 유효한지 확인하고 필요시 갱신
     await _ensureTokenValid();
+
+    final prefs = await SharedPreferences.getInstance();
+    var accessToken = prefs.getString('jwt_access_token');
+    if (accessToken == null || accessToken.isEmpty) {
+      await _refreshAccessToken();
+      accessToken = prefs.getString('jwt_access_token');
+    }
+    // 비로그인 상태에서는 throw 하지 않는다. 디버거가 잡힌 예외에서 멈추는 것을 막는다.
+    if (accessToken == null || accessToken.isEmpty) {
+      return http.Response(
+        '{"detail":"로그인이 필요해요. 다시 로그인해 주세요."}',
+        401,
+        headers: const {
+          HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
+        },
+      );
+    }
 
     const maxRetries = 2;
     var retryCount = 0;

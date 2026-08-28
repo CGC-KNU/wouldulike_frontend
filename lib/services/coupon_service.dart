@@ -833,6 +833,9 @@ class CouponService {
     if (kDemoWallet) {
       return demoCouponsJson().map(UserCoupon.fromJson).toList();
     }
+    if (!await ApiClient.hasAccessToken()) {
+      return const <UserCoupon>[];
+    }
     final Map<String, dynamic>? params;
     if (status != null && status != CouponStatus.unknown) {
       params = {'status': status.apiValue};

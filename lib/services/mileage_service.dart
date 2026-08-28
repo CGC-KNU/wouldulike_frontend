@@ -268,6 +268,7 @@ class RaffleEnterResult {
 class MileageService {
   static Future<MileageSummary?> fetchSummary() async {
     try {
+      if (!await ApiClient.hasAccessToken()) return null;
       final response = await ApiClient.get('/api/mileage/summary/')
           .timeout(const Duration(seconds: 8));
       final decoded = _decode(response);
@@ -283,6 +284,7 @@ class MileageService {
   /// 지갑 진입 시 탭 배지 수치 일괄 조회. 미배포면 null이라 배지를 숨긴다.
   static Future<WalletOverview?> fetchWalletOverview() async {
     try {
+      if (!await ApiClient.hasAccessToken()) return null;
       final response = await ApiClient.get('/api/wallet/overview/')
           .timeout(const Duration(seconds: 8));
       final decoded = _decode(response);

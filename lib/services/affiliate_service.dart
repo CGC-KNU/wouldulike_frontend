@@ -268,6 +268,13 @@ class AffiliateService {
 
   static Future<ActiveAffiliateRestaurantsResponse> fetchActiveRestaurants()
   async {
+    if (!await ApiClient.hasAccessToken()) {
+      final restaurants = await fetchRestaurants();
+      return ActiveAffiliateRestaurantsResponse(
+        source: 'all',
+        restaurants: restaurants,
+      );
+    }
     final response = await ApiClient.get(
       '/restaurants/affiliate-restaurants/active/',
       authenticated: true,
