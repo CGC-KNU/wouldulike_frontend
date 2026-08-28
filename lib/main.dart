@@ -929,6 +929,23 @@ class MainScreenState extends State<MainScreen> {
     }
   }
 
+  Map<String, dynamic>? _tryDecodeJsonMap(String body) {
+    final trimmed = body.trimLeft();
+    if (trimmed.isEmpty || trimmed.startsWith('<')) {
+      return null;
+    }
+    try {
+      final decoded = json.decode(body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> _checkUUID() async {
     if (mounted && !_isLoading) {
       setState(() {
@@ -941,7 +958,10 @@ class MainScreenState extends State<MainScreen> {
       final checkResponse = await http.get(checkUrl);
 
       if (checkResponse.statusCode == 200) {
-        final data = json.decode(checkResponse.body);
+        final data = _tryDecodeJsonMap(checkResponse.body);
+        if (data == null) {
+          throw Exception('UUID 응답이 JSON이 아니에요.');
+        }
 
         if (data['uuid'] != null) {
           final prefs = await SharedPreferences.getInstance();
@@ -972,7 +992,10 @@ class MainScreenState extends State<MainScreen> {
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = _tryDecodeJsonMap(response.body);
+        if (data == null) {
+          throw Exception('UUID 응답이 JSON이 아니에요.');
+        }
 
         if (data['uuid'] != null) {
           final prefs = await SharedPreferences.getInstance();

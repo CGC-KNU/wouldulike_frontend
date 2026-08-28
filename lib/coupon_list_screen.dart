@@ -1,14 +1,11 @@
-import 'dart:convert';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
-import 'coupon/store_select_field.dart';
-import 'services/affiliate_service.dart' show AffiliateRestaurantSummary;
+import 'coupon/redeem_pin_dialog.dart';
 import 'package:new1/widgets/coupon_ticket_card.dart';
 
 import 'services/api_client.dart';
@@ -552,20 +549,26 @@ class _CouponListScreenState extends State<CouponListScreen> {
 
     setState(() => _processingCouponCode = coupon.code);
     try {
-      // 관리자 PIN 입력으로 즉시 사용 처리한다.
-      final success = await _showRedeemPinDialog(
+      final outcome = await showCouponRedeemPinDialog(
+        context: context,
         coupon: coupon,
         restaurantId: restaurantId,
         restaurantName: restaurantName,
         notes: coupon.benefit?.notesText,
       );
       if (!mounted) return;
-      if (success) {
+      if (outcome != null && outcome.redeemed) {
         setState(() {
           _coupons =
               _coupons.where((element) => element.code != coupon.code).toList();
         });
-        await _showRedeemDoneSheet();
+        final added = outcome.stampResult?.added ?? 0;
+        await _showRedeemDoneSheet(
+          stampCount: outcome.stampResult == null
+              ? null
+              : (added > 0 ? added : outcome.stampCount),
+          stampError: outcome.stampError,
+        );
       }
     } finally {
       if (mounted && _processingCouponCode == coupon.code) {
@@ -574,336 +577,17 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
-  /// 쿠폰 사용 PIN 다이얼로그 — 직원이 관리자 비밀번호를 입력하면 즉시 사용 처리.
-  Future<bool> _showRedeemPinDialog({
-    required UserCoupon coupon,
-    required int? restaurantId,
-    String? restaurantName,
-    String? notes,
-  }) async {
-    final controller = TextEditingController();
-    String? error;
-    bool isLoading = false;
-    final hasNotes = notes != null && notes.isNotEmpty;
-    // restaurantId가 없으면 전 매장 쿠폰이다. 다이얼로그 안에서 매장을 고르게 한다.
-    final needsStorePick = restaurantId == null;
-    AffiliateRestaurantSummary? pickedStore;
-    return (await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) {
-            return StatefulBuilder(builder: (context, setState) {
-              return Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Container(
-                  width: 358,
-                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                  decoration: ShapeDecoration(
-                    color: const Color(0xFFF2F2F2),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                  ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '쿠폰 사용',
-                          style: TextStyle(
-                            color: Color(0xFF39393E),
-                            fontSize: 19,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w800,
-                            height: 1.21,
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: 330,
-                          child: Text.rich(
-                            TextSpan(
-                              children: [
-                                const TextSpan(
-                                  text: '해당 쿠폰을 사용처리 하시겠습니까?\n관리자 비밀번호를 입력하시면',
-                                  style: TextStyle(
-                                    color: Color(0xFF39393E),
-                                    fontSize: 15,
-                                    fontFamily: 'Pretendard',
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.20,
-                                  ),
-                                ),
-                                const TextSpan(
-                                  text: ' 즉시 사용처리',
-                                  style: TextStyle(
-                                    color: Color(0xFF39393E),
-                                    fontSize: 15,
-                                    fontFamily: 'Pretendard',
-                                    fontWeight: FontWeight.w700,
-                                    height: 1.20,
-                                  ),
-                                ),
-                                const TextSpan(
-                                  text: ' 됩니다.',
-                                  style: TextStyle(
-                                    color: Color(0xFF39393E),
-                                    fontSize: 15,
-                                    fontFamily: 'Pretendard',
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.20,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (hasNotes) ...[
-                          const SizedBox(height: 16),
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: const Color(0xFFE5E5E5),
-                                width: 1,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  '사용 조건',
-                                  style: TextStyle(
-                                    color: Color(0xFF797979),
-                                    fontSize: 12,
-                                    fontFamily: 'Pretendard',
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 6),
-                                Text(
-                                  notes,
-                                  style: const TextStyle(
-                                    color: Color(0xFF39393E),
-                                    fontSize: 14,
-                                    fontFamily: 'Pretendard',
-                                    fontWeight: FontWeight.w500,
-                                    height: 1.4,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                        if (needsStorePick) ...[
-                          const SizedBox(height: 20),
-                          StoreSelectField(
-                            selected: pickedStore,
-                            enabled: !isLoading,
-                            onSelected: (store) => setState(() {
-                              pickedStore = store;
-                              error = null;
-                            }),
-                          ),
-                        ],
-                        const SizedBox(height: 20),
-                        const Text(
-                          '비밀번호',
-                          style: TextStyle(
-                            color: Color(0xFF797979),
-                            fontSize: 15,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: -0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Container(
-                          width: double.infinity,
-                          height: 40,
-                          decoration: ShapeDecoration(
-                            color: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              side: const BorderSide(
-                                width: 2,
-                                color: Color(0xFFD9D9D9),
-                              ),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
-                          alignment: Alignment.center,
-                          child: TextField(
-                            controller: controller,
-                            keyboardType: TextInputType.number,
-                            obscureText: true,
-                            maxLength: 4,
-                            enabled: !isLoading,
-                            style: const TextStyle(
-                              color: Color(0xFF39393E),
-                              fontSize: 16,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w600,
-                            ),
-                            decoration: InputDecoration(
-                              isCollapsed: true,
-                              border: InputBorder.none,
-                              counterText: '',
-                            ),
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                              LengthLimitingTextInputFormatter(4),
-                            ],
-                          ),
-                        ),
-                        if (error != null) ...[
-                          const SizedBox(height: 6),
-                          Text(
-                            error!,
-                            style: const TextStyle(
-                              color: Color(0xFFEF4444),
-                              fontSize: 12,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 20),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                onPressed: isLoading
-                                    ? null
-                                    : () =>
-                                        Navigator.of(dialogContext).pop(false),
-                                style: OutlinedButton.styleFrom(
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 12),
-                                  foregroundColor: const Color(0xFF39393E),
-                                  side: const BorderSide(
-                                      color: Color(0xFFBABAC0)),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  textStyle: const TextStyle(
-                                    fontFamily: 'Pretendard',
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 15,
-                                  ),
-                                ),
-                                child: const Text('취소'),
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: ElevatedButton(
-                                onPressed: isLoading
-                                    ? null
-                                    : () async {
-                                        // 전 매장 쿠폰은 매장을 고르기 전엔 PIN을 검증할 수 없다.
-                                        final targetId =
-                                            restaurantId ?? pickedStore?.id;
-                                        if (targetId == null) {
-                                          setState(() {
-                                            error = '사용할 매장을 먼저 선택해 주세요.';
-                                          });
-                                          return;
-                                        }
-                                        final value = controller.text.trim();
-                                        if (value.length != 4) {
-                                          setState(() {
-                                            error = 'PIN은 4자리 숫자여야 합니다.';
-                                          });
-                                          return;
-                                        }
-                                        setState(() {
-                                          error = null;
-                                          isLoading = true;
-                                        });
-                                        final result = await CouponService
-                                            .redeemCouponWithoutThrow(
-                                          couponCode: coupon.code,
-                                          restaurantId: targetId,
-                                          pin: value,
-                                        );
-                                        if (!dialogContext.mounted) return;
-                                        if (result.isSuccess) {
-                                          AnalyticsLogger.logEvent(
-                                            AnalyticsEvents.couponRedeemed,
-                                            parameters: {
-                                              AnalyticsEvents.paramCouponCode:
-                                                  coupon.code,
-                                              AnalyticsEvents.paramRestaurantId:
-                                                  targetId,
-                                              AnalyticsEvents
-                                                      .paramRestaurantName:
-                                                  pickedStore?.name ??
-                                                      restaurantName ??
-                                                      '',
-                                              AnalyticsEvents
-                                                      .paramCouponIssueSource:
-                                                  coupon.couponIssueSource,
-                                            },
-                                          );
-                                          Navigator.of(dialogContext).pop(true);
-                                        } else {
-                                          setState(() {
-                                            error = result.errorMessage ??
-                                                '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
-                                            isLoading = false;
-                                          });
-                                        }
-                                      },
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1C203C),
-                                  foregroundColor: Colors.white,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 13),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(15),
-                                  ),
-                                  textStyle: const TextStyle(
-                                    fontFamily: 'Pretendard',
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                    letterSpacing: -0.32,
-                                  ),
-                                ),
-                                child: isLoading
-                                    ? const SizedBox(
-                                        height: 20,
-                                        width: 20,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Text('사용하기'),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              );
-            });
-          },
-        )) ??
-        false;
-  }
-
-
   /// 사용 완료 연출 (프로토타입 화면 6).
-  Future<void> _showRedeemDoneSheet() async {
+  Future<void> _showRedeemDoneSheet({
+    int? stampCount,
+    String? stampError,
+  }) async {
     if (!mounted) return;
+    final subtitle = stampError != null
+        ? '쿠폰은 사용됐어요. 스탬프는 적립하지 못했어요.\n$stampError'
+        : stampCount != null
+            ? '스탬프 $stampCount개도 함께 적립했어요'
+            : '맛있게 드세요';
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -936,12 +620,14 @@ class _CouponListScreenState extends State<CouponListScreen> {
                 ),
               ),
               const SizedBox(height: 6),
-              const Text(
-                '맛있게 드세요',
-                style: TextStyle(
+              Text(
+                subtitle,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
+                  height: 1.4,
                   color: Color(0xFF4E5968),
                 ),
               ),
@@ -978,41 +664,6 @@ class _CouponListScreenState extends State<CouponListScreen> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  String? _extractDetailMessage(String body) {
-    if (body.isEmpty) return null;
-    try {
-      final decoded = jsonDecode(body);
-      if (decoded is Map<String, dynamic>) {
-        const keys = ['detail', 'message', 'error'];
-        for (final key in keys) {
-          final value = decoded[key];
-          if (value is String && value.isNotEmpty) {
-            return value;
-          }
-          if (value is List && value.isNotEmpty) {
-            final first = value.first;
-            if (first is String && first.isNotEmpty) {
-              return first;
-            }
-          }
-        }
-        for (final entry in decoded.entries) {
-          final value = entry.value;
-          if (value is String && value.isNotEmpty) {
-            return value;
-          }
-          if (value is List && value.isNotEmpty) {
-            final first = value.first;
-            if (first is String && first.isNotEmpty) {
-              return first;
-            }
-          }
-        }
-      }
-    } catch (_) {}
-    return null;
   }
 
   String? _formatExpiryDate(DateTime? expiresAt) {

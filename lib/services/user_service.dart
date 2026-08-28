@@ -42,7 +42,11 @@ class UserService {
 
     try {
       final response = await ApiClient.get('/api/users/me/');
-      final dynamic data = json.decode(utf8.decode(response.bodyBytes));
+      final text = utf8.decode(response.bodyBytes).trimLeft();
+      if (text.isEmpty || text.startsWith('<')) {
+        return null;
+      }
+      final dynamic data = json.decode(text);
       if (data is Map<String, dynamic>) {
         return data;
       }

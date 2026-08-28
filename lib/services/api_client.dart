@@ -490,8 +490,41 @@ class ApiClient {
 
   static void _throwIfFailed(http.Response response) {
     if (response.statusCode >= 400) {
-      throw ApiHttpException(response.statusCode, response.body);
+      throw ApiHttpException(
+        response.statusCode,
+        _summarizeErrorBody(response),
+      );
     }
+    // 게이트웨이/앱 장애 시 200으로 HTML 에러 페이지가 오는 경우가 있다.
+    // 그대로 두면 jsonDecode에서 FormatException이 나며 디버그에서 화면이 덮인다.
+    if (_isHtmlBody(response)) {
+      throw ApiHttpException(
+        response.statusCode,
+        '서버가 일시적으로 응답하지 않아요. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+  }
+
+  static bool _isHtmlBody(http.Response response) {
+    final contentType =
+        response.headers[HttpHeaders.contentTypeHeader]?.toLowerCase() ?? '';
+    if (contentType.contains('text/html')) {
+      return true;
+    }
+    final trimmed = response.body.trimLeft();
+    if (trimmed.isEmpty) {
+      return false;
+    }
+    final head = trimmed.length > 15 ? trimmed.substring(0, 15) : trimmed;
+    final lower = head.toLowerCase();
+    return lower.startsWith('<!doctype') || lower.startsWith('<html');
+  }
+
+  static String _summarizeErrorBody(http.Response response) {
+    if (_isHtmlBody(response)) {
+      return '서버가 일시적으로 응답하지 않아요. 잠시 후 다시 시도해 주세요.';
+    }
+    return response.body;
   }
 
   /// 토큰 검증 API를 호출하여 현재 ACCESS_TOKEN의 유효성을 확인합니다.

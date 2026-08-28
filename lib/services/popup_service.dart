@@ -65,7 +65,11 @@ class PopupService {
   static Future<List<HomePopupItem>> fetchVisiblePopups() async {
     final now = DateTime.now();
     final response = await ApiClient.get(listEndpoint, authenticated: false);
-    final dynamic decoded = jsonDecode(utf8.decode(response.bodyBytes));
+    final text = utf8.decode(response.bodyBytes).trimLeft();
+    if (text.isEmpty || text.startsWith('<')) {
+      return const <HomePopupItem>[];
+    }
+    final dynamic decoded = jsonDecode(text);
     final List<HomePopupItem> parsed = _parseItems(decoded);
 
     final visible = parsed

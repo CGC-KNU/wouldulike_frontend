@@ -633,6 +633,27 @@ class _MyScreenState extends State<MyScreen> {
     }
   }
 
+  static const _ownerDashboardUrl = 'https://wouldulike-dashboard.vercel.app/';
+
+  Future<void> _openOwnerDashboard() async {
+    final uri = Uri.parse(_ownerDashboardUrl);
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('사장님 대시보드를 열 수 없어요.')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('링크를 열 수 없어요: $e')),
+      );
+    }
+  }
+
   Future<void> _openProfileSetup() async {
     final profile = await UserService.fetchCurrentUserProfile();
     if (!mounted) return;
@@ -975,6 +996,12 @@ class _MyScreenState extends State<MyScreen> {
             leading: const Text('카카오톡 1대1 문의', style: _kItemTitleStyle),
             trailing: _buildChevron(),
             onTap: _openKakaoTalkInquiry,
+            indent: _kItemIndent,
+          ),
+          _buildMenuRow(
+            leading: const Text('식당 사장님 대시보드', style: _kItemTitleStyle),
+            trailing: _buildChevron(),
+            onTap: _openOwnerDashboard,
             indent: _kItemIndent,
           ),
           _buildMenuRow(

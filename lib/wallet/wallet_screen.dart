@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:new1/coupon_list_screen.dart';
@@ -36,14 +37,18 @@ class _WalletScreenState extends State<WalletScreen>
   }
 
   Future<void> _loadSummary() async {
-    // 배지 수치는 overview 한 번으로 받고, 미배포 구간에서는 summary로 폴백한다.
-    final overview = await MileageService.fetchWalletOverview();
-    final summary = overview?.mileage ?? await MileageService.fetchSummary();
-    if (!mounted) return;
-    setState(() {
-      _overview = overview;
-      _summary = summary;
-    });
+    try {
+      // 배지 수치는 overview 한 번으로 받고, 미배포 구간에서는 summary로 폴백한다.
+      final overview = await MileageService.fetchWalletOverview();
+      final summary = overview?.mileage ?? await MileageService.fetchSummary();
+      if (!mounted) return;
+      setState(() {
+        _overview = overview;
+        _summary = summary;
+      });
+    } catch (e) {
+      debugPrint('Failed to load wallet summary: $e');
+    }
   }
 
   Future<void> _openShop() async {

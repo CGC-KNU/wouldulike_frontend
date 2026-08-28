@@ -18,6 +18,7 @@ import 'services/demo_wallet.dart';
 import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
+import 'coupon/redeem_pin_dialog.dart';
 import 'widgets/coupon_issued_dialog.dart';
 import 'services/deep_link_service.dart';
 import 'widgets/restaurant_coupon_benefits_content.dart';
@@ -2865,180 +2866,7 @@ class _AffiliateRestaurantDetailSheetState
               (result.added > 0 ? result.added : request.count),
         },
       );
-      // result.status는 rewards, notes가 없으므로 재조회하여 전체 정보 갱신
-      try {
-        final fullStatus = await CouponService.fetchStampStatus(
-          restaurantId: widget.restaurant.id,
-        );
-        if (!mounted) return;
-        debugPrint(
-          '[stamp] add ok r=${widget.restaurant.id} '
-          'added=${result.added} '
-          'after=${result.status.current}/${result.status.target} '
-          'refetch=${fullStatus.current}/${fullStatus.target} '
-          'rewards=${fullStatus.rewards.length}',
-        );
-        setState(() {
-          _stampStatus = fullStatus;
-        });
-        widget.onStampStatusUpdated(fullStatus);
-      } catch (_) {
-        // 재조회 실패 시 current/target만 반영 (rewards/notes는 기존 유지)
-        final merged = StampStatus(
-          current: result.status.current,
-          target: result.status.target,
-          updatedAt: result.status.updatedAt,
-          rewardCoupons: result.status.rewardCoupons,
-          rewards: _stampStatus?.rewards ?? const [],
-          notes: _stampStatus?.notes,
-        );
-        if (!mounted) return;
-        setState(() {
-          _stampStatus = merged;
-        });
-        widget.onStampStatusUpdated(merged);
-      }
-      final addedCount = result.added > 0 ? result.added : request.count;
-      final after = _stampStatus;
-      final currentAfter = after?.current ?? result.status.current;
-      // 최대 스탬프에 도달하면 서버가 리워드를 주고 판을 0으로 되돌린다.
-      // 그대로 두면 "적립했는데 도장이 안 찍혔다"로 보이므로 따로 안내한다.
-      // 재조회로 확인된 판이 있을 때만 "라운드 리셋"으로 본다.
-      // 재조회가 0/0을 주면(비로그인·미운영) 리셋으로 오인해 "리워드 도착"이 뜬다.
-      final cycleReset =
-          (after?.boardLength ?? 0) > 0 && currentAfter < result.status.current;
-      await _showStampStampedDialog(
-        added: addedCount,
-        current: currentAfter,
-        total: after?.boardLength ?? result.status.target,
-        cycleReset: cycleReset,
-      );
-      final rewardCodesSet = <String>{
-        ...result.rewardCouponCodes.where((code) => code.isNotEmpty),
-      };
-      final reward = result.rewardCouponCode;
-      if (reward != null && reward.isNotEmpty) {
-        rewardCodesSet.add(reward);
-      }
-      final rewardCodes = rewardCodesSet.toList();
-
-      // reward_coupons 기반 coupon_issued 로깅 (백엔드 형식)
-      if (result.rewardCoupons.isNotEmpty) {
-        for (final r in result.rewardCoupons) {
-          if (r.couponCode.isEmpty) continue;
-          final params = <String, Object>{
-            AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
-            AnalyticsEvents.paramCouponIssueSource: 'STAMP_REWARD',
-            AnalyticsEvents.paramCouponCode: r.couponCode,
-          };
-          if (r.couponType.isNotEmpty) {
-            params[AnalyticsEvents.paramCouponTypeCode] = r.couponType;
-          }
-          AnalyticsLogger.logEvent(
-            AnalyticsEvents.couponIssued,
-            parameters: params,
-          );
-        }
-        await CouponService.markCouponsAsSeen(
-            result.rewardCoupons.map((r) => r.couponCode));
-      } else {
-        for (final code in rewardCodes) {
-          AnalyticsLogger.logEvent(
-            AnalyticsEvents.couponIssued,
-            parameters: {
-              AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
-              AnalyticsEvents.paramCouponIssueSource: 'STAMP_REWARD',
-              AnalyticsEvents.paramCouponCode: code,
-            },
-          );
-        }
-        await CouponService.markCouponsAsSeen(rewardCodes);
-      }
-
-      if (rewardCodes.isNotEmpty) {
-        AnalyticsLogger.logEvent(
-          AnalyticsEvents.stampRewardCouponIssued,
-          parameters: {
-            AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
-            AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
-            AnalyticsEvents.paramCouponCount: rewardCodes.length,
-            AnalyticsEvents.paramIssueSource: 'STAMP_REWARD',
-          },
-        );
-        // 새로 발급된 쿠폰의 benefit 정보를 서버에서 가져오기 위해
-        // 해당 식당의 쿠폰 목록을 다시 불러옵니다.
-        try {
-          final allCoupons = await CouponService.fetchMyCoupons(
-            status: CouponStatus.issued,
-          );
-          final restaurantCoupons = allCoupons
-              .where((coupon) => coupon.restaurantId == widget.restaurant.id)
-              .toList();
-
-          if (!mounted) return;
-
-          final existingCodes = _coupons.map((coupon) => coupon.code).toSet();
-          final newCoupons = restaurantCoupons
-              .where((coupon) => !existingCodes.contains(coupon.code))
-              .toList();
-
-          if (newCoupons.isNotEmpty) {
-            setState(() {
-              _coupons = List<UserCoupon>.from(_coupons)..addAll(newCoupons);
-              _sortCoupons();
-            });
-            widget
-                .onRewardCouponsIssued(newCoupons.map((c) => c.code).toList());
-          }
-
-          // 발급은 스낵바로 흘리지 않는다. 팝업 → 쿠폰함이 기본 동선.
-          if (newCoupons.isNotEmpty) {
-            await showCouponIssuedDialog(
-              context,
-              tag: '스탬프 리워드',
-              title: newCoupons.length == 1
-                  ? '리워드 쿠폰 1장'
-                  : '리워드 쿠폰 ${newCoupons.length}장',
-            );
-          } else {
-            _showSnack('보유 중인 리워드 쿠폰: ${rewardCodes.join(', ')}');
-          }
-        } catch (e) {
-          // 쿠폰 목록을 가져오는 데 실패한 경우, 기존 방식대로 처리
-          final existingCodes = _coupons.map((coupon) => coupon.code).toSet();
-          final newCodes = rewardCodes
-              .where((code) => !existingCodes.contains(code))
-              .toList();
-          if (newCodes.isNotEmpty) {
-            setState(() {
-              _coupons = List<UserCoupon>.from(_coupons)
-                ..addAll(
-                  newCodes.map(
-                    (code) => UserCoupon(
-                      code: code,
-                      status: CouponStatus.issued,
-                      restaurantId: widget.restaurant.id,
-                      issueKey: 'STAMP_REWARD:reward',
-                    ),
-                  ),
-                );
-              _sortCoupons();
-            });
-            widget.onRewardCouponsIssued(newCodes);
-          }
-          if (newCodes.isNotEmpty) {
-            await showCouponIssuedDialog(
-              context,
-              tag: '스탬프 리워드',
-              title: newCodes.length == 1
-                  ? '리워드 쿠폰 1장'
-                  : '리워드 쿠폰 ${newCodes.length}장',
-            );
-          } else {
-            _showSnack('보유 중인 리워드 쿠폰: ${rewardCodes.join(', ')}');
-          }
-        }
-      }
+      await _applyStampAddSuccess(result, request.count);
     } on ApiAuthException catch (e) {
       if (mounted) setState(() => _stampError = e.message);
     } on ApiHttpException catch (e) {
@@ -3085,23 +2913,213 @@ class _AffiliateRestaurantDetailSheetState
     return '${expiresAt.year}.${expiresAt.month.toString().padLeft(2, '0')}.${expiresAt.day.toString().padLeft(2, '0')}까지';
   }
 
+  Future<void> _applyStampAddSuccess(
+    StampActionResult result,
+    int requestedCount,
+  ) async {
+    // result.status는 rewards, notes가 없으므로 재조회하여 전체 정보 갱신
+    try {
+      final fullStatus = await CouponService.fetchStampStatus(
+        restaurantId: widget.restaurant.id,
+      );
+      if (!mounted) return;
+      debugPrint(
+        '[stamp] add ok r=${widget.restaurant.id} '
+        'added=${result.added} '
+        'after=${result.status.current}/${result.status.target} '
+        'refetch=${fullStatus.current}/${fullStatus.target} '
+        'rewards=${fullStatus.rewards.length}',
+      );
+      setState(() {
+        _stampStatus = fullStatus;
+      });
+      widget.onStampStatusUpdated(fullStatus);
+    } catch (_) {
+      // 재조회 실패 시 current/target만 반영 (rewards/notes는 기존 유지)
+      final merged = StampStatus(
+        current: result.status.current,
+        target: result.status.target,
+        updatedAt: result.status.updatedAt,
+        rewardCoupons: result.status.rewardCoupons,
+        rewards: _stampStatus?.rewards ?? const [],
+        notes: _stampStatus?.notes,
+      );
+      if (!mounted) return;
+      setState(() {
+        _stampStatus = merged;
+      });
+      widget.onStampStatusUpdated(merged);
+    }
+    final addedCount = result.added > 0 ? result.added : requestedCount;
+    final after = _stampStatus;
+    final currentAfter = after?.current ?? result.status.current;
+    // 최대 스탬프에 도달하면 서버가 리워드를 주고 판을 0으로 되돌린다.
+    // 그대로 두면 "적립했는데 도장이 안 찍혔다"로 보이므로 따로 안내한다.
+    // 재조회로 확인된 판이 있을 때만 "라운드 리셋"으로 본다.
+    // 재조회가 0/0을 주면(비로그인·미운영) 리셋으로 오인해 "리워드 도착"이 뜬다.
+    final cycleReset =
+        (after?.boardLength ?? 0) > 0 && currentAfter < result.status.current;
+    await _showStampStampedDialog(
+      added: addedCount,
+      current: currentAfter,
+      total: after?.boardLength ?? result.status.target,
+      cycleReset: cycleReset,
+    );
+    final rewardCodesSet = <String>{
+      ...result.rewardCouponCodes.where((code) => code.isNotEmpty),
+    };
+    final reward = result.rewardCouponCode;
+    if (reward != null && reward.isNotEmpty) {
+      rewardCodesSet.add(reward);
+    }
+    final rewardCodes = rewardCodesSet.toList();
+
+    // reward_coupons 기반 coupon_issued 로깅 (백엔드 형식)
+    if (result.rewardCoupons.isNotEmpty) {
+      for (final r in result.rewardCoupons) {
+        if (r.couponCode.isEmpty) continue;
+        final params = <String, Object>{
+          AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+          AnalyticsEvents.paramCouponIssueSource: 'STAMP_REWARD',
+          AnalyticsEvents.paramCouponCode: r.couponCode,
+        };
+        if (r.couponType.isNotEmpty) {
+          params[AnalyticsEvents.paramCouponTypeCode] = r.couponType;
+        }
+        AnalyticsLogger.logEvent(
+          AnalyticsEvents.couponIssued,
+          parameters: params,
+        );
+      }
+      await CouponService.markCouponsAsSeen(
+          result.rewardCoupons.map((r) => r.couponCode));
+    } else {
+      for (final code in rewardCodes) {
+        AnalyticsLogger.logEvent(
+          AnalyticsEvents.couponIssued,
+          parameters: {
+            AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+            AnalyticsEvents.paramCouponIssueSource: 'STAMP_REWARD',
+            AnalyticsEvents.paramCouponCode: code,
+          },
+        );
+      }
+      await CouponService.markCouponsAsSeen(rewardCodes);
+    }
+
+    if (rewardCodes.isNotEmpty) {
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.stampRewardCouponIssued,
+        parameters: {
+          AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+          AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+          AnalyticsEvents.paramCouponCount: rewardCodes.length,
+          AnalyticsEvents.paramIssueSource: 'STAMP_REWARD',
+        },
+      );
+      // 새로 발급된 쿠폰의 benefit 정보를 서버에서 가져오기 위해
+      // 해당 식당의 쿠폰 목록을 다시 불러옵니다.
+      try {
+        final allCoupons = await CouponService.fetchMyCoupons(
+          status: CouponStatus.issued,
+        );
+        final restaurantCoupons = allCoupons
+            .where((coupon) => coupon.restaurantId == widget.restaurant.id)
+            .toList();
+
+        if (!mounted) return;
+
+        final existingCodes = _coupons.map((coupon) => coupon.code).toSet();
+        final newCoupons = restaurantCoupons
+            .where((coupon) => !existingCodes.contains(coupon.code))
+            .toList();
+
+        if (newCoupons.isNotEmpty) {
+          setState(() {
+            _coupons = List<UserCoupon>.from(_coupons)..addAll(newCoupons);
+            _sortCoupons();
+          });
+          widget
+              .onRewardCouponsIssued(newCoupons.map((c) => c.code).toList());
+        }
+
+        // 발급은 스낵바로 흘리지 않는다. 팝업 → 쿠폰함이 기본 동선.
+        if (newCoupons.isNotEmpty) {
+          await showCouponIssuedDialog(
+            context,
+            tag: '스탬프 리워드',
+            title: newCoupons.length == 1
+                ? '리워드 쿠폰 1장'
+                : '리워드 쿠폰 ${newCoupons.length}장',
+          );
+        } else {
+          _showSnack('보유 중인 리워드 쿠폰: ${rewardCodes.join(', ')}');
+        }
+      } catch (e) {
+        // 쿠폰 목록을 가져오는 데 실패한 경우, 기존 방식대로 처리
+        final existingCodes = _coupons.map((coupon) => coupon.code).toSet();
+        final newCodes = rewardCodes
+            .where((code) => !existingCodes.contains(code))
+            .toList();
+        if (newCodes.isNotEmpty) {
+          setState(() {
+            _coupons = List<UserCoupon>.from(_coupons)
+              ..addAll(
+                newCodes.map(
+                  (code) => UserCoupon(
+                    code: code,
+                    status: CouponStatus.issued,
+                    restaurantId: widget.restaurant.id,
+                    issueKey: 'STAMP_REWARD:reward',
+                  ),
+                ),
+              );
+            _sortCoupons();
+          });
+          widget.onRewardCouponsIssued(newCodes);
+        }
+        if (newCodes.isNotEmpty) {
+          await showCouponIssuedDialog(
+            context,
+            tag: '스탬프 리워드',
+            title: newCodes.length == 1
+                ? '리워드 쿠폰 1장'
+                : '리워드 쿠폰 ${newCodes.length}장',
+          );
+        } else {
+          _showSnack('보유 중인 리워드 쿠폰: ${rewardCodes.join(', ')}');
+        }
+      }
+    }
+  }
+
   Future<void> _handleRedeem(UserCoupon coupon) async {
     setState(() => _processingCouponCode = coupon.code);
     try {
-      final success = await _showRedeemPinDialog(
+      final outcome = await showCouponRedeemPinDialog(
+        context: context,
         coupon: coupon,
         restaurantId: widget.restaurant.id,
         restaurantName: widget.restaurant.name,
         notes: coupon.benefit?.notesText,
       );
       if (!mounted) return;
-      if (success) {
+      if (outcome != null && outcome.redeemed) {
         setState(() {
           _coupons =
               _coupons.where((item) => item.code != coupon.code).toList();
         });
         widget.onCouponRedeemed(coupon.code);
-        _showSnack('쿠폰을 사용했어요.');
+        if (outcome.stampResult != null) {
+          await _applyStampAddSuccess(
+            outcome.stampResult!,
+            outcome.stampCount,
+          );
+        } else if (outcome.stampError != null) {
+          await _showStampFailedDialog(
+            '쿠폰은 사용됐어요. 스탬프는 적립하지 못했어요.\n${outcome.stampError}',
+          );
+        }
       }
     } finally {
       if (mounted) {
@@ -3110,287 +3128,6 @@ class _AffiliateRestaurantDetailSheetState
     }
   }
 
-  /// 쿠폰 사용 PIN 다이얼로그. redeem 실패 시 입력창 내 에러 표시
-  Future<bool> _showRedeemPinDialog({
-    required UserCoupon coupon,
-    required int restaurantId,
-    String? restaurantName,
-    String? notes,
-  }) async {
-    final controller = TextEditingController();
-    String? error;
-    bool isLoading = false;
-    final hasNotes = notes != null && notes.isNotEmpty;
-    return (await showDialog<bool>(
-          context: context,
-          barrierDismissible: false,
-          builder: (dialogContext) {
-            return StatefulBuilder(builder: (context, setState) {
-              return Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: 360,
-                    maxHeight: MediaQuery.of(dialogContext).size.height * 0.75,
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-                    decoration: ShapeDecoration(
-                      color: const Color(0xFFF2F2F2),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                    ),
-                    child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            '쿠폰 사용',
-                            style: TextStyle(
-                              color: Color(0xFF39393E),
-                              fontSize: 19,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w800,
-                              height: 1.21,
-                            ),
-                          ),
-                          const SizedBox(height: 22),
-                          Text.rich(
-                            const TextSpan(
-                              text:
-                                  '해당 쿠폰을 사용처리 하시겠습니까?\n\n관리자 비밀번호를 입력하시면\n\n즉시 사용처리 됩니다.',
-                              style: TextStyle(
-                                color: Color(0xFF39393E),
-                                fontSize: 15,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w500,
-                                height: 0.70,
-                              ),
-                            ),
-                          ),
-                          if (hasNotes) ...[
-                            const SizedBox(height: 16),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: const Color(0xFFE5E5E5),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    '사용 조건',
-                                    style: TextStyle(
-                                      color: Color(0xFF797979),
-                                      fontSize: 12,
-                                      fontFamily: 'Pretendard',
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    notes,
-                                    style: const TextStyle(
-                                      color: Color(0xFF39393E),
-                                      fontSize: 14,
-                                      fontFamily: 'Pretendard',
-                                      fontWeight: FontWeight.w500,
-                                      height: 1.4,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 26),
-                          const Text(
-                            'PIN 번호',
-                            style: TextStyle(
-                              color: Color(0xFF797979),
-                              fontSize: 15,
-                              fontFamily: 'Pretendard',
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.5,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Container(
-                            width: double.infinity,
-                            height: 40,
-                            decoration: ShapeDecoration(
-                              color: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                side: const BorderSide(
-                                  width: 2,
-                                  color: Color(0xFFD9D9D9),
-                                ),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            padding: const EdgeInsets.symmetric(horizontal: 12),
-                            alignment: Alignment.center,
-                            child: TextField(
-                              controller: controller,
-                              keyboardType: TextInputType.number,
-                              obscureText: true,
-                              maxLength: 4,
-                              enabled: !isLoading,
-                              style: const TextStyle(
-                                color: Color(0xFF39393E),
-                                fontSize: 16,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w600,
-                              ),
-                              decoration: InputDecoration(
-                                isCollapsed: true,
-                                border: InputBorder.none,
-                                counterText: '',
-                              ),
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                LengthLimitingTextInputFormatter(4),
-                              ],
-                            ),
-                          ),
-                          if (error != null) ...[
-                            const SizedBox(height: 6),
-                            Text(
-                              error!,
-                              style: const TextStyle(
-                                color: Color(0xFFEF4444),
-                                fontSize: 12,
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                          const SizedBox(height: 20),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton(
-                                  onPressed: isLoading
-                                      ? null
-                                      : () => Navigator.of(dialogContext)
-                                          .pop(false),
-                                  style: OutlinedButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 12),
-                                    foregroundColor: const Color(0xFF39393E),
-                                    side: const BorderSide(
-                                        color: Color(0xFFBABAC0)),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    textStyle: const TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 15,
-                                    ),
-                                  ),
-                                  child: const Text('취소'),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: ElevatedButton(
-                                  onPressed: isLoading
-                                      ? null
-                                      : () async {
-                                          final value = controller.text.trim();
-                                          if (value.length != 4) {
-                                            setState(() {
-                                              error = 'PIN은 4자리 숫자여야 합니다.';
-                                            });
-                                            return;
-                                          }
-                                          setState(() {
-                                            error = null;
-                                            isLoading = true;
-                                          });
-                                          final result = await CouponService
-                                              .redeemCouponWithoutThrow(
-                                            couponCode: coupon.code,
-                                            restaurantId: restaurantId,
-                                            pin: value,
-                                          );
-                                          if (!dialogContext.mounted) return;
-                                          if (result.isSuccess) {
-                                            AnalyticsLogger.logEvent(
-                                              AnalyticsEvents.couponRedeemed,
-                                              parameters: {
-                                                AnalyticsEvents.paramCouponCode:
-                                                    coupon.code,
-                                                AnalyticsEvents
-                                                        .paramRestaurantId:
-                                                    restaurantId,
-                                                AnalyticsEvents
-                                                        .paramRestaurantName:
-                                                    restaurantName ?? '',
-                                                AnalyticsEvents
-                                                        .paramCouponIssueSource:
-                                                    coupon.couponIssueSource,
-                                              },
-                                            );
-                                            Navigator.of(dialogContext)
-                                                .pop(true);
-                                          } else {
-                                            setState(() {
-                                              error = result.errorMessage ??
-                                                  '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
-                                              isLoading = false;
-                                            });
-                                          }
-                                        },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _Theme.deep,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                        vertical: 13),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(15),
-                                    ),
-                                    textStyle: const TextStyle(
-                                      fontFamily: 'Pretendard',
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 16,
-                                      letterSpacing: -0.32,
-                                    ),
-                                  ),
-                                  child: isLoading
-                                      ? const SizedBox(
-                                          height: 20,
-                                          width: 20,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Colors.white,
-                                          ),
-                                        )
-                                      : const Text('사용하기'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            });
-          },
-        )) ??
-        false;
-  }
 
   Future<_StampAddRequest?> _promptForStampAdd() async {
     final controller = TextEditingController();
