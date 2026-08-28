@@ -659,6 +659,8 @@ class ReferralAcceptResponse {
   const ReferralAcceptResponse({
     required this.ok,
     this.referralId,
+    this.codeKind,
+    this.eventKind,
     this.issuedCoupons = const [],
   });
 
@@ -684,6 +686,8 @@ class ReferralAcceptResponse {
     return ReferralAcceptResponse(
       ok: json['ok'] is bool ? json['ok'] as bool : true,
       referralId: _parseOptionalInt(json['referral_id']),
+      codeKind: _normalizeString(json['code_kind']),
+      eventKind: _normalizeString(json['event_kind']),
       issuedCoupons: parseIssuedCoupons(),
     );
   }
@@ -691,8 +695,69 @@ class ReferralAcceptResponse {
   final bool ok;
   final int? referralId;
 
-  /// 백엔드가 발급된 쿠폰 목록을 반환할 때
+  /// "event" = 학생회·기획 이벤트 코드, "referral" = 친구 초대 코드.
+  /// 종류 판단은 서버 응답만 따른다.
+  final String? codeKind;
+
+  /// code_kind가 event일 때만. "student_council" | "special"
+  final String? eventKind;
+
+  /// 이번 입력으로 나간 쿠폰 요약. 매장명·혜택 제목은 부족할 수 있음.
   final List<IssuedCouponInfo> issuedCoupons;
+
+  bool get isEvent => codeKind?.toLowerCase() == 'event';
+  bool get isReferral => codeKind?.toLowerCase() == 'referral';
+  bool get isStudentCouncil => eventKind?.toLowerCase() == 'student_council';
+  bool get isSpecialEvent => eventKind?.toLowerCase() == 'special';
+
+  List<String> get issuedCouponCodes =>
+      issuedCoupons.map((c) => c.code).where((c) => c.isNotEmpty).toList();
+}
+
+/// 공용 쿠폰 팝업 카피. 서버 code_kind / event_kind만 본다.
+({String tag, String title}) referralIssuedCopy(ReferralAcceptResponse result) {
+  if (result.isEvent && result.isStudentCouncil) {
+    return (tag: '학생회 쿠폰 발급', title: '학생회 쿠폰 발급');
+  }
+  if (result.isEvent) {
+    return (tag: '이벤트 쿠폰 발급', title: '이벤트 쿠폰 발급');
+  }
+  if (result.isReferral) {
+    return (tag: '친구 초대 쿠폰 발급', title: '친구 초대 쿠폰 발급');
+  }
+  return (tag: '쿠폰 발급', title: '쿠폰이 발급되었어요');
+}
+
+/// GET /api/coupons/invite/my/ 본문에서 공유용 코드를 읽는다.
+String? readInviteCode(Map<String, dynamic> json) {
+  for (final key in ['code', 'invite_code', 'coupon_code']) {
+    final value = json[key]?.toString().trim();
+    if (value != null && value.isNotEmpty) return value;
+  }
+  return null;
+}
+
+/// issued_coupons 코드와 맞추고, benefit 있는 카드 중 issued_at 최신을 고른다.
+UserCoupon? pickIssuedCouponCard(
+  List<UserCoupon> coupons, {
+  Iterable<String> issuedCodes = const [],
+}) {
+  final codes = issuedCodes
+      .map((c) => c.trim())
+      .where((c) => c.isNotEmpty)
+      .toSet();
+  var pool = coupons;
+  if (codes.isNotEmpty) {
+    final matched = coupons.where((c) => codes.contains(c.code)).toList();
+    if (matched.isNotEmpty) pool = matched;
+  }
+  final withBenefit = pool.where((c) => c.benefit != null).toList();
+  final ranked = withBenefit.isNotEmpty ? withBenefit : pool;
+  if (ranked.isEmpty) return null;
+  final sorted = [...ranked]..sort((a, b) =>
+      (b.issuedAt?.millisecondsSinceEpoch ?? 0)
+          .compareTo(a.issuedAt?.millisecondsSinceEpoch ?? 0));
+  return sorted.first;
 }
 
 /// issued_coupons 파싱·로깅. 로깅한 코드 집합 반환 (diff 중복 방지용)
@@ -1104,9 +1169,28 @@ class CouponService {
     );
     final decoded = _decodeResponseBody(response);
     if (decoded is Map<String, dynamic>) {
+      final logged = _logIssuedCouponsFromResponse(decoded);
+      await markCouponsAsSeen(logged);
       return ReferralAcceptResponse.fromJson(decoded);
     }
     return const ReferralAcceptResponse(ok: true);
+  }
+
+  /// 입력 성공 직후 지갑용 카드. ISSUED 목록을 새로 받아 benefit이 있는 최신을 고른다.
+  static Future<UserCoupon?> fetchIssuedCouponCard({
+    Iterable<String> issuedCodes = const [],
+  }) async {
+    try {
+      final issued = await fetchMyCoupons(status: CouponStatus.issued);
+      final picked = pickIssuedCouponCard(issued, issuedCodes: issuedCodes);
+      if (picked != null) return picked;
+    } catch (_) {}
+    try {
+      final all = await fetchMyCoupons();
+      return pickIssuedCouponCard(all, issuedCodes: issuedCodes);
+    } catch (_) {
+      return null;
+    }
   }
 
   /// POST /api/coupons/signup/complete/ - 회원가입 완료 시 쿠폰 발급

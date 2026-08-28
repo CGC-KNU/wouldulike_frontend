@@ -10,7 +10,6 @@ import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/profile_setup_screen.dart';
 import 'package:new1/favorite_restaurants_screen.dart';
 
-import 'coupon_list_screen.dart';
 import 'services/api_client.dart';
 import 'services/auth_service.dart';
 import 'services/coupon_service.dart';
@@ -437,9 +436,7 @@ class _MyScreenState extends State<MyScreen> {
     });
     try {
       final result = await CouponService.fetchInviteCode();
-      final code = result['code']?.toString() ??
-          result['invite_code']?.toString() ??
-          result['coupon_code']?.toString();
+      final code = readInviteCode(result);
       if (!mounted) {
         inviteCode = code;
         _isInviteLoading = false;
@@ -563,36 +560,13 @@ class _MyScreenState extends State<MyScreen> {
   }
 
   Future<void> _showReferralCodeSheet() async {
-    final result = await showModalBottomSheet<ReferralSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) => const ReferralCodeSheet(),
-    );
-    if (!mounted || result == null) {
-      return;
-    }
-
-    if (result.status == ReferralSheetStatus.success && result.openCoupons) {
-      _openCouponList();
-    }
+    await presentReferralCodeSheet(context);
   }
 
   void _promptLoginRequired() {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('카카오 로그인이 필요합니다.')),
-    );
-  }
-
-  void _openCouponList() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const CouponListScreen(source: 'my'),
-      ),
     );
   }
 
@@ -765,7 +739,7 @@ class _MyScreenState extends State<MyScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildMenuRow(
-          leading: const Text('초대 코드 입력하기', style: _kItemTitleStyle),
+          leading: const Text('코드 입력하기', style: _kItemTitleStyle),
           trailing: _buildChevron(),
           onTap: () {
             AnalyticsLogger.logEvent('referral_code_input_click');
@@ -1004,7 +978,7 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.4.5', style: _kItemTitleStyle),
+            leading: const Text('앱 버전: v2.5.0', style: _kItemTitleStyle),
             indent: _kItemIndent,
           ),
         ],

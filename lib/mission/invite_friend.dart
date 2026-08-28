@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import 'package:new1/coupon_list_screen.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/services/kakao_share_service.dart';
 import 'package:new1/widgets/referral_code_sheet.dart';
@@ -87,7 +86,7 @@ class InviteFriendBanner extends StatelessWidget {
 }
 
 /// ===== 친구 초대 화면 =====
-/// 내 초대 코드 · 친구 초대(카카오 공유) · 추천인 코드 입력 세 가지를 담는다.
+/// 내 초대 코드 · 친구 초대(카카오 공유) · 친구 초대/이벤트 코드 입력 세 가지를 담는다.
 class InviteFriendScreen extends StatefulWidget {
   const InviteFriendScreen({super.key, this.initialCode});
 
@@ -124,9 +123,7 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
     try {
       final result = await CouponService.fetchInviteCode();
       // 서버가 code / invite_code / coupon_code 중 하나로 내려준다.
-      final code = result['code']?.toString() ??
-          result['invite_code']?.toString() ??
-          result['coupon_code']?.toString();
+      final code = readInviteCode(result);
       if (!mounted) return;
       setState(() {
         _code = code;
@@ -164,24 +161,7 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
   }
 
   Future<void> _openReferralSheet() async {
-    final result = await showModalBottomSheet<ReferralSheetResult>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (_) => const ReferralCodeSheet(),
-    );
-    if (!mounted || result == null) return;
-    // 코드가 통과하면 쿠폰이 발급된다. 발급 흐름은 항상 쿠폰함으로 이어진다.
-    if (result.status == ReferralSheetStatus.success && result.openCoupons) {
-      await Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => const CouponListScreen(source: 'invite'),
-        ),
-      );
-    }
+    await presentReferralCodeSheet(context);
   }
 
   @override
@@ -220,7 +200,7 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            '내 코드를 공유하거나 친구에게 받은 코드를 입력하세요.',
+            '내 코드를 공유하거나, 받은 친구 초대·이벤트 코드를 입력하세요.',
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 13,
@@ -368,7 +348,7 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
     );
   }
 
-  /// 남의 추천인 코드를 입력하는 자리. 입력 UI는 마이페이지와 같은 시트를 쓴다.
+  /// 친구 초대·이벤트 코드를 같은 칸에 넣는다. 입력 UI는 마이페이지와 같은 시트를 쓴다.
   Widget _buildReferralCard() {
     return Material(
       color: Colors.white,
@@ -397,7 +377,7 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '추천인 코드 입력',
+                      '코드 입력',
                       style: TextStyle(
                         fontFamily: 'Pretendard',
                         fontSize: 14.5,
@@ -408,7 +388,7 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
                     ),
                     SizedBox(height: 3),
                     Text(
-                      '친구에게 받은 코드가 있다면 입력하세요',
+                      '친구 초대 또는 이벤트 코드를 입력하세요',
                       style: TextStyle(
                         fontFamily: 'Pretendard',
                         fontSize: 11.5,

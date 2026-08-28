@@ -16,6 +16,7 @@ Future<void> showCouponIssuedDialog(
   String tag = '쿠폰 발급',
   String description = '내 쿠폰함에 담겼어요',
   UserCoupon? coupon,
+  Iterable<String> issuedCodes = const [],
 }) {
   return showRewardBurst(
     context,
@@ -23,6 +24,7 @@ Future<void> showCouponIssuedDialog(
     title: title,
     description: description,
     coupon: coupon,
+    issuedCodes: issuedCodes,
     showWallet: true,
   );
 }
@@ -40,6 +42,7 @@ Future<void> showRewardBurst(
   String description = '내 쿠폰함에 담겼어요',
   String closeText = '닫기',
   UserCoupon? coupon,
+  Iterable<String> issuedCodes = const [],
   bool showWallet = false,
 }) {
   return showGeneralDialog<void>(
@@ -54,6 +57,7 @@ Future<void> showRewardBurst(
       description: description,
       closeText: closeText,
       coupon: coupon,
+      issuedCodes: issuedCodes,
       showWallet: showWallet,
     ),
   );
@@ -73,6 +77,7 @@ class _RewardBurst extends StatefulWidget {
     required this.description,
     required this.closeText,
     this.coupon,
+    this.issuedCodes = const [],
     this.showWallet = false,
   });
 
@@ -83,6 +88,9 @@ class _RewardBurst extends StatefulWidget {
 
   /// 발급된 실제 쿠폰. null이면 방금 발급된 쿠폰을 서버에서 찾아 그린다.
   final UserCoupon? coupon;
+
+  /// issued_coupons[].code. 목록에서 이 코드를 우선한다.
+  final Iterable<String> issuedCodes;
 
   /// '내 지갑 바로가기' 버튼 노출 여부.
   final bool showWallet;
@@ -131,13 +139,11 @@ class _RewardBurstState extends State<_RewardBurst>
   /// 가장 최근 발급 쿠폰. 실패하면 문구만으로 카드를 그린다.
   Future<void> _loadLatestCoupon() async {
     try {
-      final coupons =
-          await CouponService.fetchMyCoupons(status: CouponStatus.issued);
-      if (!mounted || coupons.isEmpty) return;
-      final sorted = [...coupons]..sort((a, b) =>
-          (b.issuedAt?.millisecondsSinceEpoch ?? 0)
-              .compareTo(a.issuedAt?.millisecondsSinceEpoch ?? 0));
-      setState(() => _fetched = sorted.first);
+      final coupon = await CouponService.fetchIssuedCouponCard(
+        issuedCodes: widget.issuedCodes,
+      );
+      if (!mounted || coupon == null) return;
+      setState(() => _fetched = coupon);
     } catch (_) {
       // 조회 실패해도 연출은 그대로 진행한다.
     }

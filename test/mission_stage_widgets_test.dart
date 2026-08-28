@@ -157,7 +157,7 @@ void main() {
     expect(tapped, isTrue);
   });
 
-  testWidgets('친구 초대 화면에 내 코드·초대·추천인 입력이 모두 있다', (tester) async {
+  testWidgets('친구 초대 화면에 내 코드·초대·코드 입력이 모두 있다', (tester) async {
     tester.view.physicalSize = const Size(320, 568);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -166,9 +166,14 @@ void main() {
 
     expect(find.text('MY INVITE CODE'), findsOneWidget);
     expect(find.text('친구에게 코드 보내기'), findsOneWidget);
-    expect(find.text('추천인 코드 입력'), findsOneWidget);
+    expect(find.text('코드 입력'), findsOneWidget);
     // 코드를 못 불러온 동안에는 공유 버튼이 잠겨 있어야 한다.
-    final share = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
+    final share = tester.widget<ButtonStyleButton>(
+      find.ancestor(
+        of: find.text('친구에게 코드 보내기'),
+        matching: find.bySubtype<ButtonStyleButton>(),
+      ),
+    );
     expect(share.onPressed, isNull);
   });
 }
