@@ -75,9 +75,16 @@ class ApiClient {
   }
 
   static Future<bool> hasAccessToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_access_token');
-    return token != null && token.isNotEmpty;
+    try {
+      // prefs 채널이 응답하지 않으면 호출한 화면이 로딩에서 빠져나오지 못한다.
+      // 토큰 검사는 부가 판단이므로 막히면 '없음'으로 보고 흐름을 계속한다.
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 2));
+      final token = prefs.getString('jwt_access_token');
+      return token != null && token.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<Map<String, String>> _headers({
