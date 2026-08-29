@@ -122,7 +122,7 @@ class MissionService {
     }
     try {
       if (!await ApiClient.hasAccessToken()) {
-        if (kDebugMode) return MissionTrack.fromJson(_devSampleJson());
+        if (kDebugMode) return MissionTrack.fromJson(await _devSampleJson());
         return null;
       }
       final http.Response response = await ApiClient.get(
