@@ -18,6 +18,7 @@ import 'services/demo_wallet.dart';
 import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
+import 'widgets/network_thumb.dart';
 import 'coupon/redeem_pin_dialog.dart';
 import 'widgets/coupon_issued_dialog.dart';
 import 'services/deep_link_service.dart';
@@ -1242,89 +1243,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
           backgroundColor: Colors.white,
           strokeWidth: 2,
           onRefresh: _load,
-          child: ListView(
+          child: CustomScrollView(
             controller: _scrollController,
             keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-            padding: const EdgeInsets.only(
-              top: 16,
-              // 마지막 식당 카드 한 블록 정도의 여백은 두어서
-              // 하단 바와 겹치지 않고 자연스럽게 보이도록 유지합니다.
-              bottom: 140,
-            ),
-            children: [
-              _buildRestaurantSearchBar(),
-              const SizedBox(height: 14),
-              _buildCategoryFilter(),
-              _buildFilterChips(),
-              if (_isLoading)
-                _buildSkeletonList()
-              else if (_filteredAffiliateRestaurants.isEmpty &&
-                  _filteredGeneralRestaurants.isEmpty)
-                _buildEmptyState()
-              else ...[
-                if (_requiresLogin) _buildLoginBanner(),
-                if (_filteredAffiliateRestaurants.isNotEmpty) ...[
-                  _buildSectionHeader(
-                    '내 혜택이 있는 곳',
-                    _filteredAffiliateRestaurants.length,
-                  ),
-                  ..._filteredAffiliateRestaurants.map(
-                    (restaurant) => Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-                      child: _buildAffiliateRestaurantCard(restaurant),
-                    ),
-                  ),
-                ],
-                if (_filteredGeneralRestaurants.isNotEmpty) ...[
-                  _buildSectionHeader(
-                    '그 외 근처 식당',
-                    _filteredGeneralRestaurants.length,
-                  ),
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                    clipBehavior: Clip.antiAlias,
-                    decoration: ShapeDecoration(
-                      color: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        side: const BorderSide(
-                          width: 1,
-                          color: Color(0xFFEDEFF3),
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: Column(
-                      children: [
-                        for (int i = 0;
-                            i < _filteredGeneralRestaurants.length;
-                            i++) ...[
-                          if (i > 0)
-                            const Divider(
-                              height: 1,
-                              thickness: 1,
-                              color: Color(0xFFEDEFF3),
-                            ),
-                          _buildGeneralRestaurantCard(
-                            _filteredGeneralRestaurants[i],
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (_isAppending)
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Center(
-                        child: SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      ),
-                    ),
-                ],
-              ],
-            ],
+            slivers: _buildRestaurantSlivers(),
           ),
         ),
       ),
@@ -1402,6 +1324,99 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   }
 
   /// 필터·정렬 칩 줄.
+
+  /// 식당 목록 슬리버.
+  ///
+  /// 예전에는 ListView(children: [...])로 카드를 한 번에 만들어서, 화면 밖 카드까지
+  /// 곧바로 이미지 요청을 냈다. 목록이 길수록 동시 요청이 늘어 초기 진입이 느려진다.
+  /// 카드 부분만 SliverList.builder로 바꿔 보이는 것부터 만든다.
+  List<Widget> _buildRestaurantSlivers() {
+    final affiliates = _filteredAffiliateRestaurants;
+    final generals = _filteredGeneralRestaurants;
+    final isEmpty = affiliates.isEmpty && generals.isEmpty;
+
+    return <Widget>[
+      SliverPadding(
+        padding: const EdgeInsets.only(top: 16),
+        sliver: SliverList(
+          delegate: SliverChildListDelegate.fixed([
+            _buildRestaurantSearchBar(),
+            const SizedBox(height: 14),
+            _buildCategoryFilter(),
+            _buildFilterChips(),
+            if (_isLoading)
+              _buildSkeletonList()
+            else if (isEmpty)
+              _buildEmptyState()
+            else ...[
+              if (_requiresLogin) _buildLoginBanner(),
+              if (affiliates.isNotEmpty)
+                _buildSectionHeader('내 혜택이 있는 곳', affiliates.length),
+            ],
+          ]),
+        ),
+      ),
+      if (!_isLoading && affiliates.isNotEmpty)
+        SliverList.builder(
+          itemCount: affiliates.length,
+          itemBuilder: (context, i) => Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+            child: _buildAffiliateRestaurantCard(affiliates[i]),
+          ),
+        ),
+      if (!_isLoading && generals.isNotEmpty) ...[
+        SliverToBoxAdapter(
+          child: _buildSectionHeader('그 외 근처 식당', generals.length),
+        ),
+        // 예전 둥근 카드 묶음을 유지하되, 테두리를 항목마다 그려 지연 빌드가 되게 한다.
+        SliverList.builder(
+          itemCount: generals.length,
+          itemBuilder: (context, i) =>
+              _buildGeneralGroupItem(generals[i], i, generals.length),
+        ),
+      ],
+      if (_isAppending)
+        const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 16),
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            ),
+          ),
+        ),
+      const SliverToBoxAdapter(child: SizedBox(height: 140)),
+    ];
+  }
+
+  /// 둥근 묶음 안의 한 줄. 첫 줄만 위 모서리, 마지막 줄만 아래 모서리를 둥글린다.
+  Widget _buildGeneralGroupItem(dynamic restaurant, int index, int total) {
+    const line = Color(0xFFEDEFF3);
+    final isFirst = index == 0;
+    final isLast = index == total - 1;
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          left: const BorderSide(color: line),
+          right: const BorderSide(color: line),
+          top: const BorderSide(color: line),
+          bottom: isLast ? const BorderSide(color: line) : BorderSide.none,
+        ),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(isFirst ? 16 : 0),
+          bottom: Radius.circular(isLast ? 16 : 0),
+        ),
+      ),
+      child: _buildGeneralRestaurantCard(restaurant),
+    );
+  }
+
   /// 거리(좌표)와 영업시간 필드가 API에 없어 "가까운 순 / 영업중"은 제외했습니다.
   Widget _buildFilterChips() {
     return SizedBox(
@@ -2210,40 +2225,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            Container(
-              color: const Color(0xFFF1F2F5),
-              child: _isValidNetworkImageUrl(thumbnailUrl)
-                  ? Image.network(
-                      thumbnailUrl!.trim(),
-                      fit: BoxFit.cover,
-                      loadingBuilder: (context, child, event) {
-                        if (event == null) return child;
-                        final expected = event.expectedTotalBytes;
-                        final loaded = event.cumulativeBytesLoaded;
-                        final progress = expected != null && expected > 0
-                            ? loaded / expected
-                            : null;
-                        return Center(
-                          child: CircularProgressIndicator(
-                            value: progress,
-                            strokeWidth: 2,
-                            valueColor: const AlwaysStoppedAnimation<Color>(
-                              Color(0xFF6366F1),
-                            ),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) => const Icon(
-                        Icons.storefront_rounded,
-                        size: 30,
-                        color: Color(0xFFAEB4C0),
-                      ),
-                    )
-                  : const Icon(
-                      Icons.storefront_rounded,
-                      size: 30,
-                      color: Color(0xFFAEB4C0),
-                    ),
+            NetworkThumb(
+              url: thumbnailUrl,
+              width: 86,
+              height: 86,
             ),
             Positioned(
               left: 6,
@@ -3074,8 +3059,7 @@ class _AffiliateRestaurantDetailSheetState
             _coupons = List<UserCoupon>.from(_coupons)..addAll(newCoupons);
             _sortCoupons();
           });
-          widget
-              .onRewardCouponsIssued(newCoupons.map((c) => c.code).toList());
+          widget.onRewardCouponsIssued(newCoupons.map((c) => c.code).toList());
         }
 
         // 발급은 스낵바로 흘리지 않는다. 팝업 → 쿠폰함이 기본 동선.
@@ -3093,9 +3077,8 @@ class _AffiliateRestaurantDetailSheetState
       } catch (e) {
         // 쿠폰 목록을 가져오는 데 실패한 경우, 기존 방식대로 처리
         final existingCodes = _coupons.map((coupon) => coupon.code).toSet();
-        final newCodes = rewardCodes
-            .where((code) => !existingCodes.contains(code))
-            .toList();
+        final newCodes =
+            rewardCodes.where((code) => !existingCodes.contains(code)).toList();
         if (newCodes.isNotEmpty) {
           setState(() {
             _coupons = List<UserCoupon>.from(_coupons)
@@ -3163,7 +3146,6 @@ class _AffiliateRestaurantDetailSheetState
       }
     }
   }
-
 
   Future<_StampAddRequest?> _promptForStampAdd() async {
     final controller = TextEditingController();
