@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../config/analytics_events.dart';
 import '../utils/analytics_logger.dart';
+import 'onboarding_prefs.dart';
 import 'onboarding_style.dart';
 import 'widgets/animated_reveal_text.dart';
 import '../widgets/coupon_ticket_card.dart';
@@ -48,16 +49,30 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
   int _step = 0;
   bool _finished = false;
 
+  /// 온보딩~첫 쿠폰 구간을 잇는 조인 키. 이 화면이 구간의 시작점이다.
+  String? _firstpickSessionId;
+
   @override
   void initState() {
     super.initState();
+    OnboardingPrefs.firstpickSessionId().then((id) {
+      if (mounted) setState(() => _firstpickSessionId = id);
+    });
     _logStepView();
   }
+
+  Map<String, Object?> get _sessionParams => {
+        if (_firstpickSessionId != null)
+          AnalyticsEvents.paramFirstpickSessionId: _firstpickSessionId,
+      };
 
   void _logStepView() {
     AnalyticsLogger.logEvent(
       AnalyticsEvents.onboardingIntroView,
-      parameters: {AnalyticsEvents.paramStep: _step + 1},
+      parameters: {
+        ..._sessionParams,
+        AnalyticsEvents.paramStep: _step + 1,
+      },
     );
   }
 
@@ -91,6 +106,7 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
     AnalyticsLogger.logEvent(
       AnalyticsEvents.onboardingIntroComplete,
       parameters: {
+        ..._sessionParams,
         AnalyticsEvents.paramSkipped: skipped,
         AnalyticsEvents.paramStep: _step + 1,
       },

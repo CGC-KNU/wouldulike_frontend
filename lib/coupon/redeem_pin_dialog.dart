@@ -36,7 +36,22 @@ Future<CouponRedeemOutcome?> showCouponRedeemPinDialog({
   String? restaurantName,
   String? notes,
   String? couponIssueSource,
+  String fromScreen = 'unknown',
 }) {
+  // 사용 화면 진입. 홈·쿠폰함·제휴 세 지점이 지금까지 구분되지 않아
+  // 어느 경로에서 쿠폰을 꺼내 쓰는지 알 수 없었다.
+  AnalyticsLogger.logEvent(
+    AnalyticsEvents.couponUseScreenView,
+    parameters: {
+      AnalyticsEvents.paramCouponCode: coupon.code,
+      if (restaurantId != null)
+        AnalyticsEvents.paramRestaurantId: restaurantId,
+      AnalyticsEvents.paramFromScreen: fromScreen,
+      AnalyticsEvents.paramCouponIssueSource:
+          couponIssueSource ?? coupon.couponIssueSource,
+      AnalyticsEvents.paramExpiryState: _expiryState(coupon),
+    },
+  );
   return showDialog<CouponRedeemOutcome>(
     context: context,
     barrierDismissible: false,
@@ -46,8 +61,22 @@ Future<CouponRedeemOutcome?> showCouponRedeemPinDialog({
       restaurantName: restaurantName,
       notes: notes,
       couponIssueSource: couponIssueSource,
+      fromScreen: fromScreen,
     ),
   );
+}
+
+/// 만료 임박 여부. 남은 기간이 짧을수록 사용 전환이 급해지므로
+/// 사용 화면 진입을 이 축으로 나눠 본다.
+String _expiryState(UserCoupon coupon) {
+  final exp = coupon.expiresAt;
+  if (exp == null) return 'unknown';
+  final now = DateTime.now();
+  final days = DateTime(exp.year, exp.month, exp.day)
+      .difference(DateTime(now.year, now.month, now.day))
+      .inDays;
+  if (days < 0) return 'expired';
+  return days <= 7 ? 'soon' : 'normal';
 }
 
 class _RedeemPinDialog extends StatefulWidget {
@@ -57,6 +86,7 @@ class _RedeemPinDialog extends StatefulWidget {
     this.restaurantName,
     this.notes,
     this.couponIssueSource,
+    this.fromScreen = 'unknown',
   });
 
   final UserCoupon coupon;
@@ -64,6 +94,7 @@ class _RedeemPinDialog extends StatefulWidget {
   final String? restaurantName;
   final String? notes;
   final String? couponIssueSource;
+  final String fromScreen;
 
   @override
   State<_RedeemPinDialog> createState() => _RedeemPinDialogState();
@@ -102,6 +133,17 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
       _isLoading = true;
     });
 
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.couponRedeemAttempt,
+      parameters: {
+        AnalyticsEvents.paramFromScreen: widget.fromScreen,
+        AnalyticsEvents.paramCouponCode: widget.coupon.code,
+        AnalyticsEvents.paramRestaurantId: targetId,
+        AnalyticsEvents.paramCouponIssueSource:
+            widget.couponIssueSource ?? widget.coupon.couponIssueSource,
+      },
+    );
+
     final redeem = await CouponService.redeemCouponWithoutThrow(
       couponCode: widget.coupon.code,
       restaurantId: targetId,
@@ -109,6 +151,15 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
     );
     if (!mounted) return;
     if (!redeem.isSuccess) {
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.couponRedeemFailed,
+        parameters: {
+          AnalyticsEvents.paramFromScreen: widget.fromScreen,
+          AnalyticsEvents.paramCouponCode: widget.coupon.code,
+          AnalyticsEvents.paramRestaurantId: targetId,
+          AnalyticsEvents.paramFailReason: redeem.failReason ?? 'unknown',
+        },
+      );
       setState(() {
         _error = redeem.errorMessage ?? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
         _isLoading = false;
@@ -119,6 +170,7 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
     AnalyticsLogger.logEvent(
       AnalyticsEvents.couponRedeemed,
       parameters: {
+        AnalyticsEvents.paramFromScreen: widget.fromScreen,
         AnalyticsEvents.paramCouponCode: widget.coupon.code,
         AnalyticsEvents.paramRestaurantId: targetId,
         AnalyticsEvents.paramRestaurantName:

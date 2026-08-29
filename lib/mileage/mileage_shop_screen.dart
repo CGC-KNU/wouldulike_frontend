@@ -4,6 +4,8 @@ import 'package:new1/mileage/my_raffle_entries_screen.dart';
 import 'package:new1/mileage/raffle_terms_screen.dart';
 import 'package:new1/mileage/raffle_winners_screen.dart';
 import 'package:new1/services/mileage_service.dart';
+import '../config/analytics_events.dart';
+import '../utils/analytics_logger.dart';
 import '../widgets/ticket_shell.dart';
 
 /// 마일리지 상점 (프로토타입 화면 11, 스펙 7.2).
@@ -38,6 +40,9 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   final Map<int, GlobalKey> _notchKeys = {};
   final Set<int> _enteredIds = {};
 
+  /// ticket_purchase_view는 목록 로드 뒤 1회만 보낸다 (새로고침마다 부풀지 않게).
+  bool _viewLogged = false;
+
   @override
   void initState() {
     super.initState();
@@ -59,6 +64,43 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
         ..addAll(_raffles.where((r) => r.entered).map((r) => r.id));
       _isLoading = false;
     });
+    _logShopView();
+  }
+
+  /// 응모 화면 진입. 잔액 대비 응모 가능 건수를 함께 실어, 마일리지가 모자라
+  /// 되돌아가는 이탈과 그냥 둘러보는 이탈을 구분할 수 있게 한다.
+  void _logShopView() {
+    if (_viewLogged) return;
+    _viewLogged = true;
+    final balance = _summary?.balance ?? 0;
+    final affordable = _raffles
+        .where((r) => !r.entered && r.costMileage <= balance)
+        .length;
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.ticketPurchaseView,
+      parameters: {
+        AnalyticsEvents.paramBalance: balance,
+        'affordable_raffles': affordable,
+        AnalyticsEvents.paramCount: _raffles.length,
+      },
+    );
+  }
+
+  /// 추첨 회차 식별자. 서버가 회차 개념을 내려주지 않아 마감일의 주차로
+  /// 파생한다 (같은 주 마감 건을 한 회차로 묶는다).
+  ///
+  /// 주의: ISO 8601 주차가 아니라 1월 1일 기준 단순 주차다. 서버가 회차를
+  /// 내려주기 시작하면 그 값으로 교체해야 하며, 그 전까지 BigQuery 집계는
+  /// 이 규칙과 동일하게 맞춰야 한다.
+  static String? _drawRound(DateTime? closesAt) {
+    if (closesAt == null) return null;
+    final d = DateTime.utc(closesAt.year, closesAt.month, closesAt.day);
+    final week = ((d.difference(DateTime.utc(d.year, 1, 1)).inDays +
+                DateTime.utc(d.year, 1, 1).weekday -
+                1) ~/
+            7) +
+        1;
+    return '${d.year}-W${week.toString().padLeft(2, '0')}';
   }
 
   /// 마감까지 남은 일수. 서버가 준 closes_at 기준으로만 계산한다.
@@ -151,6 +193,24 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
               .toList();
         }
       });
+      // 중복 응모(이미 응모함)는 마일리지 차감이 없으므로 구매로 세지 않는다.
+      if (result.ok) {
+        AnalyticsLogger.logEvent(
+          AnalyticsEvents.ticketPurchase,
+          parameters: {
+            AnalyticsEvents.paramRaffleId: raffle.id,
+            if (_drawRound(raffle.closesAt) != null)
+              AnalyticsEvents.paramDrawRound: _drawRound(raffle.closesAt),
+            AnalyticsEvents.paramPointsSpent: raffle.costMileage,
+            if (result.balanceAfter != null)
+              AnalyticsEvents.paramBalanceAfter: result.balanceAfter,
+            if (result.entriesCount != null)
+              AnalyticsEvents.paramEntriesCount: result.entriesCount,
+            AnalyticsEvents.paramFaceValue: raffle.prizeAmount,
+            AnalyticsEvents.paramEntryPoint: 'mileage_shop',
+          },
+        );
+      }
       _snack(result.ok ? '응모 완료! 당첨되면 쿠폰함으로 드려요.' : '이미 응모했어요.');
       return;
     }
@@ -158,12 +218,40 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
     // 잔액 부족은 다이얼로그 대신 스낵바로 안내 (스펙 7.2).
     if (result.code == 'INSUFFICIENT_MILEAGE') {
       final balance = result.balance;
+      _logPurchaseFailed(
+        raffle,
+        reason: 'insufficient_points',
+        balance: balance,
+      );
       _snack(balance != null
           ? '마일리지가 부족해요. (보유 ${_comma(balance)} M)'
           : '마일리지가 부족해요.');
       return;
     }
+    _logPurchaseFailed(raffle, reason: result.code ?? 'unknown');
     _snack(result.message ?? '응모하지 못했어요. 잠시 후 다시 시도해 주세요.');
+  }
+
+  /// 응모 실패. 성공 분기에서만 로깅하면 마일리지가 모자라 되돌아간 사용자가
+  /// 통째로 보이지 않으므로, 사유별로 반드시 함께 남긴다.
+  void _logPurchaseFailed(
+    Raffle raffle, {
+    required String reason,
+    int? balance,
+  }) {
+    final shortfall = balance != null ? raffle.costMileage - balance : null;
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.ticketPurchaseFailed,
+      parameters: {
+        AnalyticsEvents.paramRaffleId: raffle.id,
+        if (_drawRound(raffle.closesAt) != null)
+          AnalyticsEvents.paramDrawRound: _drawRound(raffle.closesAt),
+        AnalyticsEvents.paramFailReason: reason,
+        AnalyticsEvents.paramPointsSpent: raffle.costMileage,
+        if (balance != null) AnalyticsEvents.paramBalance: balance,
+        if (shortfall != null && shortfall > 0) 'shortfall_points': shortfall,
+      },
+    );
   }
 
   void _snack(String message) {

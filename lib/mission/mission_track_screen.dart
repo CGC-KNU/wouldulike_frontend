@@ -1,16 +1,24 @@
 import 'dart:async';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:flutter/material.dart';
 
 import 'package:new1/mission/invite_friend.dart';
 import 'package:new1/widgets/coupon_issued_dialog.dart';
 import 'package:new1/mission/welcome_missions.dart';
 import 'package:new1/services/mission_service.dart';
+import 'package:new1/config/analytics_events.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 /// 미션 화면. 미션은 환영 미션 하나뿐이고, 끝나면 친구 초대만 남는다.
 /// 마감 카운트다운은 기기 시간이 아닌 서버 시각 기준으로만 계산한다.
 class MissionTrackScreen extends StatefulWidget {
-  const MissionTrackScreen({super.key});
+  const MissionTrackScreen({super.key, this.entry = 'unknown'});
+
+  /// 진입 경로 (home_banner · wallet · deeplink). 미션 지속률의 분모를
+  /// 경로별로 나눠 보기 위해 호출부에서 넘긴다.
+  final String entry;
 
   @override
   State<MissionTrackScreen> createState() => _MissionTrackScreenState();
@@ -27,6 +35,17 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
 
   /// 서버 시각과 기기 시각의 차이. 카운트다운은 이 보정값을 적용해 계산한다.
   Duration _serverOffset = Duration.zero;
+
+  /// 진입 이벤트는 화면당 1회만 보낸다 (_load는 리워드 수령 후에도 다시 돈다).
+  bool _viewLogged = false;
+
+  /// 이미 mission_completed를 보낸 미션 코드.
+  ///
+  /// 달성은 미션당 1회뿐인 사건이라 화면을 다시 열 때마다 재발화하면 안 된다.
+  /// 화면 인스턴스가 아니라 기기 단위로 기억해야 단계별 달성률이 부풀지 않는다.
+  static const String _completedLoggedKey = 'mission_completed_logged_v1';
+  Set<String> _completedLogged = {};
+  bool _completedLoggedReady = false;
 
   @override
   void initState() {
@@ -54,6 +73,56 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
           ? serverTime.difference(DateTime.now())
           : Duration.zero;
     });
+    _logTrackView();
+    _logNewlyCompleted();
+  }
+
+  void _logTrackView() {
+    if (_viewLogged) return;
+    _viewLogged = true;
+    final missions = _track?.welcome?.missions ?? const <MissionItem>[];
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.missionTrackView,
+      parameters: {
+        AnalyticsEvents.paramEntry: widget.entry,
+        AnalyticsEvents.paramDoneCount: missions.where((m) => m.isDone).length,
+        AnalyticsEvents.paramTotalCount: missions.length,
+      },
+    );
+  }
+
+  /// 달성한 미션을 단계별로 남긴다.
+  ///
+  /// 수령(mission_reward_claim)과 반드시 분리해야 "깼는데 안 받아간 사용자"를
+  /// 찾을 수 있다. 서버 status가 진실이므로 조회 응답 기준으로만 센다.
+  Future<void> _logNewlyCompleted() async {
+    final missions = _track?.welcome?.missions ?? const <MissionItem>[];
+    if (missions.isEmpty) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    if (!_completedLoggedReady) {
+      _completedLogged =
+          (prefs.getStringList(_completedLoggedKey) ?? const <String>[]).toSet();
+      _completedLoggedReady = true;
+    }
+
+    var changed = false;
+    for (var i = 0; i < missions.length; i++) {
+      final m = missions[i];
+      if (!m.isDone || m.code.isEmpty) continue;
+      if (!_completedLogged.add(m.code)) continue;
+      changed = true;
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.missionCompleted,
+        parameters: {
+          AnalyticsEvents.paramMissionId: m.code,
+          AnalyticsEvents.paramStepIndex: i,
+        },
+      );
+    }
+    if (changed) {
+      await prefs.setStringList(_completedLoggedKey, _completedLogged.toList());
+    }
   }
 
   /// 환영 미션 완주 리워드 수령. 성공 응답 뒤에만 연출을 재생한다.
@@ -61,6 +130,21 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
     final welcome = _track?.welcome;
     if (welcome == null || _claimingCode != null) return;
     final code = welcome.reward?.code ?? 'WELCOME_ALL';
+
+    // 달성(mission_completed)과 분리해 남긴다. 두 이벤트의 UU 차이가
+    // "깼는데 안 받아간 사용자" — 리마인드 푸시의 타깃 모수다.
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.missionRewardClaim,
+      parameters: {
+        AnalyticsEvents.paramMissionId: code,
+        AnalyticsEvents.paramRewardType:
+            welcome.reward?.rewardText ?? 'random_coupon',
+        AnalyticsEvents.paramDoneCount:
+            welcome.missions.where((m) => m.isDone).length,
+        AnalyticsEvents.paramTotalCount: welcome.missions.length,
+      },
+    );
+
     setState(() => _claimingCode = code);
     final result = await MissionService.claim(code);
     if (!mounted) return;

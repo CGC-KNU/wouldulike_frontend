@@ -865,14 +865,36 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     _searchDebounce?.cancel();
     _searchDebounce = Timer(const Duration(milliseconds: 350), () {
       if (!mounted) return;
-      _load();
+      _load().then((_) => _logSearchSubmit(value));
     });
   }
 
   void _handleSearchSubmitted(String value) {
     _searchDebounce?.cancel();
     setState(() => _searchQuery = value);
-    _load();
+    _load().then((_) => _logSearchSubmit(value));
+  }
+
+  /// 확정된 검색어를 결과 수와 함께 남긴다.
+  ///
+  /// 결과 0건인 검색어 목록이 곧 "학생들이 찾는데 우리에게 없는 매장" —
+  /// 제휴 확장의 근거가 된다. 자유 입력이라 앞뒤 공백을 떼고 40자로 자른다.
+  void _logSearchSubmit(String rawKeyword) {
+    if (!mounted) return;
+    final keyword = rawKeyword.trim();
+    if (keyword.isEmpty) return;
+    final affiliateCount = _filteredAffiliateRestaurants.length;
+    final resultCount = affiliateCount + _filteredGeneralRestaurants.length;
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantSearchSubmit,
+      parameters: {
+        AnalyticsEvents.paramKeyword:
+            keyword.length > 40 ? keyword.substring(0, 40) : keyword,
+        AnalyticsEvents.paramResultCount: resultCount,
+        AnalyticsEvents.paramHasResult: resultCount > 0,
+        'affiliate_count': affiliateCount,
+      },
+    );
   }
 
   void _handleScroll() {
@@ -2840,6 +2862,19 @@ class _AffiliateRestaurantDetailSheetState
     if (!mounted) return;
     if (!addResult.isSuccess) {
       final failureMessage = addResult.errorMessage ?? '요청이 실패했어요.';
+      // 성공(stamp_issued)만 남기면 일일 한도·미방문으로 막힌 시도가 보이지 않는다.
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.stampAddFailed,
+        parameters: {
+          AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+          AnalyticsEvents.paramRestaurantName: widget.restaurant.name,
+          AnalyticsEvents.paramFailReason: addResult.errorCode ??
+              (addResult.statusCode == 429
+                  ? 'daily_limit'
+                  : 'http_${addResult.statusCode ?? 0}'),
+          AnalyticsEvents.paramCount: request.count,
+        },
+      );
       setState(() {
         _isStampProcessing = false;
         _stampError = failureMessage;
@@ -3102,6 +3137,7 @@ class _AffiliateRestaurantDetailSheetState
         restaurantId: widget.restaurant.id,
         restaurantName: widget.restaurant.name,
         notes: coupon.benefit?.notesText,
+        fromScreen: 'detail',
       );
       if (!mounted) return;
       if (outcome != null && outcome.redeemed) {

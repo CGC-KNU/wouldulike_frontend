@@ -44,6 +44,12 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     with SingleTickerProviderStateMixin {
   _RewardStep _step = _RewardStep.pick;
 
+  /// 온보딩~첫 쿠폰 구간을 잇는 조인 키. 이 화면의 모든 이벤트에 공통으로 싣는다.
+  String? _firstpickSessionId;
+
+  /// 룰렛 시도 횟수 (1부터). 재시도 연출이 생겨도 그대로 쓸 수 있게 센다.
+  int _spinAttempt = 0;
+
   // 식당 선택
   bool _isLoadingRestaurants = true;
   bool _restaurantLoadFailed = false;
@@ -72,6 +78,9 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   @override
   void initState() {
     super.initState();
+    OnboardingPrefs.firstpickSessionId().then((id) {
+      if (mounted) setState(() => _firstpickSessionId = id);
+    });
     _spinController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3400),
@@ -154,6 +163,12 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     _beginSpin(name: name, id: id, logPick: false);
   }
 
+  /// 온보딩 이벤트 공통 파라미터. 세션 키가 아직 로드되지 않았으면 생략한다.
+  Map<String, Object?> get _sessionParams => {
+        if (_firstpickSessionId != null)
+          AnalyticsEvents.paramFirstpickSessionId: _firstpickSessionId,
+      };
+
   void _startSpin() {
     final selected = _visibleRestaurants[_selectedIndex!];
     _beginSpin(name: selected.name, id: selected.id, logPick: true);
@@ -168,6 +183,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
       AnalyticsLogger.logEvent(
         AnalyticsEvents.onboardingRestaurantPick,
         parameters: {
+          ..._sessionParams,
           AnalyticsEvents.paramRestaurantId: id ?? 0,
           AnalyticsEvents.paramRestaurantName: name,
         },
@@ -182,6 +198,16 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
         2 * math.pi * 4 + RouletteWheel.rotationForIndex(0, labels.length);
     _spinAnimation = Tween<double>(begin: 0, end: targetRotation).animate(
       CurvedAnimation(parent: _spinController, curve: Curves.easeOutQuart),
+    );
+
+    _spinAttempt += 1;
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.rouletteSpin,
+      parameters: {
+        ..._sessionParams,
+        AnalyticsEvents.paramRestaurantId: id ?? 0,
+        AnalyticsEvents.paramAttemptNo: _spinAttempt,
+      },
     );
 
     setState(() {
@@ -250,6 +276,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     AnalyticsLogger.logEvent(
       AnalyticsEvents.onboardingCouponReveal,
       parameters: {
+        ..._sessionParams,
         AnalyticsEvents.paramCouponCount: _revealedCoupon != null ? 1 : 0,
         if (_revealedCoupon != null)
           AnalyticsEvents.paramCouponCode: _revealedCoupon!.code,
@@ -262,8 +289,26 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   // ---------- 완료 ----------
 
   void _goGuide() {
-    AnalyticsLogger.logEvent(AnalyticsEvents.onboardingGuideView);
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.onboardingGuideView,
+      parameters: _sessionParams,
+    );
     setState(() => _step = _RewardStep.guide);
+  }
+
+  /// 로그인 전 당첨 화면에서 "카카오 로그인하고 쿠폰 받기" 탭.
+  /// 로그인 게이트로 넘어가기 직전 지점이라, 여기서 이탈하면 첫 쿠폰을 못 받는다.
+  void _claimViaLogin() {
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.rouletteClaimClick,
+      parameters: {
+        ..._sessionParams,
+        AnalyticsEvents.paramAuthState: 'guest',
+        if (_revealedCoupon != null)
+          AnalyticsEvents.paramCouponCode: _revealedCoupon!.code,
+      },
+    );
+    _finish(skipped: false);
   }
 
   Future<void> _finish({required bool skipped}) async {
@@ -271,7 +316,10 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     _finished = true;
     AnalyticsLogger.logEvent(
       AnalyticsEvents.onboardingComplete,
-      parameters: {AnalyticsEvents.paramSkipped: skipped},
+      parameters: {
+        ..._sessionParams,
+        AnalyticsEvents.paramSkipped: skipped,
+      },
     );
     await OnboardingPrefs.markRewardDone();
     if (!mounted) return;
@@ -480,8 +528,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
           widget.preLogin
               ? ElevatedButton(
                   style: OnboardingStyle.kakaoButton(),
-                  onPressed:
-                      _revealReady ? () => _finish(skipped: false) : null,
+                  onPressed: _revealReady ? _claimViaLogin : null,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [

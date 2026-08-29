@@ -3,6 +3,9 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../config/analytics_events.dart';
+import '../utils/analytics_logger.dart';
+
 const _ink = Color(0xFF191F28);
 const _sub = Color(0xFF4E5968);
 const _faint = Color(0xFF8B95A1);
@@ -28,7 +31,20 @@ Future<RaffleResultAction> showRaffleResultDialog(
   required bool won,
   required int prizeAmount,
   required String title,
+  int? raffleId,
+  String? drawRound,
 }) async {
+  AnalyticsLogger.logEvent(
+    AnalyticsEvents.drawResultView,
+    parameters: {
+      if (raffleId != null) AnalyticsEvents.paramRaffleId: raffleId,
+      if (drawRound != null) AnalyticsEvents.paramDrawRound: drawRound,
+      AnalyticsEvents.paramIsWinner: won,
+      AnalyticsEvents.paramPrizeType: won ? 'voucher' : 'none',
+      AnalyticsEvents.paramFaceValue: prizeAmount,
+    },
+  );
+
   OverlayEntry? fireworks;
   if (won) {
     HapticFeedback.heavyImpact();

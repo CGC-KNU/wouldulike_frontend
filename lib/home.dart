@@ -889,9 +889,12 @@ class _HomeContentState extends State<HomeContent> {
         ? item.title!.trim()
         : _defaultPromotionTitle;
     AnalyticsLogger.logEvent(
-      'home_banner_click',
+      AnalyticsEvents.homeBannerClick,
       parameters: {
-        'banner_index': index,
+        // 미션·기획전·프로모 배너가 한 이벤트로 뭉쳐 있어 종류별 CTR을
+        // 나눌 수 없었다. banner_type으로 분해한다.
+        AnalyticsEvents.paramBannerType: 'promo',
+        AnalyticsEvents.paramBannerIndex: index,
         'banner_title': title,
         'banner_url': url,
         'banner_source': hasRemoteData ? 'remote' : 'fallback',
@@ -972,6 +975,7 @@ class _HomeContentState extends State<HomeContent> {
         restaurantName: coupon.benefit?.restaurantNameText,
         notes: checkedCoupon.benefit?.notesText,
         couponIssueSource: getCouponIssuanceSource(coupon.issueKey),
+        fromScreen: 'home',
       );
       if (!mounted) return;
       if (outcome != null && outcome.redeemed) {

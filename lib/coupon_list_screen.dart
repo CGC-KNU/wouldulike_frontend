@@ -555,6 +555,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
         restaurantId: restaurantId,
         restaurantName: restaurantName,
         notes: coupon.benefit?.notesText,
+        fromScreen: 'wallet',
       );
       if (!mounted) return;
       if (outcome != null && outcome.redeemed) {

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/profile_setup_screen.dart';
 import 'package:new1/favorite_restaurants_screen.dart';
@@ -579,6 +580,17 @@ class _MyScreenState extends State<MyScreen> {
   }
 
   Future<void> _openNotificationSettings() async {
+    // 알림 옵트인율은 구매 유도 알림 효과의 상한이라 P0로 남긴다.
+    // 다만 이 화면은 OS 설정으로 위임만 하므로 앱이 on/off 결과를 알 수 없다.
+    // enabled를 채우려면 복귀 시점에 FirebaseMessaging의 권한 상태를 다시
+    // 읽어 보강해야 한다 (후속 작업).
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.notificationSettingToggle,
+      parameters: {
+        AnalyticsEvents.paramChannel: 'event_promo',
+        AnalyticsEvents.paramAction: 'open_os_settings',
+      },
+    );
     try {
       await AppSettings.openAppSettings(
         type: AppSettingsType.notification,

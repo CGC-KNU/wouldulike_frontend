@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 /// 온보딩(튜토리얼) 진행 상태 플래그.
 ///
@@ -13,6 +14,7 @@ class OnboardingPrefs {
       'onboarding_picked_restaurant_id';
   static const String _pickedRestaurantNameKey =
       'onboarding_picked_restaurant_name';
+  static const String _firstpickSessionIdKey = 'onboarding_firstpick_session_id';
 
   /// 로그인 전 인삿말 컷을 이미 봤는지
   static Future<bool> isIntroSeen() async {
@@ -50,6 +52,21 @@ class OnboardingPrefs {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_rewardDoneKey, true);
     await prefs.setBool(_rewardPendingKey, false);
+  }
+
+  /// 온보딩~첫 쿠폰 구간을 잇는 세션 키.
+  ///
+  /// 로그인 전 룰렛 → 카카오 인증 → 가입 직후 보상 플로우가 서로 다른 화면·세션에
+  /// 걸쳐 있어, 단계별 이탈률을 사용자·시각 근사로 추정하면 부정확해진다.
+  /// 온보딩 진입 시 1회 생성해 관련 이벤트 전부에 공통으로 실어 보낸다.
+  /// (매장 상세의 detail_session_id와 같은 역할)
+  static Future<String> firstpickSessionId() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_firstpickSessionIdKey);
+    if (saved != null && saved.isNotEmpty) return saved;
+    final created = const Uuid().v4();
+    await prefs.setString(_firstpickSessionIdKey, created);
+    return created;
   }
 
   /// 온보딩에서 고른 식당 — 추후 홈 개인화/식당별 쿠폰 발급 연동용

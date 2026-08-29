@@ -423,6 +423,19 @@ class _StaffConfirmSheetState extends State<_StaffConfirmSheet> {
       _error = null;
       _loading = true;
     });
+
+    // 시도를 먼저 남긴다. 성공 분기에서만 로깅하면 PIN 오류·만료·중복 사용이
+    // 통째로 사라져 "쓰려다 못 쓴" 사용자가 보이지 않는다.
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.couponRedeemAttempt,
+      parameters: {
+        AnalyticsEvents.paramCouponCode: widget.coupon.code,
+        AnalyticsEvents.paramRestaurantId: widget.restaurantId,
+        AnalyticsEvents.paramCouponIssueSource:
+            widget.coupon.couponIssueSource,
+      },
+    );
+
     final result = await CouponService.redeemCouponWithoutThrow(
       couponCode: widget.coupon.code,
       restaurantId: widget.restaurantId,
@@ -443,6 +456,14 @@ class _StaffConfirmSheetState extends State<_StaffConfirmSheet> {
       );
       Navigator.of(context).pop(true);
     } else {
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.couponRedeemFailed,
+        parameters: {
+          AnalyticsEvents.paramCouponCode: widget.coupon.code,
+          AnalyticsEvents.paramRestaurantId: widget.restaurantId,
+          AnalyticsEvents.paramFailReason: result.failReason ?? 'unknown',
+        },
+      );
       setState(() {
         _error = result.errorMessage ?? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
         _loading = false;

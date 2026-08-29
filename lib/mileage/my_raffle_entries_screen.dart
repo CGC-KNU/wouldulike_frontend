@@ -53,6 +53,7 @@ class _MyRaffleEntriesScreenState extends State<MyRaffleEntriesScreen> {
       won: entry.won,
       prizeAmount: entry.prizeAmount,
       title: entry.title,
+      raffleId: entry.raffleId,
     );
     if (!mounted) return;
 

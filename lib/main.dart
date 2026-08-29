@@ -890,12 +890,19 @@ class MainScreenState extends State<MainScreen> {
   }
 
   void _handleNotificationOpen(RemoteMessage message) {
+    // campaign은 구매 유도 알림의 효과를 측정할 유일한 키다. 서버가 payload에
+    // 실어 보내는 값을 그대로 옮겨, 마감 임박·추첨 결과·미션 리마인드를 구분한다.
+    final data = message.data;
     AnalyticsLogger.logEvent(
-      'notification_open',
+      AnalyticsEvents.notificationOpen,
       parameters: {
         'message_id': message.messageId ?? '',
         'from': message.from ?? '',
-        'has_data': message.data.isNotEmpty,
+        'has_data': data.isNotEmpty,
+        AnalyticsEvents.paramCampaign:
+            data['campaign']?.toString() ?? 'unknown',
+        if (data['draw_round'] != null)
+          AnalyticsEvents.paramDrawRound: data['draw_round'].toString(),
       },
     );
   }

@@ -608,16 +608,28 @@ class CouponRedeemResult {
 
 /// 쿠폰 사용 시도 결과 (throw 없이 반환)
 class CouponRedeemAttemptResult {
-  const CouponRedeemAttemptResult._({this.result, this.errorMessage});
+  const CouponRedeemAttemptResult._({
+    this.result,
+    this.errorMessage,
+    this.failReason,
+  });
 
   factory CouponRedeemAttemptResult.success(CouponRedeemResult r) =>
       CouponRedeemAttemptResult._(result: r);
 
-  factory CouponRedeemAttemptResult.failure(String msg) =>
-      CouponRedeemAttemptResult._(errorMessage: msg);
+  factory CouponRedeemAttemptResult.failure(String msg, {String? failReason}) =>
+      CouponRedeemAttemptResult._(
+        errorMessage: msg,
+        failReason: failReason,
+      );
 
   final CouponRedeemResult? result;
   final String? errorMessage;
+
+  /// 실패 사유의 안정적인 분류값 (invalid_pin · expired · network 등).
+  /// errorMessage는 사용자에게 보여줄 한국어 문구라 집계 키로 쓰면 문구가
+  /// 바뀔 때마다 지표가 끊긴다.
+  final String? failReason;
 
   bool get isSuccess => result != null;
 }
@@ -1122,7 +1134,10 @@ class CouponService {
             (response.statusCode == 400 || response.statusCode == 401
                 ? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.'
                 : '요청이 실패했어요 (HTTP ${response.statusCode})');
-        return CouponRedeemAttemptResult.failure(msg);
+        return CouponRedeemAttemptResult.failure(
+          msg,
+          failReason: _redeemFailReason(response.statusCode, response.body),
+        );
       }
       final decoded = _decodeResponseBody(response);
       if (decoded is Map<String, dynamic>) {
@@ -1132,12 +1147,33 @@ class CouponService {
       return CouponRedeemAttemptResult.success(
           CouponRedeemResult(ok: true, couponCode: couponCode));
     } on ApiAuthException catch (e) {
-      return CouponRedeemAttemptResult.failure(e.message);
+      return CouponRedeemAttemptResult.failure(e.message, failReason: 'auth');
     } on ApiNetworkException catch (e) {
-      return CouponRedeemAttemptResult.failure('네트워크 오류: ${e.cause}');
+      return CouponRedeemAttemptResult.failure(
+        '네트워크 오류: ${e.cause}',
+        failReason: 'network',
+      );
     } catch (e) {
-      return CouponRedeemAttemptResult.failure(e.toString());
+      return CouponRedeemAttemptResult.failure(
+        e.toString(),
+        failReason: 'unknown',
+      );
     }
+  }
+
+  /// 사용 실패 사유 분류. 매장 마찰(만료·중복 사용·PIN 오류)을 구분해야
+  /// 시도 대비 차감 성공률이 낮은 매장의 원인을 알 수 있다.
+  static String _redeemFailReason(int statusCode, String body) {
+    final lower = body.toLowerCase();
+    if (lower.contains('expired') || lower.contains('만료')) return 'expired';
+    if (lower.contains('already') || lower.contains('used') ||
+        lower.contains('이미')) {
+      return 'already_used';
+    }
+    if (statusCode == 400 || statusCode == 401) return 'invalid_pin';
+    if (statusCode == 404) return 'not_found';
+    if (statusCode >= 500) return 'server_error';
+    return 'http_$statusCode';
   }
 
   static Future<Map<String, dynamic>> fetchInviteCode() async {

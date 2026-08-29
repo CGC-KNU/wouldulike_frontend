@@ -7,10 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'config/analytics_events.dart';
+import 'onboarding/onboarding_prefs.dart';
 import 'onboarding/onboarding_style.dart';
 import 'services/auth_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
+import 'utils/analytics_logger.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -76,8 +79,28 @@ class _LoginScreenState extends State<LoginScreen> {
     _isDialogOpen = false;
   }
 
+  /// 로그인 게이트 이벤트. 첫 쿠폰 구간에서 넘어온 경우 조인 키를 함께 실어
+  /// 온보딩 → 로그인 → 쿠폰 수령의 단계별 이탈을 이어서 볼 수 있게 한다.
+  Future<Map<String, Object?>> _authParams(String method) async {
+    final route = ModalRoute.of(context);
+    final args = route?.settings.arguments;
+    String entryPoint = 'app_start';
+    if (args is Map) {
+      final value = Map<String, dynamic>.from(args)['redirect'];
+      if (value is String && value.isNotEmpty) entryPoint = value;
+    }
+    return {
+      AnalyticsEvents.paramMethod: method,
+      AnalyticsEvents.paramEntryPoint: entryPoint,
+      AnalyticsEvents.paramFirstpickSessionId:
+          await OnboardingPrefs.firstpickSessionId(),
+    };
+  }
+
   Future<void> _loginWithKakao() async {
     setState(() => _isLoggingIn = true);
+    final authParams = await _authParams('kakao');
+    AnalyticsLogger.logEvent(AnalyticsEvents.loginStart, parameters: authParams);
     try {
       final talkInstalled = await isKakaoTalkInstalled();
       debugPrint('[Kakao] isKakaoTalkInstalled: $talkInstalled');
@@ -92,6 +115,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (error is PlatformException && error.code == 'CANCELED') {
             if (!mounted) return;
             setState(() => _isLoggingIn = false);
+            _logLoginCompleted(authParams, 'cancelled');
             await _showCanceledHelpDialog(talkInstalled: talkInstalled);
             return;
           }
@@ -109,6 +133,7 @@ class _LoginScreenState extends State<LoginScreen> {
           if (e.code == 'CANCELED') {
             if (!mounted) return;
             setState(() => _isLoggingIn = false);
+            _logLoginCompleted(authParams, 'cancelled');
             await _showCanceledHelpDialog(talkInstalled: false);
             return;
           }
@@ -148,6 +173,12 @@ class _LoginScreenState extends State<LoginScreen> {
         debugPrint('[LoginScreen] Failed to schedule token refresh: $e');
       }
 
+      _logLoginCompleted(
+        authParams,
+        'success',
+        isNewUser: data['user']?['is_new_user'],
+      );
+
       if (!mounted) return;
       setState(() => _isLoggingIn = false);
       // 로그인 진입 경로에 따라 후처리를 다르게 수행한다.
@@ -177,6 +208,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);
       }
     } catch (e) {
+      _logLoginCompleted(authParams, 'error');
       if (!mounted) return;
       setState(() => _isLoggingIn = false);
       final msg = e is ReloginRequiredException
@@ -189,6 +221,23 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       debugPrint('[Kakao] login error: $e');
     }
+  }
+
+  /// 인증 종료를 성공·취소·오류 한 이벤트로 남긴다.
+  /// 실패를 따로 떼지 않아야 GA4 퍼널에서 취소율을 그대로 읽을 수 있다.
+  void _logLoginCompleted(
+    Map<String, Object?> authParams,
+    String result, {
+    Object? isNewUser,
+  }) {
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.loginCompleted,
+      parameters: {
+        ...authParams,
+        AnalyticsEvents.paramResult: result,
+        if (isNewUser is bool) AnalyticsEvents.paramIsNewUser: isNewUser,
+      },
+    );
   }
 
   Future<void> _loginWithApple() async {
