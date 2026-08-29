@@ -47,23 +47,21 @@ class HomePopupItem {
   final int displayOrder;
   final DateTime? createdAt;
 
-  bool get hasRequiredFields =>
-      id > 0 && imageUrl.isNotEmpty && instagramUrl.isNotEmpty;
+  /// 그릴 수 있는 최소 조건. 링크는 없어도 이미지만 있으면 노출한다.
+  bool get isRenderable => id > 0 && imageUrl.isNotEmpty;
 
-  bool isVisibleAt(DateTime now) {
-    if (!isActive) return false;
-    if (startAt != null && now.isBefore(startAt!)) return false;
-    if (endAt != null && now.isAfter(endAt!)) return false;
-    return true;
-  }
+  /// 링크가 있을 때만 탭이 동작한다.
+  bool get hasLink => instagramUrl.isNotEmpty;
 }
 
 class PopupService {
   static const String listEndpoint = '/trends/popup_campaigns/';
   static String detailEndpoint(int id) => '/trends/popup_campaigns/$id/';
 
+  /// 활성 여부·노출 기간·정렬은 **서버가 이미 처리해서** 내려준다.
+  /// 여기서 기기 시각으로 다시 거르면, 기기 시계가 틀어졌을 때 멀쩡한 배너가
+  /// 조용히 사라진다. 순서도 그대로 쓴다 (display_order는 서버 정렬 기준).
   static Future<List<HomePopupItem>> fetchVisiblePopups() async {
-    final now = DateTime.now();
     final response = await ApiClient.get(listEndpoint, authenticated: false);
     final text = utf8.decode(response.bodyBytes).trimLeft();
     if (text.isEmpty || text.startsWith('<')) {
@@ -72,11 +70,7 @@ class PopupService {
     final dynamic decoded = jsonDecode(text);
     final List<HomePopupItem> parsed = _parseItems(decoded);
 
-    final visible = parsed
-        .where((item) => item.hasRequiredFields && item.isVisibleAt(now))
-        .toList();
-
-    return visible;
+    return parsed.where((item) => item.isRenderable).toList();
   }
 
   static List<HomePopupItem> _parseItems(dynamic decoded) {

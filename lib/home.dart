@@ -321,7 +321,7 @@ class _HomeContentState extends State<HomeContent> {
                   if (dialogContext.mounted) {
                     Navigator.of(dialogContext).pop();
                   }
-                  await _launchURL(popup.instagramUrl);
+                  if (popup.hasLink) await _launchURL(popup.instagramUrl);
                 },
                 onDismissToday: (popup) async {
                   await _markPopupDismissedToday(popup.id);
