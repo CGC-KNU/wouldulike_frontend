@@ -36,6 +36,12 @@ class AnalyticsEvents {
   // 이벤트명은 그대로라 기존 데이터와 이어진다.
   static const String homeBannerClick = 'home_banner_click';
   static const String notificationOpen = 'notification_open';
+  static const String tabView = 'tab_view';
+  static const String couponPageView = 'coupon_page_view';
+  static const String affiliateCategoryClick = 'affiliate_category_click';
+  static const String affiliateRestaurantClick = 'affiliate_restaurant_click';
+  static const String referralCodeInputClick = 'referral_code_input_click';
+  static const String kakaoInviteClick = 'kakao_invite_click';
 
   // ===== 첫 쿠폰 보강 (룰렛·로그인) =====
   /// 룰렛 회전 시작 (연출 시작 시점, attempt_no: 1부터)
