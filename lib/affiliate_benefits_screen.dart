@@ -852,7 +852,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   void _selectCategory(String category) {
     if (_selectedCategory == category) return;
     AnalyticsLogger.logEvent(
-      'affiliate_category_click',
+      AnalyticsEvents.affiliateCategoryClick,
       parameters: {
         'category': category,
         'from_category': _selectedCategory,
@@ -1121,7 +1121,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       AffiliateRestaurantSummary restaurant) async {
     if (_isOpeningDetail) return;
     AnalyticsLogger.logEvent(
-      'affiliate_restaurant_click',
+      AnalyticsEvents.affiliateRestaurantClick,
       parameters: {
         'restaurant_id': restaurant.id,
         'restaurant_name': restaurant.name,

@@ -241,7 +241,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   void initState() {
     super.initState();
     AnalyticsLogger.logEvent(
-      'coupon_page_view',
+      AnalyticsEvents.couponPageView,
       parameters: {
         if (widget.source != null) 'source': widget.source!,
       },

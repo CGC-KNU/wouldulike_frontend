@@ -9,6 +9,7 @@ import 'home.dart';
 import 'my.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/services/deep_link_service.dart';
+import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
 
@@ -85,7 +86,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     final tabName =
         index >= 0 && index < _tabNames.length ? _tabNames[index] : 'unknown';
     AnalyticsLogger.logEvent(
-      'tab_view',
+      AnalyticsEvents.tabView,
       parameters: {
         'tab_index': index,
         'tab_name': tabName,
