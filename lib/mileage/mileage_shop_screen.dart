@@ -34,9 +34,10 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   bool _isLoading = true;
   int? _submittingId;
 
-  /// 응모 진행 중인 건의 멱등 키. 재시도해도 같은 키를 보내 중복 차감을 막는다.
-  /// 구매가 끝나면(성공) 지워서, 다음 구매는 새 키로 시작한다 — 한 대회를 여러 번
-  /// 나눠 살 수 있으므로 raffle.id당 영구히 하나의 키만 쓰면 안 된다.
+  /// 응모 진행 중인 건의 멱등 키. 같은 수량으로 재시도할 때만 같은 키를 보내
+  /// 중복 차감을 막는다. 구매 성공 또는 수량 변경 시 지워서, 다음 시도는 새
+  /// 키로 시작한다 — 그렇지 않으면 수량을 바꿔 다시 응모해도 서버가 이전 시도의
+  /// 재시도로 오인해 "이미 처리된 응모"로 조용히 무시해 버린다.
   final Map<int, String> _pendingKeys = {};
 
   /// 카드별로 고른 응모 수량 (기본 1장).
@@ -120,7 +121,11 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   void _changeQuantity(Raffle raffle, int delta) {
     final next = (_quantityFor(raffle) + delta)
         .clamp(1, _maxQuantityPerPurchase);
+    if (next == _quantityFor(raffle)) return;
     setState(() => _quantities[raffle.id] = next);
+    // 수량을 바꾸면 이전 시도와 다른 새 구매이므로, 남아있던 재시도용 키를 버려
+    // 다음 응모하기 탭에서 새 멱등 키가 발급되게 한다.
+    _pendingKeys.remove(raffle.id);
   }
 
   Future<void> _enter(Raffle raffle) async {
