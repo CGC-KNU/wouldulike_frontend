@@ -710,11 +710,12 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   int _usableCouponCount(int restaurantId) =>
       _couponCountsDetailed[restaurantId]?.issued ?? 0;
 
-  /// 스탬프 적립을 운영하는 매장인지
-  bool _hasStampProgram(AffiliateRestaurantSummary restaurant) {
-    final status = _stampStatuses[restaurant.id];
-    if (status != null && status.target > 0) return true;
-    return restaurant.stampTarget > 0;
+  /// 지금 이 매장에서 스탬프를 적립 중인지 (한 개 이상 찍었는지).
+  /// 스탬프 제도를 운영하는 매장 전체가 아니라, 실제로 사용자가 적립을
+  /// 시작한 매장만 골라야 "스탬프" 필터가 의미가 있다.
+  bool _isEarningStamp(AffiliateRestaurantSummary restaurant) {
+    final current = _stampStatuses[restaurant.id]?.current ?? restaurant.stampCurrent;
+    return current > 0;
   }
 
   /// 다음 보상까지 남은 스탬프. 스탬프가 없는 매장은 뒤로 밀리도록 큰 값.
@@ -766,7 +767,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       list = list.where((r) => _usableCouponCount(r.id) > 0).toList();
     }
     if (_stampOnly) {
-      list = list.where(_hasStampProgram).toList();
+      list = list.where(_isEarningStamp).toList();
     }
     _sortAffiliates(list);
     return list;
@@ -1731,7 +1732,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       title = _couponOnly && !_stampOnly
           ? '쓸 수 있는 쿠폰이 있는 식당이 없어요'
           : (!_couponOnly && _stampOnly
-              ? '스탬프를 적립할 수 있는 식당이 없어요'
+              ? '스탬프를 적립 중인 식당이 없어요'
               : '조건에 맞는 식당이 없어요');
       description = '필터를 끄면 근처 식당을\n모두 볼 수 있어요';
     } else if (isFiltered) {
