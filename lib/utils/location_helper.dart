@@ -3,10 +3,9 @@
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-class LocationHelper {
-  static const double _defaultLat = 35.8714;
-  static const double _defaultLon = 128.6014;
+import '../services/app_config_service.dart';
 
+class LocationHelper {
   // 위도 가져오기
   static Future<double?> getLatitude() async {
     final prefs = await SharedPreferences.getInstance();
@@ -30,7 +29,9 @@ class LocationHelper {
     return null;
   }
 
-  // 기본 좌표 반환 (대구 대학가 등 - 위치 권한 없을 때 사용)
-  static Map<String, double> getDefaultLatLon() =>
-      {'lat': _defaultLat, 'lon': _defaultLon};
+  // 기본 좌표 반환 (앱 설정 API default_region, 없으면 경북대)
+  static Map<String, double> getDefaultLatLon() => {
+        'lat': AppConfigService.defaultLat,
+        'lon': AppConfigService.defaultLng,
+      };
 }

@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/knu_profile_options.dart';
 import 'api_client.dart';
+import 'master_content.dart';
 
 class NicknameAvailabilityResult {
   const NicknameAvailabilityResult({
@@ -148,9 +149,10 @@ class UserService {
     final colleges = _parseColleges(profile?['colleges']);
     final departments = _parseDepartments(profile?['departments']);
     return ProfileSetupOptions(
-      schools: schools.isNotEmpty ? schools : knuSchools,
-      colleges: colleges.isNotEmpty ? colleges : knuColleges,
-      departments: departments.isNotEmpty ? departments : knuDepartments,
+      schools: schools.isNotEmpty ? schools : MasterContent.schools,
+      colleges: colleges.isNotEmpty ? colleges : MasterContent.colleges,
+      departments:
+          departments.isNotEmpty ? departments : MasterContent.departments,
     );
   }
 

@@ -64,8 +64,8 @@ class FeaturedCampaign {
       subtitle: json['subtitle']?.toString() ?? '',
       // 스펙 6.2 응답에는 지역명이 없어 서버 확장 필드로 둔다 (히어로 지역 라벨용).
       region: json['region']?.toString() ?? '',
-      startsAt: DateTime.tryParse(json['starts_at']?.toString() ?? ''),
-      endsAt: DateTime.tryParse(json['ends_at']?.toString() ?? ''),
+      startsAt: _parseDate(json['starts_at']),
+      endsAt: _parseDate(json['ends_at']),
       items: items,
     );
   }
@@ -97,55 +97,54 @@ class FeaturedCampaign {
 class PromotionService {
   static Future<FeaturedCampaign?> fetchCurrentFeatured({String? zone}) async {
     try {
-      final response = await ApiClient.get(
+      final response = await ApiClient.getWithoutThrow(
         '/api/promotions/featured/current/',
         authenticated: false,
         queryParameters: {if (zone != null && zone.isNotEmpty) 'zone': zone},
       );
+      if (response.statusCode >= 400) return null;
       final body = utf8.decode(response.bodyBytes).trim();
       if (response.statusCode == 204 || body.isEmpty) return null;
       final decoded = jsonDecode(body);
-      if (decoded is! Map<String, dynamic> || decoded.isEmpty) return null;
-      final campaign = FeaturedCampaign.fromJson(decoded);
+      final campaignJson = _campaignMap(decoded);
+      if (campaignJson == null) return null;
+      final campaign = FeaturedCampaign.fromJson(campaignJson);
       return campaign.hasItems ? campaign : null;
     } catch (e) {
-      // ponytail: API 미배포 상태라 실패 시 스펙 6.2 예시 기반 mock 폴백.
-      // 배포 후에는 404를 "진행 중 기획전 없음"(null)으로 바꾸고 mock 제거.
-      debugPrint('featured campaign API unavailable, using mock: $e');
-      return FeaturedCampaign.fromJson(_mockFeaturedJson);
+      // 기획전은 부가 정보이므로 실패 시 배너를 아예 숨긴다.
+      debugPrint('featured campaign API unavailable: $e');
+      return null;
     }
   }
+}
 
-  /// 스펙 6.2 응답 예시 + 프로토타입 FEAT 배열(식당 62·74·305) 기반 mock.
-  static const Map<String, dynamic> _mockFeaturedJson = <String, dynamic>{
-    'code': '2026-06-knu-north',
-    'title': '6월 기획전 특집',
-    'subtitle': '이번 달은 딱 3곳만.\n우주라이크가 고른 매장에서만 열리는 한정 혜택이에요.',
-    'region': '경북대 북문',
-    'starts_at': '2026-06-01T00:00:00+09:00',
-    'ends_at': '2026-06-30T23:59:59+09:00',
-    'items': <Map<String, dynamic>>[
-      {
-        'restaurant_id': 62,
-        'badge': '우주라이크 PICK',
-        'benefit_title': '기획전 한정 3,000원 쿠폰',
-        'benefit_sub': '6월 한 달간 방문 시 바로 사용 가능해요',
-        'sort_order': 0,
-      },
-      {
-        'restaurant_id': 74,
-        'badge': '스탬프 2배',
-        'benefit_title': '방문 스탬프 2배 적립',
-        'benefit_sub': '기획전 기간에만 두 배로 쌓여요',
-        'sort_order': 1,
-      },
-      {
-        'restaurant_id': 305,
-        'badge': '첫 방문 혜택',
-        'benefit_title': '첫 방문 시 음료 무료 증정',
-        'benefit_sub': '기획전 참여 매장 단독 혜택이에요',
-        'sort_order': 2,
-      },
-    ],
-  };
+Map<String, dynamic>? _campaignMap(dynamic decoded) {
+  if (decoded is! Map) return null;
+  final map = Map<String, dynamic>.from(decoded);
+  final results = map['results'];
+  if (results is List) {
+    for (final item in results) {
+      if (item is! Map) continue;
+      final campaign = Map<String, dynamic>.from(item);
+      final items = campaign['items'];
+      if (items is List && items.isNotEmpty) return campaign;
+    }
+    return null;
+  }
+  final nested = map['campaign'];
+  if (nested is Map) return Map<String, dynamic>.from(nested);
+  if (map['items'] is List ||
+      (map['code']?.toString().trim().isNotEmpty ?? false)) {
+    return map;
+  }
+  return null;
+}
+
+DateTime? _parseDate(dynamic raw) {
+  if (raw is DateTime) return raw;
+  if (raw is! String) return null;
+  final text = raw.trim();
+  if (text.isEmpty) return null;
+  return DateTime.tryParse(text) ??
+      DateTime.tryParse(text.replaceFirst(' ', 'T'));
 }

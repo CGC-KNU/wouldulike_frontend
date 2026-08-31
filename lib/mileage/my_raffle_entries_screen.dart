@@ -28,8 +28,9 @@ class _MyRaffleEntriesScreenState extends State<MyRaffleEntriesScreen> {
   List<MyRaffleEntry> _entries = const [];
   bool _isLoading = true;
 
-  /// 이번 화면에서 결과를 연 응모. 서버에 확인 여부를 저장하는 API가 없어 로컬로만 기억한다.
+  /// 이번 화면에서 결과를 연 응모. 당첨 확인은 서버 win-popups에도 남긴다.
   final Set<int> _opened = {};
+  final Map<int, int> _winPopupIdByRaffle = {};
 
   @override
   void initState() {
@@ -38,16 +39,55 @@ class _MyRaffleEntriesScreenState extends State<MyRaffleEntriesScreen> {
   }
 
   Future<void> _load() async {
-    final entries = await MileageService.fetchMyEntries();
+    final results = await Future.wait([
+      MileageService.fetchMyEntries(),
+      MileageService.fetchUnseenWinPopups(),
+    ]);
     if (!mounted) return;
+    final entries = results[0] as List<MyRaffleEntry>;
+    final popups = results[1] as List<RaffleWinPopup>;
+    final popupMap = <int, int>{
+      for (final popup in popups)
+        if (popup.raffleId > 0) popup.raffleId: popup.id,
+    };
     setState(() {
       _entries = entries;
       _isLoading = false;
+      _winPopupIdByRaffle
+        ..clear()
+        ..addAll(popupMap);
     });
+    await _showUnseenWinPopups(popups);
   }
 
-  Future<void> _handleResult(MyRaffleEntry entry) async {
+  Future<void> _showUnseenWinPopups(List<RaffleWinPopup> popups) async {
+    for (final popup in popups) {
+      if (!mounted) return;
+      final matching = _entries.where((e) => e.raffleId == popup.raffleId);
+      final entry = matching.isEmpty ? null : matching.first;
+      await _handleResult(
+        entry ??
+            MyRaffleEntry(
+              raffleId: popup.raffleId,
+              title: popup.title,
+              prizeAmount: popup.prizeAmount,
+              costMileage: 0,
+              status: 'DRAWN',
+              won: popup.won,
+              allStores: true,
+            ),
+        popupId: popup.id,
+      );
+    }
+  }
+
+  Future<void> _handleResult(MyRaffleEntry entry, {int? popupId}) async {
     setState(() => _opened.add(entry.raffleId));
+    final resolvedPopupId = popupId ?? _winPopupIdByRaffle[entry.raffleId];
+    if (resolvedPopupId != null) {
+      await MileageService.markWinPopupsSeen([resolvedPopupId]);
+      _winPopupIdByRaffle.remove(entry.raffleId);
+    }
     final action = await showRaffleResultDialog(
       context,
       won: entry.won,

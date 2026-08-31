@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:new1/main2.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'package:new1/utils/location_helper.dart';
+import 'package:new1/services/api_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:smooth_page_indicator/smooth_page_indicator.dart';
 
@@ -56,7 +57,7 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
       }
 
       final url =
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
+          '${ApiClient.baseUrl}/restaurants/get-random-restaurants/';
       final body = json.encode({
         'food_names': foodNames,
         if (position != null) ...{
@@ -138,7 +139,7 @@ class _FoodRecommendationScreenState extends State<FoodRecommendationScreen> {
       }
 
       final url =
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/random-foods/?uuid=$userUuid';
+          '${ApiClient.baseUrl}/food-by-type/random-foods/?uuid=$userUuid';
       http.Response response;
       int retry = 0;
       int delay = 1;

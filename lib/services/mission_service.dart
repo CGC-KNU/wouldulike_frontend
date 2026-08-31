@@ -1,10 +1,7 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:new1/onboarding/onboarding_prefs.dart';
 import 'api_client.dart';
 
 /// 미션 진행 상태 (스펙 5.2 UserMissionProgress.STATUS)
@@ -114,20 +111,14 @@ class MissionService {
   /// GET /api/missions/track/ — 미션 트랙 전체 상태.
   /// 홈 배너와 미션 트랙 화면이 같은 응답을 공유한다 (스펙 7.3).
   static Future<MissionTrack?> fetchTrack() async {
-    // 개편 UI 미리보기용. 백엔드가 아직 stage를 안 내려주므로 디버그에서만
-    // 서버 응답을 건너뛰고 샘플을 쓴다. 릴리스 빌드에는 영향이 없다.
-    // 배포 전 _devForceSample·_devStage·_devSampleJson을 함께 삭제할 것.
-    if (kDebugMode && _devForceSample) {
-      return MissionTrack.fromJson(await _devSampleJson());
-    }
     try {
       if (!await ApiClient.hasAccessToken()) {
-        if (kDebugMode) return MissionTrack.fromJson(await _devSampleJson());
         return null;
       }
-      final http.Response response = await ApiClient.get(
+      final http.Response response = await ApiClient.getWithoutThrow(
         '/api/missions/track/',
       ).timeout(const Duration(seconds: 8));
+      if (response.statusCode >= 400) return null;
       final decoded = _decode(response);
       if (decoded is Map<String, dynamic>) {
         return MissionTrack.fromJson(decoded);
@@ -135,77 +126,7 @@ class MissionService {
     } catch (_) {
       // 미션은 부가 정보이므로 실패 시 섹션을 숨긴다.
     }
-    // API 미배포 구간의 UI 확인용. 릴리스 빌드에서는 동작하지 않는다.
-    // 배포 후 이 블록과 _devSampleJson을 삭제할 것.
-    if (kDebugMode) return MissionTrack.fromJson(await _devSampleJson());
     return null;
-  }
-
-  /// true면 서버 응답을 무시하고 아래 샘플로 개편 UI를 그린다 (배포 후 삭제).
-  static const bool _devForceSample = true;
-
-  /// 디버그 샘플에서 볼 단계. 'welcome' | 'invite' (배포 후 삭제)
-  static const String _devStage = 'welcome';
-
-  /// 환영 미션 시작 시각을 저장하는 키 (배포 후 삭제).
-  /// 매번 now 기준으로 만들면 화면에 들어갈 때마다 카운트다운이 초기화된다.
-  static const String _devStartedAtKey = 'dev_welcome_started_at';
-
-  /// 환영 미션 시작 시각. 처음 한 번만 기록하고 이후에는 그대로 읽는다.
-  static Future<DateTime> _devStartedAt() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString(_devStartedAtKey);
-    final parsed = saved == null ? null : DateTime.tryParse(saved);
-    if (parsed != null) return parsed;
-    final now = DateTime.now();
-    await prefs.setString(_devStartedAtKey, now.toIso8601String());
-    return now;
-  }
-
-  /// 미션 응답 예시 (배포 후 _devForceSample·_devStage와 함께 삭제)
-  static Future<Map<String, dynamic>> _devSampleJson() async {
-    final now = DateTime.now();
-    // 환영 미션은 발급 시각 + 3일. 시작 시각을 고정해야 카운트다운이 이어진다.
-    final endsAt = (await _devStartedAt()).add(const Duration(days: 3));
-    // 온보딩에서 고른 식당에서만 미션이 인정된다.
-    final store = await OnboardingPrefs.pickedRestaurantName() ?? '선택한 식당';
-    return <String, dynamic>{
-      'server_time': now.toIso8601String(),
-      'stage': _devStage,
-      // 프로모 블록은 운영이 켰을 때만 내려온다. 평소에는 null.
-      'promo_block': null,
-      'welcome': _devStage != 'welcome'
-          ? null
-          : {
-              'ends_at': endsAt.toIso8601String(),
-              'missions': [
-                {
-                  'code': 'WELCOME_COUPON_USE',
-                  'title': '$store 쿠폰 사용하기',
-                  'reward_text': '가입 축하 쿠폰·기획전 쿠폰 모두 인정돼요',
-                  'status': 'CLAIMED',
-                  'progress': 1,
-                  'target': 1,
-                },
-                {
-                  'code': 'WELCOME_STAMP_2',
-                  'title': '스탬프 2회 적립하기',
-                  'reward_text': '$store에서 적립해야 인정돼요',
-                  'status': 'OPEN',
-                  'progress': 1,
-                  'target': 2,
-                },
-              ],
-              'reward': {
-                'code': 'WELCOME_ALL',
-                'title': '환영 미션 완주 리워드',
-                'reward_text': '$store 쿠폰 1장',
-                'status': 'LOCKED',
-                'progress': 0,
-                'target': 1,
-              },
-            },
-    };
   }
 
   /// POST /api/missions/<code>/claim/ — 리워드 수령.

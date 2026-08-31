@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:new1/affiliate_benefits_screen.dart';
 import 'package:new1/services/affiliate_service.dart';
 import 'package:new1/services/api_client.dart';
+import 'package:new1/services/app_config_service.dart';
 import 'package:new1/services/coupon_service.dart';
+import 'package:new1/services/master_content.dart';
 import 'package:new1/widgets/stamp_asset_grid.dart';
 
 /// 지갑 스탬프 탭: 매장별 스탬프 현황 카드 목록.
@@ -170,7 +172,7 @@ class _StampTabState extends State<StampTab> {
             padding: const EdgeInsets.symmetric(vertical: 56),
             child: Center(
               child: Text(
-                '${kCategoryIcons[_selectedCategory]?.label ?? ''} 스탬프가 아직 없어요',
+                '${MasterContent.labelOf(_selectedCategory)} 스탬프가 아직 없어요',
                 style: const TextStyle(
                   fontSize: 14,
                   fontFamily: 'Pretendard',
@@ -236,7 +238,9 @@ class _StampTabState extends State<StampTab> {
   Widget _buildStampCard(_StampEntry entry) {
     final status = entry.status;
     // 칸 수·리워드 위치·남은 개수는 모두 서버 응답(target + rewards)에서 파생시킨다.
-    final board = status.boardLength > 0 ? status.boardLength : (_defaultTarget ?? 10);
+    final board = status.boardLength > 0
+        ? status.boardLength
+        : (_defaultTarget ?? AppConfigService.stampDefaultCycleTarget);
     final current = status.current.clamp(0, board);
     final name = entry.restaurant?.name ?? '매장 ${entry.restaurantId}';
     final category = entry.restaurant?.category ?? '';

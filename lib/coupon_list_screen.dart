@@ -9,11 +9,14 @@ import 'coupon/redeem_pin_dialog.dart';
 import 'package:new1/widgets/coupon_ticket_card.dart';
 
 import 'services/api_client.dart';
+import 'services/app_config_service.dart';
+import 'services/master_content.dart';
 import 'services/coupon_service.dart'
     show
         CouponService,
         CouponStatus,
         UserCoupon,
+        isCouponExpiringSoon,
         kCouponBenefitFallbackTitle,
         kCouponBenefitFallbackSubtitle;
 
@@ -171,16 +174,17 @@ class _CouponListScreenState extends State<CouponListScreen> {
   }
 
   String _normalizeCategoryKey(String category) {
-    final normalized = category.trim().toUpperCase();
-    return _kCouponCategoryAlias[normalized] ??
-        _kCouponCategoryAlias[category.trim()] ??
-        normalized;
+    return MasterContent.normalize(category, unknownAsEtc: false);
   }
 
   int _categoryOrderIndex(String category) {
     final normalized = _normalizeCategoryKey(category);
-    final index = _kCouponCategoryOrder.indexOf(normalized);
-    return index == -1 ? _kCouponCategoryOrder.length : index;
+    final order = [
+      ...MasterContent.stripOrder,
+      if (!MasterContent.stripOrder.contains('UNCLASSIFIED')) 'UNCLASSIFIED',
+    ];
+    final index = order.indexOf(normalized);
+    return index == -1 ? order.length : index;
   }
 
   List<String> _sortCategories(Iterable<String> source) {
@@ -202,7 +206,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
             ?.trim();
     if (raw == null || raw.isEmpty) return 'UNCLASSIFIED';
     final key = _normalizeCategoryKey(raw);
-    if (_kCouponCategoryMeta.containsKey(key)) {
+    if (MasterContent.knownCodes.contains(key)) {
       return key;
     }
     return raw;
@@ -212,21 +216,25 @@ class _CouponListScreenState extends State<CouponListScreen> {
   /// 분류가 안 된 쿠폰이 있을 때만 '미분류'가 뒤에 붙는다.
   List<String> _deriveCategories(List<UserCoupon> coupons) {
     return _sortCategories({
-      ..._kCouponCategoryMeta.keys.where((key) => key != 'UNCLASSIFIED'),
+      ...MasterContent.stripOrder,
       ...coupons.map(_couponCategoryKey),
     });
   }
 
   _CouponCategoryMeta _resolveCategoryMeta(String category) {
     final key = _normalizeCategoryKey(category);
-    final meta = _kCouponCategoryMeta[key];
-    if (meta != null) return meta;
+    if (MasterContent.knownCodes.contains(key)) {
+      return _CouponCategoryMeta(
+        MasterContent.labelOf(key),
+        MasterContent.pngPath(key),
+        MasterContent.svgOf(key),
+      );
+    }
     final trimmed = category.trim();
-    final fallback = _kCouponCategoryMeta['ALL']!;
     return _CouponCategoryMeta(
       trimmed.isEmpty ? '기타' : trimmed,
-      fallback.assetPath,
-      fallback.iconPath,
+      MasterContent.pngPath('ALL'),
+      MasterContent.svgOf('ALL'),
     );
   }
 
@@ -347,13 +355,8 @@ class _CouponListScreenState extends State<CouponListScreen> {
     }
   }
 
-  /// 만료임박 = 잔여 3일 이하 (스펙 7.1)
-  bool _isExpiringSoon(UserCoupon coupon) {
-    final expiresAt = coupon.expiresAt;
-    if (expiresAt == null) return false;
-    final diff = expiresAt.difference(DateTime.now());
-    return !diff.isNegative && diff <= const Duration(days: 3);
-  }
+  /// 만료임박 = 서버 expires_at 기준 잔여 3일 이하
+  bool _isExpiringSoon(UserCoupon coupon) => isCouponExpiringSoon(coupon);
 
   List<UserCoupon> get _filteredCoupons {
     Iterable<UserCoupon> result = _coupons;
@@ -670,7 +673,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   String? _formatExpiryDate(DateTime? expiresAt) {
     if (expiresAt == null) return null;
 
-    final now = DateTime.now();
+    final now = AppConfigService.now();
     final difference = expiresAt.difference(now);
 
     // Already expired

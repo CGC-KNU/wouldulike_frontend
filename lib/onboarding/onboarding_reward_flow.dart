@@ -18,12 +18,17 @@ enum _RewardStep { pick, spin, guide }
 
 /// 보상 플로우: 식당 선택 → 룰렛 연출 → 다음 단계.
 ///
-/// [preLogin]=false (가입 직후): 쿠폰은 가입 완료 시점에 signupComplete()로 이미
-/// 발급되어 있고, 여기서는 보유 쿠폰을 조회해 룰렛 연출로 공개한 뒤 4컷 사용법으로 이어진다.
+/// 여기서 고른 식당이 곧 "가입 시 고른 식당"이다 — 첫 쿠폰뿐 아니라 이후 웰컴
+/// 미션(쿠폰 사용·스탬프 2회)도 이 식당을 기준으로 진행된다. 그래서 실제 발급
+/// (signupComplete(restaurantId: ...))은 식당이 정해진 뒤인 여기서만 일어난다.
+/// [preLogin]=false (가입 직후): 이 화면 진입 시 [_fetchIssuedCoupon]이 먼저
+/// 발급 여부를 조회하고, 아직이면 그 자리에서 restaurant_id를 실어 발급한 뒤
+/// 룰렛 연출로 공개하고 4컷 사용법으로 이어진다. (프로필 저장 화면에서 로그인
+/// 전 픽이 이미 있으면 먼저 한 번 시도하지만, 보통은 이 화면이 최초 발급 지점이다.)
 /// [preLogin]=true (프로토타입 화면 2·3, 로그인 전): 쿠폰 API를 쓸 수 없으므로
-/// 연출만 하고 당첨 후 카카오 로그인으로 유도한다. 실제 발급은 가입 완료 시점의
-/// signupComplete()(멱등)가 보장한다.
-/// 선택한 식당은 이후 개인화(식당별 쿠폰 발급 연동 예정)를 위해 저장만 한다.
+/// 연출만 하고 당첨 후 카카오 로그인으로 유도한다. 이때 고른 식당은
+/// [OnboardingPrefs]에 저장해 두고, 로그인 후 다시 뜨는 이 화면(preLogin=false)이
+/// 그 값을 이어받아 실제 발급을 진행한다.
 class OnboardingRewardFlow extends StatefulWidget {
   const OnboardingRewardFlow({
     super.key,
@@ -66,9 +71,15 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   late Animation<double> _spinAnimation;
   List<String> _wheelLabels = const [];
   String _pickedName = '';
+  int? _pickedId;
   bool _spinDone = false;
   bool _couponFetchDone = false;
   UserCoupon? _revealedCoupon;
+
+  /// signupComplete()가 HTTP 201을 줬는데도 coupon_code가 비어 온 경우.
+  /// 혜택이 비활성화된 식당을 골랐을 때 드물게 발생한다 — "발급 준비 중"이
+  /// 아니라 실패로 간주해 재시도를 유도한다.
+  bool _issuanceFailed = false;
   bool _finished = false;
 
   // 인트로에서 이미 고른 식당 (있으면 선택 단계를 건너뛴다)
@@ -125,10 +136,19 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     });
     List<AffiliateRestaurantSummary> restaurants = const [];
     try {
-      final active = await AffiliateService.fetchActiveRestaurants();
-      restaurants = active.restaurants;
+      // 웰컴 보상 쿠폰이 설정된 식당만 걸러진 전용 목록을 우선 쓴다 — 여기서
+      // 고르면 이후 웰컴 미션 보상이 확실히 나간다.
+      restaurants = await AffiliateService.fetchSignupRestaurants();
     } catch (_) {
-      // active 조회 실패 시 전체 제휴 식당으로 폴백
+      // 신규 엔드포인트 실패 시 기존 목록으로 폴백
+    }
+    if (restaurants.isEmpty) {
+      try {
+        final active = await AffiliateService.fetchActiveRestaurants();
+        restaurants = active.restaurants;
+      } catch (_) {
+        // active 조회 실패 시 전체 제휴 식당으로 폴백
+      }
     }
     if (restaurants.isEmpty) {
       try {
@@ -213,6 +233,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     setState(() {
       _wheelLabels = labels;
       _pickedName = name;
+      _pickedId = id;
       _step = _RewardStep.spin;
       _spinDone = false;
       _couponFetchDone = widget.preLogin;
@@ -231,17 +252,28 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
 
   Future<void> _fetchIssuedCoupon() async {
     UserCoupon? coupon;
+    var issuanceFailed = false;
     try {
       var coupons =
           await CouponService.fetchMyCoupons(status: CouponStatus.issued);
       coupon = _pickRevealCoupon(coupons);
-      // 아직 발급 전이면 여기서 실제 발급을 보장한다.
-      // signupComplete는 issue_key Unique로 멱등이라 중복 발급되지 않는다.
+      // 아직 발급 전이면 여기서 실제 발급을 보장한다. 이 시점엔 식당이 이미
+      // 정해져 있으므로(직접 선택 또는 로그인 전 선택을 이어받음) restaurant_id를
+      // 실어 보낸다 — 서버가 필수로 요구한다. signupComplete는 issue_key
+      // Unique로 멱등이라 중복 발급되지 않는다.
       if (coupon == null) {
-        await CouponService.signupComplete();
-        coupons =
-            await CouponService.fetchMyCoupons(status: CouponStatus.issued);
-        coupon = _pickRevealCoupon(coupons);
+        final result =
+            await CouponService.signupComplete(restaurantId: _pickedId);
+        // 그 식당의 혜택이 비활성 상태면 서버가 HTTP 201을 주면서도
+        // coupon_code를 비워 보낸다 — 이건 "아직 준비 중"이 아니라 발급 실패다.
+        final issuedCode = result['coupon_code']?.toString() ?? '';
+        if (issuedCode.isEmpty) {
+          issuanceFailed = true;
+        } else {
+          coupons =
+              await CouponService.fetchMyCoupons(status: CouponStatus.issued);
+          coupon = _pickRevealCoupon(coupons);
+        }
       }
     } catch (_) {
       // 조회/발급 실패해도 연출은 계속 진행 (쿠폰함에서 다시 확인 가능)
@@ -250,6 +282,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     setState(() {
       _revealedCoupon = coupon;
       _couponFetchDone = true;
+      _issuanceFailed = issuanceFailed;
     });
     _maybeLogReveal();
   }
@@ -280,6 +313,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
         AnalyticsEvents.paramCouponCount: _revealedCoupon != null ? 1 : 0,
         if (_revealedCoupon != null)
           AnalyticsEvents.paramCouponCode: _revealedCoupon!.code,
+        if (_issuanceFailed) 'issuance_failed': true,
       },
     );
   }
@@ -558,8 +592,27 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     );
   }
 
+  /// signupComplete()가 coupon_code 없이 성공(201)한 경우의 재시도.
+  Future<void> _retryIssuance() async {
+    setState(() => _couponFetchDone = false);
+    await _fetchIssuedCoupon();
+  }
+
   /// 당첨 결과는 쿠폰함·식당 상세와 같은 티켓 카드로 보여준다.
   Widget _buildRevealCard() {
+    if (_issuanceFailed) {
+      return CouponTicketCard(
+        iconPath: 'assets/icons/category/all.svg',
+        storeLabel: _pickedName.isNotEmpty ? _pickedName : '우주라이크',
+        title: '쿠폰 발급에 문제가 생겼어요',
+        subtitle: '잠시 후 다시 시도하거나 고객센터로 문의해 주세요',
+        actionLabel: '다시 시도',
+        borderColor: const Color(0xFFE1E5EA),
+        onAction: _retryIssuance,
+        margin: EdgeInsets.zero,
+      );
+    }
+
     final coupon = _revealedCoupon;
     final benefit = coupon?.benefit;
     final expiresAt = coupon?.expiresAt;

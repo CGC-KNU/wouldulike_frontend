@@ -6,6 +6,7 @@ import 'config/analytics_events.dart';
 import 'data/knu_profile_options.dart';
 import 'onboarding/onboarding_prefs.dart';
 import 'services/api_client.dart';
+import 'services/app_config_service.dart';
 import 'services/coupon_service.dart';
 import 'utils/analytics_logger.dart';
 import 'services/user_service.dart';
@@ -114,7 +115,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       );
       if (!mounted) return;
       try {
-        await CouponService.signupComplete();
+        // 식당은 보통 이 화면 다음(온보딩 룰렛)에서 고른다. 로그인 전에 이미
+        // 골라 둔 식당이 로컬에 있을 때만 여기서 먼저 발급을 시도하고,
+        // 없으면 룰렛 화면의 발급 폴백(restaurant_id 포함)에 맡긴다 —
+        // restaurant_id 없이 호출하면 신규 계정은 서버에서 실패한다.
+        final pickedRestaurantId = await OnboardingPrefs.pickedRestaurantId();
+        if (pickedRestaurantId != null) {
+          await CouponService.signupComplete(restaurantId: pickedRestaurantId);
+        }
       } catch (_) {
         // 쿠폰 발급 실패는 프로필 저장 성공을 막지 않음
       }
@@ -243,9 +251,12 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   }
 
   String? _localNicknameErrorMessage(String nickname) {
+    final maxLength = AppConfigService.nicknameMaxLength;
     if (nickname.isEmpty) return '닉네임을 입력해 주세요';
-    if (nickname.length > 15) return '닉네임은 15자 이하로 입력해 주세요';
-    final regex = RegExp(r'^[가-힣A-Za-z0-9]+$');
+    if (nickname.length > maxLength) {
+      return '닉네임은 $maxLength자 이하로 입력해 주세요';
+    }
+    final regex = RegExp(AppConfigService.nicknamePattern);
     if (!regex.hasMatch(nickname)) {
       return '한글/영문/숫자만 입력 가능해요 (공백/특수문자 불가)';
     }
@@ -259,7 +270,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       case 'nickname_invalid_format':
         return '한글/영문/숫자만 입력 가능해요 (공백/특수문자 불가)';
       case 'nickname_too_long':
-        return '닉네임은 15자 이하로 입력해 주세요';
+        return '닉네임은 ${AppConfigService.nicknameMaxLength}자 이하로 입력해 주세요';
       default:
         return '사용할 수 없는 닉네임입니다';
     }

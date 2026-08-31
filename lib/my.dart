@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
@@ -12,6 +13,7 @@ import 'package:new1/profile_setup_screen.dart';
 import 'package:new1/favorite_restaurants_screen.dart';
 
 import 'services/api_client.dart';
+import 'services/app_config_service.dart';
 import 'services/auth_service.dart';
 import 'services/coupon_service.dart';
 import 'services/kakao_share_service.dart';
@@ -56,6 +58,7 @@ class _MyScreenState extends State<MyScreen> {
   String? _inviteError;
   String? _kakaoId;
   String? _appleId;
+  String _appVersion = '';
 
   @override
   void initState() {
@@ -65,6 +68,10 @@ class _MyScreenState extends State<MyScreen> {
 
   Future<void> _initializeState() async {
     await _refreshLoginState();
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _appVersion = info.version;
+    } catch (_) {}
     if (!mounted) return;
     setState(() {
       isLoading = false;
@@ -606,9 +613,15 @@ class _MyScreenState extends State<MyScreen> {
 
   Future<void> _openKakaoTalkInquiry() async {
     try {
-      final response = await ApiClient.get('/api/url/', authenticated: false);
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      final url = data['url']?.toString() ?? '';
+      var url = AppConfigService.kakaoChannelUrl;
+      if (url.isEmpty) {
+        url = AppConfigService.csUrl;
+      }
+      if (url.isEmpty) {
+        final response = await ApiClient.get('/api/url/', authenticated: false);
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        url = data['url']?.toString() ?? '';
+      }
 
       if (url.isEmpty) {
         if (!mounted) return;
@@ -645,10 +658,8 @@ class _MyScreenState extends State<MyScreen> {
     }
   }
 
-  static const _ownerDashboardUrl = 'https://wouldulike-dashboard.vercel.app/';
-
   Future<void> _openOwnerDashboard() async {
-    final uri = Uri.parse(_ownerDashboardUrl);
+    final uri = Uri.parse(AppConfigService.dashboardUrl);
     try {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -1017,7 +1028,10 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('앱 버전: v2.5.0', style: _kItemTitleStyle),
+            leading: Text(
+              '앱 버전: v${_appVersion.isEmpty ? '-' : _appVersion}',
+              style: _kItemTitleStyle,
+            ),
             indent: _kItemIndent,
           ),
         ],

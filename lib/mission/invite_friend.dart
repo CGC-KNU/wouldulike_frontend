@@ -17,9 +17,12 @@ const _yellowSoft = Color(0xFFFFF6CD);
 
 /// ===== 홈 배너 =====
 class InviteFriendBanner extends StatelessWidget {
-  const InviteFriendBanner({super.key, required this.onTap});
+  const InviteFriendBanner({super.key, required this.onTap, this.onDismiss});
 
   final VoidCallback onTap;
+
+  /// null이면 닫기 버튼을 숨긴다.
+  final VoidCallback? onDismiss;
 
   @override
   Widget build(BuildContext context) {
@@ -28,57 +31,79 @@ class InviteFriendBanner extends StatelessWidget {
       child: Material(
         color: _yellowSoft,
         borderRadius: BorderRadius.circular(16),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 17, 16, 17),
-            child: Row(
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: const BoxDecoration(
-                    color: _yellow,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.waving_hand_rounded,
-                      size: 21, color: _navy),
-                ),
-                const SizedBox(width: 13),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '친구와 함께 시작해요',
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.46,
-                          color: _ink,
-                        ),
+        child: Stack(
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 17, 16, 17),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 46,
+                      height: 46,
+                      decoration: const BoxDecoration(
+                        color: _yellow,
+                        shape: BoxShape.circle,
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        '내 코드를 보내면 친구도 혜택을 받아요',
-                        style: TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: -0.12,
-                          color: _muted,
-                        ),
+                      child: const Icon(Icons.waving_hand_rounded,
+                          size: 21, color: _navy),
+                    ),
+                    const SizedBox(width: 13),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '친구와 함께 시작해요',
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.46,
+                              color: _ink,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            '내 코드를 보내면 친구도 혜택을 받아요',
+                            style: TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: -0.12,
+                              color: _muted,
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (onDismiss != null) const SizedBox(width: 24),
+                    const Icon(Icons.arrow_forward_rounded,
+                        size: 18, color: _navy),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                const Icon(Icons.arrow_forward_rounded, size: 18, color: _navy),
-              ],
+              ),
             ),
-          ),
+            if (onDismiss != null)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    customBorder: const CircleBorder(),
+                    onTap: onDismiss,
+                    child: const Padding(
+                      padding: EdgeInsets.all(8),
+                      child: Icon(Icons.close_rounded, size: 16, color: _sub),
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
       ),
     );

@@ -17,11 +17,14 @@ import 'models/coupon_benefits_summary.dart';
 import 'services/demo_wallet.dart';
 import 'services/affiliate_service.dart';
 import 'services/api_client.dart';
+import 'services/app_config_service.dart';
 import 'services/coupon_service.dart';
+import 'services/favorites_service.dart';
 import 'widgets/network_thumb.dart';
 import 'coupon/redeem_pin_dialog.dart';
 import 'widgets/coupon_issued_dialog.dart';
 import 'services/deep_link_service.dart';
+import 'services/master_content.dart';
 import 'widgets/restaurant_coupon_benefits_content.dart';
 
 bool _isValidNetworkImageUrl(String? value) {
@@ -51,7 +54,17 @@ StampStatus _defaultStampStatusForRestaurant(
 }
 
 class AffiliateBenefitsScreen extends StatefulWidget {
-  const AffiliateBenefitsScreen({super.key});
+  const AffiliateBenefitsScreen({
+    super.key,
+    this.appBarTitle,
+    this.lockFavoritesOnly = false,
+  });
+
+  /// null이면 메인 탭용(투명·타이틀 없음), 값이 있으면 뒤로가기 있는 일반 화면으로 표시.
+  final String? appBarTitle;
+
+  /// true면 '찜한 식당만' 필터를 항상 켜 둔 채로 고정한다 (마이페이지 '찜한 식당' 진입용).
+  final bool lockFavoritesOnly;
 
   @override
   State<AffiliateBenefitsScreen> createState() =>
@@ -64,62 +77,6 @@ class _CategoryMeta {
   final String label;
   final String assetPath;
 }
-
-const Map<String, _CategoryMeta> _kCategoryMeta = {
-  'ALL': _CategoryMeta('전체', 'assets/icons/category/all.svg'),
-  'KOREAN': _CategoryMeta('한식', 'assets/icons/category/korean.svg'),
-  'CHINESE': _CategoryMeta('중식', 'assets/icons/category/chinese.svg'),
-  'JAPANESE': _CategoryMeta('일식', 'assets/icons/category/japanese.svg'),
-  'WESTERN': _CategoryMeta('양식', 'assets/icons/category/western.svg'),
-  'SNACK': _CategoryMeta('분식', 'assets/icons/category/snack.svg'),
-  'PUB': _CategoryMeta('술집', 'assets/icons/category/pub.svg'),
-  'CAFE': _CategoryMeta('카페', 'assets/icons/category/cafe.svg'),
-  'DONKATSU': _CategoryMeta('돈가스', 'assets/icons/category/donkatsu.svg'),
-  'HAMBURGER': _CategoryMeta('햄버거', 'assets/icons/category/hamburger.svg'),
-  'ETC': _CategoryMeta('기타', 'assets/icons/category/etc.svg'),
-};
-
-const Map<String, String> _kCategoryAlias = {
-  'ALL': 'ALL',
-  '전체': 'ALL',
-  'KOREAN': 'KOREAN',
-  '한식': 'KOREAN',
-  '고기/구이': 'KOREAN',
-  'CHINESE': 'CHINESE',
-  '중식': 'CHINESE',
-  'JAPANESE': 'JAPANESE',
-  '일식': 'JAPANESE',
-  'WESTERN': 'WESTERN',
-  '양식': 'WESTERN',
-  'SNACK': 'SNACK',
-  '분식': 'SNACK',
-  'PUB': 'PUB',
-  'BAR': 'PUB',
-  '술집': 'PUB',
-  'CAFE': 'CAFE',
-  '카페': 'CAFE',
-  'DONKATSU': 'DONKATSU',
-  '돈가스': 'DONKATSU',
-  'HAMBURGER': 'HAMBURGER',
-  '햄버거': 'HAMBURGER',
-  'ETC': 'ETC',
-  '기타': 'ETC',
-  '아시안': 'ETC',
-};
-
-const List<String> _kCategoryOrder = [
-  'ALL',
-  'KOREAN',
-  'CHINESE',
-  'JAPANESE',
-  'WESTERN',
-  'SNACK',
-  'PUB',
-  'CAFE',
-  'DONKATSU',
-  'HAMBURGER',
-  'ETC',
-];
 
 /// 정렬 기준. 이전 '추천순'은 서버 응답 순서를 그대로 쓰는 것뿐이라 기준이 없어 걷어냈다.
 /// 거리·평점 데이터가 API에 없으므로, 앱이 실제로 가진 값(보유 쿠폰·스탬프)으로만 정의한다.
@@ -175,10 +132,7 @@ List<GeneralRestaurantSummary> mergeFavoriteGeneralRestaurants({
 }
 
 String _categoryKeyOf(String category) {
-  final normalized = category.trim().toUpperCase();
-  return _kCategoryAlias[normalized] ??
-      _kCategoryAlias[category.trim()] ??
-      normalized;
+  return MasterContent.normalize(category, unknownAsEtc: false);
 }
 
 enum _RestaurantSort {
@@ -259,6 +213,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   @override
   void initState() {
     super.initState();
+    if (widget.lockFavoritesOnly) {
+      _favoriteOnly = true;
+    }
     _scrollController.addListener(_handleScroll);
     _searchFocusNode.addListener(() => setState(() {}));
     DeepLinkService.instance.pendingRestaurantId
@@ -401,16 +358,19 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   Future<(Set<int>, Set<String>, Map<String, dynamic>)>
       _loadFavoriteState() async {
     final prefs = await SharedPreferences.getInstance();
+    final remoteIds = await FavoritesService.loadIds();
     final rawAffiliate =
         prefs.getStringList(_kFavoriteAffiliateRestaurantIdsKey) ??
             const <String>[];
     final rawGeneral =
         prefs.getStringList(_kFavoriteGeneralRestaurantKeysKey) ??
             const <String>[];
-    final affiliateIds = rawAffiliate
-        .map((value) => int.tryParse(value))
-        .whereType<int>()
-        .toSet();
+    final affiliateIds = {
+      ...rawAffiliate
+          .map((value) => int.tryParse(value))
+          .whereType<int>(),
+      ...remoteIds,
+    };
     final generalKeys = rawGeneral
         .map((value) => value.trim())
         .where((value) => value.isNotEmpty)
@@ -481,6 +441,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       _favoriteAffiliateRestaurantIds = next;
     });
     await _persistFavoriteState();
+    await FavoritesService.setFavorite(restaurantId, isFavorite);
   }
 
   Future<void> _setFavoriteGeneralRestaurant(
@@ -536,6 +497,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       _kFavoriteGeneralRestaurantItemsKey,
       jsonEncode(snapshots),
     );
+    if (restaurant.id > 0) {
+      await FavoritesService.setFavorite(restaurant.id, isFavorite);
+    }
     if (mounted) {
       setState(() => _favoriteGeneralSnapshots = snapshots);
     }
@@ -985,8 +949,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
   int _categoryOrderIndex(String category) {
     final normalized = _normalizeCategoryKey(category);
-    final index = _kCategoryOrder.indexOf(normalized);
-    return index == -1 ? _kCategoryOrder.length : index;
+    final index = MasterContent.stripOrder.indexOf(normalized);
+    return index == -1 ? MasterContent.stripOrder.length : index;
   }
 
   String _normalizeCategoryKey(String category) => _categoryKeyOf(category);
@@ -995,7 +959,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     final trimmed = category.trim();
     if (trimmed.isEmpty) return '';
     final key = _normalizeCategoryKey(trimmed);
-    if (_kCategoryMeta.containsKey(key)) {
+    if (MasterContent.knownCodes.contains(key)) {
       return key;
     }
     return trimmed;
@@ -1003,13 +967,15 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
 
   _CategoryMeta _resolveCategoryMeta(String category) {
     final key = _normalizeCategoryKey(category);
-    final meta = _kCategoryMeta[key];
-    if (meta != null) {
-      return meta;
+    if (MasterContent.knownCodes.contains(key)) {
+      return _CategoryMeta(
+        MasterContent.labelOf(key),
+        MasterContent.svgOf(key),
+      );
     }
     final trimmed = category.trim();
-    final label = trimmed.isEmpty ? '기타' : (category == 'ALL' ? '전체' : trimmed);
-    return _CategoryMeta(label, _kCategoryMeta['ALL']!.assetPath);
+    final label = trimmed.isEmpty ? '기타' : trimmed;
+    return _CategoryMeta(label, MasterContent.svgOf('ALL'));
   }
 
   List<UserCoupon> _couponsForRestaurant(int restaurantId) {
@@ -1195,12 +1161,35 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    final appBar = AppBar(
-      backgroundColor: const Color(0xFF172133),
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      toolbarHeight: 0,
-    );
+    final appBar = widget.appBarTitle != null
+        ? AppBar(
+            backgroundColor: const Color(0xFF172133),
+            elevation: 0,
+            centerTitle: true,
+            foregroundColor: Colors.white,
+            title: Text(
+              widget.appBarTitle!,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+              ),
+            ),
+            bottom: const PreferredSize(
+              preferredSize: Size.fromHeight(1),
+              child: Divider(
+                height: 1,
+                thickness: 1,
+                color: Color(0x33FFFFFF),
+              ),
+            ),
+          )
+        : AppBar(
+            backgroundColor: const Color(0xFF172133),
+            elevation: 0,
+            scrolledUnderElevation: 0,
+            toolbarHeight: 0,
+          );
 
     if (_error != null) {
       return Scaffold(
@@ -1343,6 +1332,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             _buildRestaurantSearchBar(),
             const SizedBox(height: 14),
             _buildCategoryFilter(),
+            const SizedBox(height: 12),
             _buildFilterChips(),
             if (_isLoading)
               _buildSkeletonList()
@@ -1534,6 +1524,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       onSelected: (value) {
         if (value == favoriteMenuValue) {
+          if (widget.lockFavoritesOnly) return;
           AnalyticsLogger.logEvent(
             'affiliate_filter_click',
             parameters: {
@@ -1552,50 +1543,52 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         setState(() => _sortMode = value);
       },
       itemBuilder: (context) => [
-        PopupMenuItem<Object>(
-          value: favoriteMenuValue,
-          height: 42,
-          child: Row(
-            children: [
-              Icon(
-                _favoriteOnly ? Icons.favorite_rounded : Icons.favorite_border,
-                size: 17,
-                color: _favoriteOnly
-                    ? const Color(0xFF4F46E5)
-                    : const Color(0xFF9CA3AF),
-              ),
-              const SizedBox(width: 7),
-              Expanded(
-                child: Text(
-                  '찜한 식당만',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight:
-                        _favoriteOnly ? FontWeight.w700 : FontWeight.w500,
-                    color: _favoriteOnly
-                        ? const Color(0xFF4F46E5)
-                        : const Color(0xFF111827),
+        if (!widget.lockFavoritesOnly) ...[
+          PopupMenuItem<Object>(
+            value: favoriteMenuValue,
+            height: 42,
+            child: Row(
+              children: [
+                Icon(
+                  _favoriteOnly ? Icons.favorite_rounded : Icons.favorite_border,
+                  size: 17,
+                  color: _favoriteOnly
+                      ? const Color(0xFF4F46E5)
+                      : const Color(0xFF9CA3AF),
+                ),
+                const SizedBox(width: 7),
+                Expanded(
+                  child: Text(
+                    '찜한 식당만',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight:
+                          _favoriteOnly ? FontWeight.w700 : FontWeight.w500,
+                      color: _favoriteOnly
+                          ? const Color(0xFF4F46E5)
+                          : const Color(0xFF111827),
+                    ),
                   ),
                 ),
-              ),
-              if (_favoriteCount > 0)
-                Text(
-                  '$_favoriteCount',
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF9CA3AF),
+                if (_favoriteCount > 0)
+                  Text(
+                    '$_favoriteCount',
+                    style: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF9CA3AF),
+                    ),
                   ),
-                ),
-              if (_favoriteOnly) ...[
-                const SizedBox(width: 6),
-                const Icon(Icons.check_rounded,
-                    size: 18, color: Color(0xFF4F46E5)),
+                if (_favoriteOnly) ...[
+                  const SizedBox(width: 6),
+                  const Icon(Icons.check_rounded,
+                      size: 18, color: Color(0xFF4F46E5)),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        const PopupMenuDivider(height: 1),
+          const PopupMenuDivider(height: 1),
+        ],
         for (final mode in _RestaurantSort.values)
           PopupMenuItem<Object>(
             value: mode,
@@ -1623,8 +1616,11 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
           ),
       ],
       child: _buildFilterChip(
-        label: _favoriteOnly ? '찜한 식당만' : _sortMode.label,
-        selected: _favoriteOnly || _sortMode != _RestaurantSort.benefit,
+        label: !widget.lockFavoritesOnly && _favoriteOnly
+            ? '찜한 식당만'
+            : _sortMode.label,
+        selected: (!widget.lockFavoritesOnly && _favoriteOnly) ||
+            _sortMode != _RestaurantSort.benefit,
         trailingIcon: Icons.keyboard_arrow_down_rounded,
         onTap: null,
       ),
@@ -1786,7 +1782,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
               color: Color(0xFF6B7280),
             ),
           ),
-          if (hasQuery || isFiltered || _hasBenefitFilter || _favoriteOnly) ...[
+          if (hasQuery ||
+              isFiltered ||
+              _hasBenefitFilter ||
+              (!widget.lockFavoritesOnly && _favoriteOnly)) ...[
             const SizedBox(height: 18),
             SizedBox(
               height: 44,
@@ -1796,11 +1795,12 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                     _searchController.clear();
                     _handleSearchSubmitted('');
                   }
-                  if (_hasBenefitFilter || _favoriteOnly) {
+                  if (_hasBenefitFilter ||
+                      (!widget.lockFavoritesOnly && _favoriteOnly)) {
                     setState(() {
                       _couponOnly = false;
                       _stampOnly = false;
-                      _favoriteOnly = false;
+                      if (!widget.lockFavoritesOnly) _favoriteOnly = false;
                     });
                   }
                   if (isFiltered) {
@@ -2909,7 +2909,7 @@ class _AffiliateRestaurantDetailSheetState
   String? _formatExpiryDate(DateTime? expiresAt) {
     if (expiresAt == null) return null;
 
-    final now = DateTime.now();
+    final now = AppConfigService.now();
     final difference = expiresAt.difference(now);
 
     if (difference.isNegative) {
@@ -3238,7 +3238,7 @@ class _AffiliateRestaurantDetailSheetState
                               fontWeight: FontWeight.w600,
                             ),
                             items: List.generate(
-                              4,
+                              AppConfigService.stampMaxPerScan,
                               (index) => DropdownMenuItem<int>(
                                 value: index + 1,
                                 child: Text('${index + 1}개'),
@@ -3284,7 +3284,7 @@ class _AffiliateRestaurantDetailSheetState
                           controller: controller,
                           keyboardType: TextInputType.number,
                           obscureText: true,
-                          maxLength: 4,
+                          maxLength: AppConfigService.pinLength,
                           style: const TextStyle(
                             color: Color(0xFF39393E),
                             fontSize: 16,
@@ -3298,7 +3298,8 @@ class _AffiliateRestaurantDetailSheetState
                           ),
                           inputFormatters: [
                             FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(4),
+                            LengthLimitingTextInputFormatter(
+                                AppConfigService.pinLength),
                           ],
                         ),
                       ),
@@ -3344,9 +3345,10 @@ class _AffiliateRestaurantDetailSheetState
                             child: ElevatedButton(
                               onPressed: () {
                                 final value = controller.text.trim();
-                                if (value.length != 4) {
+                                if (value.length != AppConfigService.pinLength) {
                                   setState(() {
-                                    error = 'PIN은 4자리 숫자여야 합니다.';
+                                    error =
+                                        'PIN은 ${AppConfigService.pinLength}자리 숫자여야 합니다.';
                                   });
                                   return;
                                 }
@@ -4296,9 +4298,9 @@ class _AffiliateRestaurantDetailSheetState
                     height: 20,
                   ),
                   const SizedBox(width: 8),
-                  const Text(
-                    '하루 최대 5회 적립 · 마지막 칸이 리워드예요',
-                    style: TextStyle(
+                  Text(
+                    '하루 최대 ${AppConfigService.stampDailyLimitPerRestaurant}회 적립 · 마지막 칸이 리워드예요',
+                    style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
                       color: Color(0xFF6B7280),
@@ -4506,7 +4508,10 @@ class _AffiliateRestaurantDetailSheetState
     final categoryKey = _categoryKeyOf(
       benefit?.restaurantCategory ?? widget.restaurant.category,
     );
-    final meta = _kCategoryMeta[categoryKey] ?? _kCategoryMeta['ALL']!;
+    final meta = _CategoryMeta(
+      MasterContent.labelOf(categoryKey),
+      MasterContent.svgOf(categoryKey),
+    );
     final storeLabel = benefit?.allStores == true
         ? '전 매장 사용 가능'
         : (benefit?.restaurantNameText ?? widget.restaurant.name);
@@ -4519,8 +4524,7 @@ class _AffiliateRestaurantDetailSheetState
       subtitle: benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle,
       notes: benefit?.notesText,
       expiryText: _formatExpiryDate(expiresAt),
-      expiryUrgent: expiresAt != null &&
-          expiresAt.difference(DateTime.now()) <= const Duration(days: 7),
+      expiryUrgent: isCouponExpiringSoon(coupon),
       isProcessing: _processingCouponCode == coupon.code,
       onAction: widget.requiresLogin
           ? null

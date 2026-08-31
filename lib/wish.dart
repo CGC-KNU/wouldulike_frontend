@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
+import 'package:new1/services/api_client.dart';
 
 class WishlistScreen extends StatefulWidget {
   const WishlistScreen({super.key});
@@ -57,8 +58,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
     // 사용자 현재 위치 받아오기
     final position = await LocationHelper.getLatLon();
-    final double userLat = position?['lat'] ?? 35.8714;
-    final double userLon = position?['lon'] ?? 128.6014;
+    final defaults = LocationHelper.getDefaultLatLon();
+    final double userLat = position?['lat'] ?? defaults['lat']!;
+    final double userLon = position?['lon'] ?? defaults['lon']!;
 
     final String? savedRestaurants = prefs.getString('restaurants_data');
     if (savedRestaurants != null) {
@@ -72,8 +74,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
 
         if (isLiked) {
           // 거리 계산
-          final double restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
-          final double restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+          final double restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? defaults['lat']!;
+          final double restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? defaults['lon']!;
           final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
 
           likedList.add({
@@ -97,8 +99,8 @@ class _WishlistScreenState extends State<WishlistScreen> {
         if (!likedList.any((r) =>
         r['name'] == restaurant['name'] &&
             r['road_address'] == restaurant['road_address'])) {
-          final double restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
-          final double restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+          final double restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? defaults['lat']!;
+          final double restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? defaults['lon']!;
           final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
 
           restaurant['category_1'] ??= '카테고리 없음';
@@ -178,8 +180,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final uuid = prefs.getString('user_uuid') ?? '';
     if (uuid.isEmpty) return;
 
-    final url = Uri.parse(
-        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/update/favorite_restaurants/');
+    final url = Uri.parse('${ApiClient.baseUrl}/update/favorite_restaurants/');
     try {
       await http.post(
         url,

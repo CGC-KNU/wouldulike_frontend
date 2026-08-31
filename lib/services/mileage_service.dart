@@ -87,11 +87,16 @@ class MileageEvent {
     if (memo.isNotEmpty) return memo;
     switch (reason) {
       case 'VISIT':
+      case 'STAMP_VISIT':
         return '방문 적립';
+      case 'COUPON_USE':
+        return '쿠폰 사용 적립';
       case 'MISSION':
         return '미션 보상';
       case 'RAFFLE':
         return '응모 차감';
+      case 'COUPON_EXCHANGE':
+        return '쿠폰 교환 사용';
       case 'ADMIN':
         return '운영 조정';
       default:
@@ -119,11 +124,13 @@ class Raffle {
     required this.restaurantName,
     required this.entriesCount,
     required this.entered,
+    this.myTickets = 0,
     this.allStores = true,
     this.closesAt,
   });
 
   factory Raffle.fromJson(Map<String, dynamic> json) {
+    final myTickets = _asInt(json['my_tickets']);
     return Raffle(
       id: _asInt(json['id']),
       title: json['title']?.toString() ?? '식사권',
@@ -131,7 +138,8 @@ class Raffle {
       costMileage: _asInt(json['cost_mileage']),
       restaurantName: json['restaurant_name']?.toString() ?? '',
       entriesCount: _asInt(json['entries_count']),
-      entered: json['entered'] == true,
+      entered: json['entered'] == true || myTickets > 0,
+      myTickets: myTickets,
       // 서버가 all_stores를 안 주는 구버전이면 매장명 유무로 판단한다.
       allStores: json['all_stores'] == true ||
           (json['all_stores'] == null && json['restaurant_id'] == null),
@@ -145,11 +153,36 @@ class Raffle {
   final int costMileage;
   final String restaurantName;
   final int entriesCount;
+
+  /// 내가 이 대회에 1장 이상 응모했는지. 서버가 my_tickets를 안 주는 구버전과도
+  /// 호환되도록 남겨 둔다 (그때는 정확한 장수 대신 이 불리언만 참고).
   final bool entered;
+
+  /// 내가 이 대회에 산 티켓 장수. 0이면 아직 응모 전.
+  final int myTickets;
 
   /// 전 매장에서 쓸 수 있는 식사권인지 (마일리지는 매장 구분 없이 사용)
   final bool allStores;
   final DateTime? closesAt;
+
+  Raffle copyWith({
+    int? entriesCount,
+    bool? entered,
+    int? myTickets,
+  }) {
+    return Raffle(
+      id: id,
+      title: title,
+      prizeAmount: prizeAmount,
+      costMileage: costMileage,
+      restaurantName: restaurantName,
+      entriesCount: entriesCount ?? this.entriesCount,
+      entered: entered ?? this.entered,
+      myTickets: myTickets ?? this.myTickets,
+      allStores: allStores,
+      closesAt: closesAt,
+    );
+  }
 }
 
 /// 내 응모 1건 (GET /api/raffles/my/)
@@ -197,6 +230,33 @@ class MyRaffleEntry {
     if (status != 'DRAWN') return '추첨 대기';
     return won ? '당첨' : '미당첨';
   }
+}
+
+/// 아직 확인하지 않은 당첨 팝업 (GET /api/raffles/win-popups/)
+class RaffleWinPopup {
+  const RaffleWinPopup({
+    required this.id,
+    required this.raffleId,
+    required this.title,
+    required this.prizeAmount,
+    this.won = true,
+  });
+
+  factory RaffleWinPopup.fromJson(Map<String, dynamic> json) {
+    return RaffleWinPopup(
+      id: _asInt(json['id'] ?? json['popup_id']),
+      raffleId: _asInt(json['raffle_id']),
+      title: json['title']?.toString() ?? '식사권',
+      prizeAmount: _asInt(json['prize_amount']),
+      won: json['won'] != false,
+    );
+  }
+
+  final int id;
+  final int raffleId;
+  final String title;
+  final int prizeAmount;
+  final bool won;
 }
 
 /// 당첨자 발표 1건 (GET /api/raffles/winners/)
@@ -357,7 +417,34 @@ class MileageService {
     return const [];
   }
 
-  /// 당첨자 발표. 추첨이 끝난 건만 내려온다 (인증 불필요).
+  static Future<List<RaffleWinPopup>> fetchUnseenWinPopups() async {
+    try {
+      final response = await ApiClient.get('/api/raffles/win-popups/')
+          .timeout(const Duration(seconds: 8));
+      final decoded = _decode(response);
+      final raw = decoded is Map<String, dynamic> ? decoded['results'] : decoded;
+      if (raw is List) {
+        return raw
+            .whereType<Map>()
+            .map((e) => RaffleWinPopup.fromJson(Map<String, dynamic>.from(e)))
+            .where((e) => e.id > 0)
+            .toList();
+      }
+    } catch (_) {}
+    return const [];
+  }
+
+  static Future<void> markWinPopupsSeen(List<int> ids) async {
+    if (ids.isEmpty) return;
+    try {
+      await ApiClient.post(
+        '/api/raffles/win-popups/',
+        body: {'ids': ids},
+      );
+    } catch (e) {
+      debugPrint('[Raffle] mark win popups failed: $e');
+    }
+  }
   static Future<List<RaffleWinner>> fetchWinners() async {
     try {
       final response = await ApiClient.get('/api/raffles/winners/')
@@ -376,15 +463,18 @@ class MileageService {
   }
 
   /// 응모. 재시도 시 중복 차감을 막기 위해 멱등 키를 항상 보낸다 (스펙 6.2).
+  /// quantity로 한 번에 여러 장 응모할 수 있다 (기본 1장).
   static Future<RaffleEnterResult> enterRaffle(
     int raffleId, {
     String? idempotencyKey,
+    int quantity = 1,
   }) async {
     try {
       final response = await ApiClient.postWithoutThrow(
         '/api/raffles/$raffleId/enter/',
         body: {
           'idempotency_key': idempotencyKey ?? generateRaffleKey(raffleId),
+          'quantity': quantity,
         },
       );
       final decoded = _decode(response);

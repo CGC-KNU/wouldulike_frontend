@@ -5,6 +5,7 @@ import 'package:new1/config/analytics_events.dart';
 import 'package:new1/coupon/store_select_field.dart';
 import 'package:new1/services/affiliate_service.dart'
     show AffiliateRestaurantSummary;
+import 'package:new1/services/app_config_service.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
@@ -71,12 +72,12 @@ Future<CouponRedeemOutcome?> showCouponRedeemPinDialog({
 String _expiryState(UserCoupon coupon) {
   final exp = coupon.expiresAt;
   if (exp == null) return 'unknown';
-  final now = DateTime.now();
+  final now = AppConfigService.now();
   final days = DateTime(exp.year, exp.month, exp.day)
       .difference(DateTime(now.year, now.month, now.day))
       .inDays;
   if (days < 0) return 'expired';
-  return days <= 7 ? 'soon' : 'normal';
+  return days <= 3 ? 'soon' : 'normal';
 }
 
 class _RedeemPinDialog extends StatefulWidget {
@@ -102,7 +103,10 @@ class _RedeemPinDialog extends StatefulWidget {
 
 class _RedeemPinDialogState extends State<_RedeemPinDialog> {
   final TextEditingController _pin = TextEditingController();
-  bool _addStamp = true;
+  // 쿠폰 사용 자체가 이미 마일리지(COUPON_USE)를 적립하므로, 기본값을 꺼 둬서
+  // 스탬프 적립(STAMP_VISIT)까지 얹혀 100+100=200으로 이중 적립되지 않게 한다.
+  // 점주가 방문 스탬프도 별도로 인정해 줄 때만 명시적으로 켜서 쓴다.
+  bool _addStamp = false;
   int _stampCount = 1;
   String? _error;
   bool _isLoading = false;
@@ -123,8 +127,9 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
       return;
     }
     final pin = _pin.text.trim();
-    if (pin.length != 4) {
-      setState(() => _error = 'PIN은 4자리 숫자여야 합니다.');
+    final pinLength = AppConfigService.pinLength;
+    if (pin.length != pinLength) {
+      setState(() => _error = 'PIN은 $pinLength자리 숫자여야 합니다.');
       return;
     }
 
@@ -487,7 +492,7 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
             fontWeight: FontWeight.w600,
           ),
           items: List.generate(
-            4,
+            AppConfigService.stampMaxPerScan,
             (index) => DropdownMenuItem<int>(
               value: index + 1,
               child: Text('${index + 1}개'),
@@ -521,7 +526,7 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
         controller: _pin,
         keyboardType: TextInputType.number,
         obscureText: true,
-        maxLength: 4,
+        maxLength: AppConfigService.pinLength,
         enabled: !_isLoading,
         style: const TextStyle(
           color: Color(0xFF39393E),
@@ -536,7 +541,7 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
         ),
         inputFormatters: [
           FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(4),
+          LengthLimitingTextInputFormatter(AppConfigService.pinLength),
         ],
         onSubmitted: (_) {
           if (!_isLoading) _submit();

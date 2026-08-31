@@ -1,9 +1,15 @@
+import 'dart:convert';
+
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+
+import '../services/api_client.dart';
 
 /// 온보딩(튜토리얼) 진행 상태 플래그.
 ///
 /// 키의 버전 접미사(_v1)를 올리면 기존 사용자에게 온보딩을 다시 노출할 수 있다.
+/// 로컬과 서버(`/api/users/me/onboarding-flags/`)에 같은 키로 저장한다.
 class OnboardingPrefs {
   OnboardingPrefs._();
 
@@ -25,12 +31,14 @@ class OnboardingPrefs {
   static Future<void> markIntroSeen() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_introSeenKey, true);
+    await _pushFlags({_introSeenKey: true});
   }
 
   /// 가입(필수 프로필 설정) 완료 시 세팅 — 보상 플로우(식당 선택→룰렛→사용법) 노출 예약
   static Future<void> markRewardPending() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_rewardPendingKey, true);
+    await _pushFlags({_rewardPendingKey: true});
   }
 
   /// 보상 플로우를 보여줘야 하는지 (가입 직후 && 아직 안 봤음)
@@ -52,6 +60,44 @@ class OnboardingPrefs {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_rewardDoneKey, true);
     await prefs.setBool(_rewardPendingKey, false);
+    await _pushFlags({
+      _rewardDoneKey: true,
+      _rewardPendingKey: false,
+    });
+  }
+
+  /// 로그인 후 서버 플래그를 로컬에 병합한다. 기기 변경 시 재노출을 막기 위함.
+  static Future<void> pullFromServer() async {
+    try {
+      if (!await ApiClient.hasAccessToken()) return;
+      final response = await ApiClient.get('/api/users/me/onboarding-flags/');
+      final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+      if (decoded is! Map) return;
+      final flagsRaw = decoded['flags'];
+      if (flagsRaw is! Map) return;
+      final flags = Map<String, dynamic>.from(flagsRaw);
+      final prefs = await SharedPreferences.getInstance();
+      for (final key in [_introSeenKey, _rewardPendingKey, _rewardDoneKey]) {
+        final value = flags[key];
+        if (value is bool) {
+          await prefs.setBool(key, value);
+        }
+      }
+    } catch (e) {
+      debugPrint('[OnboardingPrefs] pull failed: $e');
+    }
+  }
+
+  static Future<void> _pushFlags(Map<String, bool> flags) async {
+    try {
+      if (!await ApiClient.hasAccessToken()) return;
+      await ApiClient.put(
+        '/api/users/me/onboarding-flags/',
+        body: {'flags': flags},
+      );
+    } catch (e) {
+      debugPrint('[OnboardingPrefs] push failed: $e');
+    }
   }
 
   /// 온보딩~첫 쿠폰 구간을 잇는 세션 키.

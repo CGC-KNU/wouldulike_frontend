@@ -129,7 +129,11 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
   Future<void> _claimWelcome() async {
     final welcome = _track?.welcome;
     if (welcome == null || _claimingCode != null) return;
-    final code = welcome.reward?.code ?? 'WELCOME_ALL';
+    final code = (welcome.reward?.code ?? '').trim();
+    if (code.isEmpty) {
+      _showClaimError();
+      return;
+    }
 
     // 달성(mission_completed)과 분리해 남긴다. 두 이벤트의 UU 차이가
     // "깼는데 안 받아간 사용자" — 리마인드 푸시의 타깃 모수다.
@@ -160,7 +164,7 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
       tag: '환영 미션 완주',
       title: welcome.reward?.rewardText.isNotEmpty == true
           ? welcome.reward!.rewardText
-          : '제휴 매장 쿠폰 1장',
+          : '가입할 때 고른 식당 쿠폰 1장',
     );
   }
 

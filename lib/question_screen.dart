@@ -1,5 +1,5 @@
 ﻿import 'package:flutter/material.dart';
-import 'question_list.dart';
+import 'package:new1/services/master_content.dart';
 import 'result_screen.dart';
 import 'start_survey.dart';
 
@@ -21,8 +21,18 @@ class _QuizScreenState extends State<QuizScreen> {
   int _totalScore = 0;
   int _currentQuestionIndex = 0;
   int _selectedIndex = -1;
-  List<String> _selectedAnswers = List.filled(12, "", growable: false);
-  List<int> _scores = List.filled(12, -1, growable: false);
+  late List<String> _selectedAnswers;
+  late List<int> _scores;
+
+  List<Map<String, dynamic>> get _questions => MasterContent.quizQuestions;
+
+  @override
+  void initState() {
+    super.initState();
+    final count = _questions.length;
+    _selectedAnswers = List.filled(count, '', growable: false);
+    _scores = List.filled(count, -1, growable: false);
+  }
 
   void _answerQuestion(int score, String answer, int index) {
     setState(() {
@@ -33,7 +43,7 @@ class _QuizScreenState extends State<QuizScreen> {
 
     // 모든 질문에 답변했는지 확인
     bool allAnswered = true;
-    for (int i = 0; i < 12; i++) {
+    for (int i = 0; i < _scores.length; i++) {
       if (_scores[i] == -1) {
         allAnswered = false;
         break;
@@ -46,6 +56,11 @@ class _QuizScreenState extends State<QuizScreen> {
 
   void _calculateFinalScore() {
     _totalScore = 0;
+
+    if (_scores.length < 12) {
+      _totalScore = _scores.fold(0, (sum, value) => sum + (value < 0 ? 0 : value));
+      return;
+    }
 
     int sum1 = _scores[0] + _scores[1] + _scores[2];
     int sum2 = _scores[3] + _scores[4] + _scores[5];
@@ -66,7 +81,7 @@ class _QuizScreenState extends State<QuizScreen> {
       return;
     }
 
-    if (_currentQuestionIndex < questionList.length - 1) {
+    if (_currentQuestionIndex < _questions.length - 1) {
       setState(() {
         _currentQuestionIndex++;
         _selectedIndex = -1;  // 선택 초기화
@@ -106,15 +121,15 @@ class _QuizScreenState extends State<QuizScreen> {
       _totalScore = 0;
       _currentQuestionIndex = 0;
       _selectedIndex = -1;
-      _selectedAnswers = List.filled(12, "", growable: false);
-      _scores = List.filled(12, -1, growable: false);
+      _selectedAnswers = List.filled(_questions.length, '', growable: false);
+      _scores = List.filled(_questions.length, -1, growable: false);
     });
     Navigator.popUntil(context, (route) => route.isFirst);
   }
 
   double get _progress {
-    return questionList.isNotEmpty
-        ? (_currentQuestionIndex + 1) / questionList.length
+    return _questions.isNotEmpty
+        ? (_currentQuestionIndex + 1) / _questions.length
         : 0.0;
   }
 
@@ -145,7 +160,7 @@ class _QuizScreenState extends State<QuizScreen> {
               child: Column(
                 children: [
                   Text(
-                    '${_currentQuestionIndex + 1}/${questionList.length}',
+                    '${_currentQuestionIndex + 1}/${_questions.length}',
                     style: TextStyle(
                       color: Colors.black54,
                       fontSize: screenWidth * 0.04,
@@ -174,8 +189,8 @@ class _QuizScreenState extends State<QuizScreen> {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.05),
               child: Text(
-                questionList.isNotEmpty && _currentQuestionIndex < questionList.length
-                    ? '${questionList[_currentQuestionIndex]["questionText"]}'
+                _questions.isNotEmpty && _currentQuestionIndex < _questions.length
+                    ? '${_questions[_currentQuestionIndex]["questionText"]}'
                     : '질문이 없습니다.',
                 style: TextStyle(
                   color: Colors.black,
@@ -190,11 +205,11 @@ class _QuizScreenState extends State<QuizScreen> {
             ),
             SizedBox(height: screenHeight * 0.05),
             Expanded(
-              child: questionList.isNotEmpty && _currentQuestionIndex < questionList.length
+              child: _questions.isNotEmpty && _currentQuestionIndex < _questions.length
                   ? ListView.builder(
-                itemCount: questionList[_currentQuestionIndex]["answers"].length,
+                itemCount: _questions[_currentQuestionIndex]["answers"].length,
                 itemBuilder: (context, index) {
-                  final answer = questionList[_currentQuestionIndex]["answers"][index];
+                  final answer = _questions[_currentQuestionIndex]["answers"][index];
                   final isSelected = _selectedIndex == index;
 
                   return GestureDetector(

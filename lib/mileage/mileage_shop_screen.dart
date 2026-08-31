@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:new1/mileage/my_raffle_entries_screen.dart';
 import 'package:new1/mileage/raffle_terms_screen.dart';
 import 'package:new1/mileage/raffle_winners_screen.dart';
+import 'package:new1/services/app_config_service.dart';
 import 'package:new1/services/mileage_service.dart';
 import '../config/analytics_events.dart';
 import '../utils/analytics_logger.dart';
@@ -34,11 +35,17 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   int? _submittingId;
 
   /// 응모 진행 중인 건의 멱등 키. 재시도해도 같은 키를 보내 중복 차감을 막는다.
+  /// 구매가 끝나면(성공) 지워서, 다음 구매는 새 키로 시작한다 — 한 대회를 여러 번
+  /// 나눠 살 수 있으므로 raffle.id당 영구히 하나의 키만 쓰면 안 된다.
   final Map<int, String> _pendingKeys = {};
+
+  /// 카드별로 고른 응모 수량 (기본 1장).
+  final Map<int, int> _quantities = {};
 
   /// 티켓 노치를 절취선 높이에 맞추기 위한 앵커. 카드마다 하나씩 유지한다.
   final Map<int, GlobalKey> _notchKeys = {};
-  final Set<int> _enteredIds = {};
+
+  static const int _maxQuantityPerPurchase = 20;
 
   /// ticket_purchase_view는 목록 로드 뒤 1회만 보낸다 (새로고침마다 부풀지 않게).
   bool _viewLogged = false;
@@ -59,9 +66,6 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
     setState(() {
       _summary = (results[0] as MileageSummary?) ?? _summary;
       _raffles = results[1] as List<Raffle>;
-      _enteredIds
-        ..clear()
-        ..addAll(_raffles.where((r) => r.entered).map((r) => r.id));
       _isLoading = false;
     });
     _logShopView();
@@ -106,12 +110,22 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   /// 마감까지 남은 일수. 서버가 준 closes_at 기준으로만 계산한다.
   int? _dday(DateTime? closesAt) {
     if (closesAt == null) return null;
-    final diff = closesAt.difference(DateTime.now());
+    final diff = closesAt.difference(AppConfigService.now());
     if (diff.isNegative) return 0;
     return diff.inHours ~/ 24;
   }
 
+  int _quantityFor(Raffle raffle) => _quantities[raffle.id] ?? 1;
+
+  void _changeQuantity(Raffle raffle, int delta) {
+    final next = (_quantityFor(raffle) + delta)
+        .clamp(1, _maxQuantityPerPurchase);
+    setState(() => _quantities[raffle.id] = next);
+  }
+
   Future<void> _enter(Raffle raffle) async {
+    final quantity = _quantityFor(raffle);
+    final totalCost = raffle.costMileage * quantity;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -127,7 +141,7 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
           ),
         ),
         content: Text(
-          '${_comma(raffle.costMileage)} M 차감 · 취소와 환급은 안 돼요.\n'
+          '${_comma(quantity)}장 · ${_comma(totalCost)} M 차감 · 취소와 환급은 안 돼요.\n'
           '당첨되면 쿠폰함으로 발급해 드려요.',
           style: const TextStyle(
             fontFamily: 'Pretendard',
@@ -158,42 +172,40 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
     setState(() => _submittingId = raffle.id);
     final key =
         _pendingKeys.putIfAbsent(raffle.id, () => generateRaffleKey(raffle.id));
-    final result =
-        await MileageService.enterRaffle(raffle.id, idempotencyKey: key);
+    final result = await MileageService.enterRaffle(
+      raffle.id,
+      idempotencyKey: key,
+      quantity: quantity,
+    );
     if (!mounted) return;
 
     setState(() => _submittingId = null);
 
-    // 중복 응모 응답은 이미 응모한 상태로 해석한다 (스펙 7.2).
+    // 중복 응모 응답은 이미 처리된 구매로 해석한다 (스펙 6.2 멱등 키).
     if (result.ok || result.isAlreadyEntered) {
       _pendingKeys.remove(raffle.id);
       setState(() {
-        _enteredIds.add(raffle.id);
+        // 새 구매를 시작할 수 있도록 수량은 1로 되돌린다.
+        _quantities[raffle.id] = 1;
         if (result.balanceAfter != null) {
           _summary = MileageSummary(
             balance: result.balanceAfter!,
             monthEarned: _summary?.monthEarned ?? 0,
           );
         }
-        if (result.entriesCount != null) {
-          _raffles = _raffles
-              .map((r) => r.id == raffle.id
-                  ? Raffle(
-                      id: r.id,
-                      title: r.title,
-                      prizeAmount: r.prizeAmount,
-                      costMileage: r.costMileage,
-                      restaurantName: r.restaurantName,
-                      entriesCount: result.entriesCount!,
-                      entered: true,
-                      allStores: r.allStores,
-                      closesAt: r.closesAt,
-                    )
-                  : r)
-              .toList();
-        }
+        _raffles = _raffles
+            .map((r) => r.id == raffle.id
+                ? r.copyWith(
+                    entriesCount: result.entriesCount ?? r.entriesCount,
+                    entered: true,
+                    myTickets: result.ok
+                        ? r.myTickets + quantity
+                        : (r.myTickets == 0 ? quantity : r.myTickets),
+                  )
+                : r)
+            .toList();
       });
-      // 중복 응모(이미 응모함)는 마일리지 차감이 없으므로 구매로 세지 않는다.
+      // 중복 응모(멱등 키 재사용)는 마일리지 차감이 없으므로 구매로 세지 않는다.
       if (result.ok) {
         AnalyticsLogger.logEvent(
           AnalyticsEvents.ticketPurchase,
@@ -201,7 +213,8 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
             AnalyticsEvents.paramRaffleId: raffle.id,
             if (_drawRound(raffle.closesAt) != null)
               AnalyticsEvents.paramDrawRound: _drawRound(raffle.closesAt),
-            AnalyticsEvents.paramPointsSpent: raffle.costMileage,
+            AnalyticsEvents.paramCount: quantity,
+            AnalyticsEvents.paramPointsSpent: totalCost,
             if (result.balanceAfter != null)
               AnalyticsEvents.paramBalanceAfter: result.balanceAfter,
             if (result.entriesCount != null)
@@ -211,7 +224,9 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
           },
         );
       }
-      _snack(result.ok ? '응모 완료! 당첨되면 쿠폰함으로 드려요.' : '이미 응모했어요.');
+      _snack(result.ok
+          ? '${_comma(quantity)}장 응모 완료! 당첨되면 쿠폰함으로 드려요.'
+          : '이미 처리된 응모예요.');
       return;
     }
 
@@ -222,13 +237,18 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
         raffle,
         reason: 'insufficient_points',
         balance: balance,
+        totalCost: totalCost,
       );
       _snack(balance != null
           ? '마일리지가 부족해요. (보유 ${_comma(balance)} M)'
           : '마일리지가 부족해요.');
       return;
     }
-    _logPurchaseFailed(raffle, reason: result.code ?? 'unknown');
+    _logPurchaseFailed(
+      raffle,
+      reason: result.code ?? 'unknown',
+      totalCost: totalCost,
+    );
     _snack(result.message ?? '응모하지 못했어요. 잠시 후 다시 시도해 주세요.');
   }
 
@@ -237,9 +257,10 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   void _logPurchaseFailed(
     Raffle raffle, {
     required String reason,
+    required int totalCost,
     int? balance,
   }) {
-    final shortfall = balance != null ? raffle.costMileage - balance : null;
+    final shortfall = balance != null ? totalCost - balance : null;
     AnalyticsLogger.logEvent(
       AnalyticsEvents.ticketPurchaseFailed,
       parameters: {
@@ -247,7 +268,7 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
         if (_drawRound(raffle.closesAt) != null)
           AnalyticsEvents.paramDrawRound: _drawRound(raffle.closesAt),
         AnalyticsEvents.paramFailReason: reason,
-        AnalyticsEvents.paramPointsSpent: raffle.costMileage,
+        AnalyticsEvents.paramPointsSpent: totalCost,
         if (balance != null) AnalyticsEvents.paramBalance: balance,
         if (shortfall != null && shortfall > 0) 'shortfall_points': shortfall,
       },
@@ -553,8 +574,8 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   Widget _buildRaffleCard(Raffle raffle) {
     final dday = _dday(raffle.closesAt);
     final isSoon = dday != null && dday <= 1;
-    final entered = _enteredIds.contains(raffle.id);
     final isSubmitting = _submittingId == raffle.id;
+    final quantity = _quantityFor(raffle);
 
     return TicketShell(
       borderRadius: 20,
@@ -691,7 +712,7 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
                   children: [
                     Expanded(
                       child: Text(
-                        '${_comma(raffle.costMileage)} M',
+                        '${_comma(raffle.costMileage)} M / 장',
                         maxLines: 1,
                         style: const TextStyle(
                           fontFamily: 'Pretendard',
@@ -714,17 +735,30 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
                     ),
                   ],
                 ),
+                if (raffle.myTickets > 0) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    '내 응모 ${_comma(raffle.myTickets)}장',
+                    maxLines: 1,
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: _sub,
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                _buildQuantityStepper(raffle, quantity, isSubmitting),
                 const SizedBox(height: 12),
                 SizedBox(
                   width: double.infinity,
                   height: 44,
                   child: ElevatedButton(
-                    onPressed:
-                        entered || isSubmitting ? null : () => _enter(raffle),
+                    onPressed: isSubmitting ? null : () => _enter(raffle),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _primary,
                       foregroundColor: Colors.white,
-                      // 응모 완료는 회색 대신 톤 배경으로 둬 완료 상태가 긍정적으로 읽히게 한다.
                       disabledBackgroundColor: _tint,
                       disabledForegroundColor: _primary,
                       elevation: 0,
@@ -755,17 +789,10 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
                                 color: Colors.white,
                               ),
                             )
-                          : entered
-                              ? const Row(
-                                  key: ValueKey('done'),
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.check_rounded, size: 16),
-                                    SizedBox(width: 4),
-                                    Text('응모 완료'),
-                                  ],
-                                )
-                              : const Text('응모하기', key: ValueKey('idle')),
+                          : Text(
+                              '${_comma(quantity)}장 응모하기',
+                              key: const ValueKey('idle'),
+                            ),
                     ),
                   ),
                 ),
@@ -773,6 +800,63 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// 응모 수량 선택 스테퍼. 백엔드는 quantity로 한 번에 여러 장 응모를 지원한다.
+  Widget _buildQuantityStepper(Raffle raffle, int quantity, bool isSubmitting) {
+    return Container(
+      height: 36,
+      decoration: BoxDecoration(
+        color: _bg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: _line),
+      ),
+      child: Row(
+        children: [
+          _quantityButton(
+            icon: Icons.remove_rounded,
+            onTap: isSubmitting || quantity <= 1
+                ? null
+                : () => _changeQuantity(raffle, -1),
+          ),
+          Expanded(
+            child: Center(
+              child: Text(
+                '$quantity장',
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: _ink,
+                ),
+              ),
+            ),
+          ),
+          _quantityButton(
+            icon: Icons.add_rounded,
+            onTap: isSubmitting || quantity >= _maxQuantityPerPurchase
+                ? null
+                : () => _changeQuantity(raffle, 1),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _quantityButton({required IconData icon, VoidCallback? onTap}) {
+    return SizedBox(
+      width: 36,
+      height: 36,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Icon(
+          icon,
+          size: 16,
+          color: onTap == null ? _faint : _ink,
+        ),
       ),
     );
   }

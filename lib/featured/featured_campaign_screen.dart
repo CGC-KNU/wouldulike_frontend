@@ -5,6 +5,7 @@ import 'package:new1/affiliate_benefits_screen.dart';
 import 'package:new1/services/affiliate_service.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/services/coupon_service.dart';
+import 'package:new1/services/favorites_service.dart';
 import 'package:new1/services/promotion_service.dart';
 
 /// 기획전 특집 화면 (스펙 7.4, 프로토타입 화면 13)
@@ -53,11 +54,7 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       _prefs = prefs;
-      _favoriteIds =
-          (prefs.getStringList(_kFavoriteRestaurantIdsKey) ?? const <String>[])
-              .map(int.tryParse)
-              .whereType<int>()
-              .toSet();
+      _favoriteIds = await FavoritesService.loadIds();
 
       final tab = await AffiliateService.fetchTabRestaurants();
       final byId = <int, AffiliateRestaurantSummary>{
@@ -127,10 +124,7 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
       next.remove(restaurantId);
     }
     _favoriteIds = next;
-    await _prefs?.setStringList(
-      _kFavoriteRestaurantIdsKey,
-      next.map((id) => id.toString()).toList(),
-    );
+    await FavoritesService.setFavorite(restaurantId, isFavorite);
     if (mounted) setState(() {});
   }
 

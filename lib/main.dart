@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/api_client.dart';
+import 'services/app_config_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -528,8 +529,6 @@ class MainScreen extends StatefulWidget {
 class MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   static const String _uuidKey = 'user_uuid'; // SharedPreferences ??
-  // 운영 중 필요 시 강제 업데이트 하한 버전을 지정해 사용할 수 있습니다. (예: '2.3.0')
-  static const String? _kIosMinimumRequiredVersion = '2.3.0';
   StreamSubscription<InstallStatus>? _flexibleUpdateSubscription;
   bool get _isSeasonalSplashPeriod => _shouldShowCampaignSplash();
 
@@ -584,6 +583,24 @@ class MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _checkForAppUpdate() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+      final belowMin = AppConfigService.isBelowMinSupported(currentVersion);
+      final force = AppConfigService.forceUpdateFlag() || belowMin;
+      final storeUrl = AppConfigService.storeUrl();
+      final hasStoreTarget =
+          storeUrl.isNotEmpty || AppConfigService.appleAppId.isNotEmpty;
+      if (force && hasStoreTarget) {
+        await _showServerForceUpdateDialog(
+          currentVersion: currentVersion,
+          minSupported: AppConfigService.minSupportedVersion(),
+        );
+      }
+    } catch (e) {
+      debugPrint('[Update] 서버 버전 확인 실패: $e');
+    }
+
     if (Platform.isAndroid) {
       try {
         final info = await InAppUpdate.checkForUpdate();
@@ -676,28 +693,35 @@ class MainScreenState extends State<MainScreen> {
         return;
       }
       final latestVersion = latestVersionRaw.trim();
-      final isBelowMinimum = _kIosMinimumRequiredVersion != null &&
-          _compareVersions(currentVersion, _kIosMinimumRequiredVersion!) < 0;
+      final minSupported = AppConfigService.minSupportedVersion();
+      final isBelowMinimum = minSupported.isNotEmpty &&
+          AppConfigService.compareVersions(currentVersion, minSupported) < 0;
       final hasNewerStoreVersion =
-          _compareVersions(currentVersion, latestVersion) < 0;
+          AppConfigService.compareVersions(currentVersion, latestVersion) < 0;
 
-      if (!hasNewerStoreVersion && !isBelowMinimum) return;
+      if (!hasNewerStoreVersion &&
+          !isBelowMinimum &&
+          !AppConfigService.forceUpdateFlag()) {
+        return;
+      }
 
+      final configStoreUrl = AppConfigService.storeUrl();
       final trackViewUrlRaw = map['trackViewUrl'];
-      final trackViewUrl =
-          trackViewUrlRaw is String && trackViewUrlRaw.isNotEmpty
+      final trackViewUrl = configStoreUrl.isNotEmpty
+          ? configStoreUrl
+          : (trackViewUrlRaw is String && trackViewUrlRaw.isNotEmpty
               ? trackViewUrlRaw
-              : null;
+              : null);
       final trackIdRaw = map['trackId'];
       final trackId =
           trackIdRaw is int ? trackIdRaw : int.tryParse('$trackIdRaw');
       final displayVersion = hasNewerStoreVersion
           ? latestVersion
-          : (_kIosMinimumRequiredVersion ?? latestVersion);
+          : (minSupported.isNotEmpty ? minSupported : latestVersion);
 
       if (!mounted) return;
       await _showIosUpdateDialog(
-        isForceUpdate: isBelowMinimum,
+        isForceUpdate: isBelowMinimum || AppConfigService.forceUpdateFlag(),
         displayVersion: displayVersion,
         storeUrl: trackViewUrl,
         trackId: trackId,
@@ -725,6 +749,52 @@ class MainScreenState extends State<MainScreen> {
       if (lv != rv) return lv.compareTo(rv);
     }
     return 0;
+  }
+
+  Future<void> _showServerForceUpdateDialog({
+    required String currentVersion,
+    required String minSupported,
+  }) async {
+    if (!mounted) return;
+    final storeUrl = AppConfigService.storeUrl();
+    final appleAppId = AppConfigService.appleAppId;
+    final display = minSupported.isNotEmpty ? minSupported : currentVersion;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('업데이트 안내'),
+            content: Text(
+              '안정적인 서비스 이용을 위해 버전 $display 이상으로 업데이트가 필요해요.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  if (Platform.isIOS) {
+                    await _launchIosStoreUrl(
+                      storeUrl: storeUrl.isNotEmpty ? storeUrl : null,
+                      trackId: int.tryParse(appleAppId),
+                    );
+                  } else if (storeUrl.isNotEmpty) {
+                    final uri = Uri.tryParse(storeUrl);
+                    if (uri != null) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  }
+                },
+                child: const Text('업데이트'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showIosUpdateDialog({
@@ -780,7 +850,10 @@ class MainScreenState extends State<MainScreen> {
     }
     final fallback = trackId != null
         ? Uri.parse('itms-apps://itunes.apple.com/app/id$trackId')
-        : null;
+        : (AppConfigService.appleAppId.isNotEmpty
+            ? Uri.parse(
+                'itms-apps://itunes.apple.com/app/id${AppConfigService.appleAppId}')
+            : null);
 
     if (preferred != null) {
       final ok =
@@ -793,6 +866,8 @@ class MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _initializeApp() async {
+    await AppConfigService.prefetch();
+    await OnboardingPrefs.pullFromServer();
     await _checkForAppUpdate();
 
     final prefs = await SharedPreferences.getInstance();
@@ -916,8 +991,7 @@ class MainScreenState extends State<MainScreen> {
       return;
     }
 
-    final url = Uri.parse(
-        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/update/fcm_token/');
+    final url = Uri.parse('${ApiClient.baseUrl}/guests/update/fcm_token/');
 
     try {
       final response = await http.post(
@@ -960,8 +1034,7 @@ class MainScreenState extends State<MainScreen> {
       });
     }
     try {
-      final checkUrl = Uri.parse(
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
+      final checkUrl = Uri.parse('${ApiClient.baseUrl}/guests/retrieve/');
       final checkResponse = await http.get(checkUrl);
 
       if (checkResponse.statusCode == 200) {
@@ -994,8 +1067,7 @@ class MainScreenState extends State<MainScreen> {
       });
     }
     try {
-      final url = Uri.parse(
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
+      final url = Uri.parse('${ApiClient.baseUrl}/guests/retrieve/');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {

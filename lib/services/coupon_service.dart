@@ -13,6 +13,7 @@ import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
 import 'api_client.dart';
+import 'app_config_service.dart';
 
 const String _kSeenCouponCodesKey = 'coupon_analytics_seen_codes';
 
@@ -65,6 +66,9 @@ class UserCoupon {
     this.updatedAt,
     this.issueKey,
     this.campaignCode,
+    this.couponTypeCode,
+    this.campaignBucket,
+    this.campaignBucketName,
   });
 
   factory UserCoupon.fromJson(Map<String, dynamic> json) {
@@ -100,6 +104,9 @@ class UserCoupon {
       updatedAt: _parseDate(json['updated_at'] ?? json['redeemed_at']),
       issueKey: issueKey,
       campaignCode: campaignCode,
+      couponTypeCode: _normalizeString(json['coupon_type_code']),
+      campaignBucket: _normalizeString(json['campaign_bucket']),
+      campaignBucketName: _normalizeString(json['campaign_bucket_name']),
     );
   }
 
@@ -122,9 +129,32 @@ class UserCoupon {
   /// 캠페인 코드 (기획전·발급 경로 구분, Firebase coupon_issue_source 우선 사용)
   final String? campaignCode;
 
+  /// 쿠폰 타입 코드 (웰컴/스탬프 보상 등 판별용)
+  final String? couponTypeCode;
+
+  final String? campaignBucket;
+  final String? campaignBucketName;
+
   /// Firebase coupon_issue_source: campaign_code 우선, 없으면 issue_key 기반
   String get couponIssueSource =>
       campaignCode ?? resolveCouponIssueSource(issueKey);
+
+  bool get isWelcomeType {
+    final code = couponTypeCode?.trim().toUpperCase() ?? '';
+    if (code.isEmpty) return false;
+    return code.startsWith('WELCOME') || code.startsWith('SIGNUP');
+  }
+}
+
+/// 만료 임박 여부. 만료일 자체는 서버 `expires_at`만 쓰고, 임박 창만 여기서 본다.
+bool isCouponExpiringSoon(
+  UserCoupon coupon, {
+  Duration window = const Duration(days: 3),
+}) {
+  final expiresAt = coupon.expiresAt;
+  if (expiresAt == null) return false;
+  final diff = expiresAt.difference(AppConfigService.now());
+  return !diff.isNegative && diff <= window;
 }
 
 /// issue_key prefix로 쿠폰 발급 경로 반환 (레거시)
@@ -909,12 +939,20 @@ class CouponService {
   static const _hiddenCouponKeywords = ['월요병 치료 쿠폰', '술요일 쿠폰'];
 
   static bool _isVisibleCouponType(UserCoupon coupon) {
-    final campaign = coupon.campaignCode?.trim().toUpperCase();
-    if (campaign != null && _hiddenCampaignCodes.contains(campaign)) {
+    final buckets = <String>[
+      coupon.campaignBucket?.trim().toUpperCase() ?? '',
+      coupon.campaignCode?.trim().toUpperCase() ?? '',
+      coupon.couponTypeCode?.trim().toUpperCase() ?? '',
+    ];
+    if (buckets.any(_hiddenCampaignCodes.contains)) {
       return false;
     }
     final issueKey = coupon.issueKey?.toUpperCase() ?? '';
     if (issueKey.contains('APP_OPEN_MON') || issueKey.contains('APP_OPEN_WED')) {
+      return false;
+    }
+    final bucketName = coupon.campaignBucketName ?? '';
+    if (_hiddenCouponKeywords.any(bucketName.contains)) {
       return false;
     }
     // 캠페인 코드가 안 내려오는 과거 발급분은 문구로 거른다.
@@ -970,7 +1008,7 @@ class CouponService {
         statuses: <int, StampStatus>{
           kDemoRestaurantId: StampStatus.fromJson(demoStampStatusJson()),
         },
-        defaultTarget: 10,
+        defaultTarget: AppConfigService.stampDefaultCycleTarget,
         hasResults: true,
       );
     }
@@ -1027,7 +1065,8 @@ class CouponService {
     int count = 1,
     String? idemKey,
   }) async {
-    final safeCount = count.clamp(1, 4).toInt();
+    final maxPerScan = AppConfigService.stampMaxPerScan;
+    final safeCount = count.clamp(1, maxPerScan).toInt();
     // 데모 모드는 서버를 안 쓴다. 메모리 상태를 올려 도장이 실제로 찍히게 한다.
     if (kDemoWallet && restaurantId == kDemoRestaurantId) {
       return StampAddResult.success(
@@ -1054,11 +1093,11 @@ class CouponService {
         final msg = error?.detail ??
             (response.statusCode == 403 || error?.code == 'invalid_pin'
                 ? 'PIN 번호가 올바르지 않아요. 다시 확인해 주세요.'
-                : response.statusCode == 429
-                    ? '이 식당은 하루 최대 5회까지 스탬프를 적립할 수 있어요.'
+                    : response.statusCode == 429
+                    ? '이 식당은 하루 최대 ${AppConfigService.stampDailyLimitPerRestaurant}회까지 스탬프를 적립할 수 있어요.'
                     : response.statusCode == 400 &&
                             error?.code == 'invalid_stamp_count'
-                        ? '스탬프 적립 개수는 1개 이상 4개 이하만 가능해요.'
+                        ? '스탬프 적립 개수는 1개 이상 ${AppConfigService.stampMaxPerScan}개 이하만 가능해요.'
                         : '요청이 실패했어요 (HTTP ${response.statusCode})');
         return StampAddResult.failure(
           msg,
@@ -1232,11 +1271,16 @@ class CouponService {
     }
   }
 
-  /// POST /api/coupons/signup/complete/ - 회원가입 완료 시 쿠폰 발급
-  static Future<Map<String, dynamic>> signupComplete() async {
+  /// POST /api/coupons/signup/complete/ - 회원가입 완료 시 쿠폰 발급.
+  /// restaurantId(가입 시 고른 식당, 온보딩 룰렛에서 선택)는 서버가 필수로 받는다 —
+  /// 안 실으면 신규 계정은 restaurant_required(400)로 실패한다. 이미 가입 쿠폰을
+  /// 받은 계정은 서버가 restaurant_id 없이도 기존 쿠폰을 그대로 반환한다(멱등).
+  static Future<Map<String, dynamic>> signupComplete({int? restaurantId}) async {
     final response = await ApiClient.post(
       '/api/coupons/signup/complete/',
-      body: <String, dynamic>{},
+      body: <String, dynamic>{
+        if (restaurantId != null) 'restaurant_id': restaurantId,
+      },
     );
     final decoded = _decodeResponseBody(response);
     final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};

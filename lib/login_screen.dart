@@ -202,9 +202,11 @@ class _LoginScreenState extends State<LoginScreen> {
         } catch (_) {
           // 쿠폰 동기화 실패는 로그인 성공 자체를 막지 않는다.
         }
+        await OnboardingPrefs.pullFromServer();
         Navigator.of(context).pop(coupons ?? true);
       } else {
         // 일반 진입(앱 시작 등) 또는 재로그인: 스택을 비우고 메인 화면으로 이동
+        await OnboardingPrefs.pullFromServer();
         Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);
       }
     } catch (e) {
@@ -280,8 +282,10 @@ class _LoginScreenState extends State<LoginScreen> {
         try {
           coupons = await CouponService.fetchMyCoupons();
         } catch (_) {}
+        await OnboardingPrefs.pullFromServer();
         Navigator.of(context).pop(coupons ?? true);
       } else {
+        await OnboardingPrefs.pullFromServer();
         Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);
       }
     } on SignInWithAppleAuthorizationException catch (e) {

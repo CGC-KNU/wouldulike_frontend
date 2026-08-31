@@ -105,7 +105,7 @@ class WelcomeMissionBanner extends StatelessWidget {
                         const SizedBox(height: 5),
                         Text(
                           ready
-                              ? '제휴 매장 쿠폰이 기다리고 있어요'
+                              ? '가입할 때 고른 식당 쿠폰이 기다리고 있어요'
                               : '간단한 미션 $total개, 지금 ${welcome.remainingCount}개 남았어요',
                           style: const TextStyle(
                             fontFamily: 'Pretendard',
@@ -256,9 +256,9 @@ class WelcomeMissionSection extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 9),
-        const Text(
-          '두 가지를 마치면 제휴 매장 쿠폰을 드려요',
-          style: TextStyle(
+        Text(
+          '${welcome.missions.length}가지를 마치면 가입할 때 고른 식당 쿠폰을 드려요',
+          style: const TextStyle(
             fontFamily: 'Pretendard',
             fontSize: 13,
             fontWeight: FontWeight.w500,
@@ -517,7 +517,7 @@ class _RewardTicket extends StatelessWidget {
                     Text(
                       reward?.rewardText.isNotEmpty == true
                           ? reward!.rewardText
-                          : '제휴 매장 쿠폰 1장',
+                          : '가입할 때 고른 식당 쿠폰 1장',
                       style: const TextStyle(
                         fontFamily: 'Pretendard',
                         fontSize: 15,

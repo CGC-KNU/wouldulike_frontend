@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../services/master_content.dart';
+
 /// 식사권 응모 유의사항 전문. 상점·당첨자 발표에서 함께 연결한다.
-/// 표시 전용 화면이라 네트워크 호출이 없다.
 class RaffleTermsScreen extends StatelessWidget {
   const RaffleTermsScreen({super.key});
 
@@ -11,35 +12,9 @@ class RaffleTermsScreen extends StatelessWidget {
   static const _line = Color(0xFFE7E9EF);
   static const _primary = Color(0xFF4F46E5);
 
-  static const _sections = <_TermsSection>[
-    _TermsSection('응모 방법', [
-      '마일리지는 매장 구분 없이 전 매장 공통으로 사용해요.',
-      '응모하면 표시된 마일리지가 즉시 차감돼요.',
-      '한 응모 건에 1인 1회만 응모할 수 있어요.',
-      '보유 마일리지가 부족하면 응모할 수 없어요.',
-    ]),
-    _TermsSection('추첨과 발표', [
-      '마감 시각이 지나면 응모자 중 무작위로 추첨해요.',
-      '결과는 당첨자 발표와 내 응모에서 확인할 수 있어요.',
-      '당첨되면 식사권 쿠폰이 쿠폰함으로 자동 발급돼요.',
-      '당첨자 닉네임은 개인정보 보호를 위해 일부만 표시해요.',
-    ]),
-    _TermsSection('쿠폰 사용', [
-      '식사권 쿠폰은 제휴 전 매장에서 사용할 수 있어요.',
-      '쿠폰은 유효기간 안에 써야 하고, 기간이 지나면 자동으로 사라져요.',
-      '현금 교환·양도·재발급은 되지 않아요.',
-      '다른 할인·쿠폰과 중복 사용은 매장 정책에 따라 제한될 수 있어요.',
-    ]),
-    _TermsSection('꼭 확인해주세요', [
-      '응모 후 취소와 마일리지 환급은 되지 않아요.',
-      '미당첨이어도 차감된 마일리지는 돌려드리지 않아요.',
-      '부정한 방법으로 적립한 마일리지로 응모하면 당첨이 취소될 수 있어요.',
-      '운영상의 사유로 응모가 중단되면 차감된 마일리지를 돌려드려요.',
-    ]),
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final sections = MasterContent.raffleSections;
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFD),
       appBar: AppBar(
@@ -75,7 +50,7 @@ class RaffleTermsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          for (final section in _sections) ...[
+          for (final section in sections) ...[
             _buildSection(section),
             const SizedBox(height: 12),
           ],
@@ -95,7 +70,7 @@ class RaffleTermsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildSection(_TermsSection section) {
+  Widget _buildSection(RaffleTermsSection section) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -164,11 +139,4 @@ class RaffleTermsScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class _TermsSection {
-  const _TermsSection(this.title, this.items);
-
-  final String title;
-  final List<String> items;
 }

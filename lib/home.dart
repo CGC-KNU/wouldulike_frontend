@@ -21,6 +21,7 @@ import 'mission/welcome_missions.dart';
 import 'coupon/redeem_pin_dialog.dart';
 import 'services/affiliate_service.dart';
 import 'services/coupon_service.dart';
+import 'services/favorites_service.dart';
 import 'services/api_client.dart';
 import 'services/mission_service.dart';
 import 'services/popup_service.dart';
@@ -76,6 +77,7 @@ class _HomeContentState extends State<HomeContent> {
   static const String _kWelcomeCouponDismissedKey =
       'welcome_coupon_dialog_dismissed';
   static const String _kPopupDismissedPrefix = 'home_popup_dismissed';
+  static const String _kInviteBannerDismissedKey = 'invite_banner_dismissed';
   static const String _kFavoriteRestaurantIdsKey =
       'affiliate_favorite_restaurant_ids';
   static const List<String> _kWelcomeCouponKeywords = <String>[
@@ -115,6 +117,7 @@ class _HomeContentState extends State<HomeContent> {
   bool _popupDialogVisible = false;
   bool _popupPromptScheduled = false;
   bool _suppressWelcomeCoupon = false;
+  bool _inviteBannerDismissed = false;
   bool _isOpeningAffiliateDetail = false;
   String? _processingHomeCouponCode;
   Set<int> _favoriteRestaurantIds = <int>{};
@@ -179,12 +182,10 @@ class _HomeContentState extends State<HomeContent> {
     prefs = await SharedPreferences.getInstance();
     _suppressWelcomeCoupon =
         prefs.getBool(_kWelcomeCouponDismissedKey) ?? false;
-    final rawFavoriteIds =
-        prefs.getStringList(_kFavoriteRestaurantIdsKey) ?? const <String>[];
-    _favoriteRestaurantIds = rawFavoriteIds
-        .map((value) => int.tryParse(value))
-        .whereType<int>()
-        .toSet();
+    _inviteBannerDismissed =
+        prefs.getBool(_kInviteBannerDismissedKey) ?? false;
+    final rawFavoriteIds = await FavoritesService.loadIds();
+    _favoriteRestaurantIds = rawFavoriteIds;
     _scheduleHomePopupCheck();
     if (!_suppressWelcomeCoupon) {
       await _checkWelcomeCouponStatus();
@@ -203,10 +204,7 @@ class _HomeContentState extends State<HomeContent> {
       next.remove(restaurantId);
     }
     _favoriteRestaurantIds = next;
-    await prefs.setStringList(
-      _kFavoriteRestaurantIdsKey,
-      _favoriteRestaurantIds.map((id) => id.toString()).toList(),
-    );
+    await FavoritesService.setFavorite(restaurantId, isFavorite);
     String restaurantName = '';
     for (final r in _affiliateRestaurants) {
       if (r.id == restaurantId) {
@@ -751,6 +749,7 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   bool _isWelcomeCoupon(UserCoupon coupon) {
+    if (coupon.isWelcomeType) return true;
     final benefit = coupon.benefit;
     final candidates = <String>[
       coupon.code,
@@ -1220,6 +1219,100 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
+  /// 현재 혜택이 있는 식당 가로 스크롤. 서버가 내려주는 source가 'all'이면
+  /// (적립 진행 중인 식당이 적어 전체 제휴 식당으로 폴백된 상태) 진행 뱃지 없이
+  /// 그냥 식당만 쭉 보여주고, 'all'이 아니면(적립 진행 중인 식당이 충분히 있으면)
+  /// 스탬프·쿠폰 진행 정보를 함께 표기한다 — 임계치 판단은 서버가 한다.
+  Widget _buildAffiliateRestaurantsSection() {
+    const header = Text(
+      '현재 진행 중인 우주라이크 혜택',
+      style: TextStyle(
+        color: Color(0xFF111827),
+        fontSize: 18,
+        fontFamily: 'Pretendard',
+        fontWeight: FontWeight.w700,
+        letterSpacing: -0.5,
+      ),
+    );
+
+    if (_isAffiliateLoading && _affiliateRestaurants.isEmpty) {
+      return const Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header,
+          SizedBox(height: 12),
+          SizedBox(
+            height: 256,
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ],
+      );
+    }
+
+    if (_affiliateError != null && _affiliateRestaurants.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          header,
+          const SizedBox(height: 12),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              _affiliateError!,
+              style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 13,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (_affiliateRestaurants.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        header,
+        const SizedBox(height: 12),
+        Container(
+          height: 256,
+          width: double.infinity,
+          color: Colors.white,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.zero,
+            physics: const BouncingScrollPhysics(),
+            itemCount: _displayAffiliateRestaurants.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final restaurant = _displayAffiliateRestaurants[index];
+              final showProgressInfo = _affiliateSource != 'all';
+              return _AffiliateRestaurantCard(
+                restaurant: restaurant,
+                stampLabel: _buildHomeStampLabel(restaurant),
+                couponLabel: _buildHomeCouponLabel(restaurant.id),
+                isInProgress: _isAffiliateInProgress(restaurant),
+                showProgressInfo: showProgressInfo,
+                onTap: () => _openAffiliateRestaurantDetail(restaurant),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildMenuCard(String imagePath, String title, double width,
       {VoidCallback? onTap}) {
     return GestureDetector(
@@ -1530,12 +1623,18 @@ class _HomeContentState extends State<HomeContent> {
         onTap: () => _openMissionScreen('welcome', welcome.remainingCount),
       );
     }
+    if (_inviteBannerDismissed) return const SizedBox.shrink();
     return InviteFriendBanner(
       onTap: () {
         AnalyticsLogger.logEvent('invite_banner_tap');
         Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => const InviteFriendScreen()),
         );
+      },
+      onDismiss: () {
+        AnalyticsLogger.logEvent('invite_banner_dismiss');
+        setState(() => _inviteBannerDismissed = true);
+        prefs.setBool(_kInviteBannerDismissedKey, true);
       },
     );
   }
@@ -1646,6 +1745,14 @@ class _HomeContentState extends State<HomeContent> {
                 _buildMissionBanner(),
                 // 기획전 캐러셀: 진행 중 기획전 있을 때만 노출 (기존 섹션 순서 유지)
                 _buildFeaturedCarousel(screenWidth - padding * 2),
+                // 일반 배너(트렌드): 기획전이 없는 주(예: 3주차)에 그 자리가
+                // 비지 않도록 기획전 아래에 되살렸다 (2.4.5 당시 배너).
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 20),
+                  child: _buildPromotionBanner(screenWidth - padding * 2),
+                ),
+                // 현재 혜택이 있는 식당 목록도 같은 시기에 함께 되살렸다.
+                _buildAffiliateRestaurantsSection(),
               ],
             ),
           ),
@@ -2051,13 +2158,9 @@ class _HomeCouponCard extends StatelessWidget {
                 ? '적용 매장 ID: ${coupon.restaurantId}'
                 : null);
 
-    // 만료 임박 여부 (3일 이내)
-    final expiresAt = coupon.expiresAt;
-    final isExpiringSoon = expiresAt != null &&
-        !expiresAt.difference(DateTime.now()).isNegative &&
-        expiresAt.difference(DateTime.now()).inDays <= 3;
-    final isExpiryDateUrgent = expiresAt != null &&
-        expiresAt.difference(DateTime.now()) <= const Duration(days: 7);
+    // 만료 임박 여부 — 서버 expires_at 기준, 임박 창은 3일
+    final isExpiringSoon = isCouponExpiringSoon(coupon);
+    final isExpiryDateUrgent = isExpiringSoon;
     final expiryColor =
         isExpiryDateUrgent ? const Color(0xFFB87270) : const Color(0xFFE1B53E);
 
@@ -2213,8 +2316,7 @@ class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse(
-            'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/'),
+        Uri.parse('${ApiClient.baseUrl}/restaurants/get-random-restaurants/'),
         headers: const {'Content-Type': 'application/json'},
         body: jsonEncode({
           'food_names': [widget.foodName],
@@ -2231,14 +2333,17 @@ class _FoodRestaurantListScreenState extends State<FoodRestaurantListScreen> {
                 .toList();
 
         final position = await LocationHelper.getLatLon();
-        final userLat = position?['lat'] ?? 35.8714;
-        final userLon = position?['lon'] ?? 128.6014;
+        final defaults = LocationHelper.getDefaultLatLon();
+        final userLat = position?['lat'] ?? defaults['lat']!;
+        final userLon = position?['lon'] ?? defaults['lon']!;
 
         final mapped = restaurants.map<Map<String, dynamic>>((restaurant) {
           final restLat =
-              double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
+              double.tryParse(restaurant['y']?.toString() ?? '') ??
+                  defaults['lat']!;
           final restLon =
-              double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+              double.tryParse(restaurant['x']?.toString() ?? '') ??
+                  defaults['lon']!;
           final distance =
               DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
           return {

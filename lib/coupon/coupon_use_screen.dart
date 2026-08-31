@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../config/analytics_events.dart';
+import '../services/app_config_service.dart';
 import '../services/coupon_service.dart';
 import '../utils/analytics_logger.dart';
 
@@ -41,13 +42,13 @@ class CouponUseScreen extends StatelessWidget {
     final exp = coupon.expiresAt;
     if (exp == null) return null;
     // 캘린더 일수 기준 (duration.inDays는 47시간을 1일로 절삭하는 문제가 있음)
-    final now = DateTime.now();
+    final now = AppConfigService.now();
     final expDate = DateTime(exp.year, exp.month, exp.day);
     final today = DateTime(now.year, now.month, now.day);
     final days = expDate.difference(today).inDays;
     if (days < 0) return (text: '기한 만료', urgent: true);
     if (days == 0) return (text: '오늘까지', urgent: true);
-    return (text: 'D-$days', urgent: days <= 7);
+    return (text: 'D-$days', urgent: days <= 3);
   }
 
   Future<void> _openStaffConfirm(BuildContext context) async {
@@ -415,8 +416,9 @@ class _StaffConfirmSheetState extends State<_StaffConfirmSheet> {
 
   Future<void> _submit() async {
     final value = _controller.text.trim();
-    if (value.length != 4) {
-      setState(() => _error = '비밀번호 4자리를 입력해 주세요.');
+    if (value.length != AppConfigService.pinLength) {
+      setState(() =>
+          _error = '비밀번호 ${AppConfigService.pinLength}자리를 입력해 주세요.');
       return;
     }
     setState(() {
@@ -524,11 +526,11 @@ class _StaffConfirmSheetState extends State<_StaffConfirmSheet> {
               autofocus: true,
               keyboardType: TextInputType.number,
               obscureText: true,
-              maxLength: 4,
+              maxLength: AppConfigService.pinLength,
               enabled: !_loading,
               inputFormatters: [
                 FilteringTextInputFormatter.digitsOnly,
-                LengthLimitingTextInputFormatter(4),
+                LengthLimitingTextInputFormatter(AppConfigService.pinLength),
               ],
               style: const TextStyle(
                 fontFamily: 'Pretendard',

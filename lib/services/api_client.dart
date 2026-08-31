@@ -138,6 +138,31 @@ class ApiClient {
     return response;
   }
 
+  /// get과 동일하나 4xx/5xx 시 throw 대신 response를 반환한다.
+  /// 콘텐츠 미설정(404)처럼 정상적인 빈 상태를 디버거가 잡지 않게 한다.
+  static Future<http.Response> getWithoutThrow(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    final uri = _resolve(path, queryParameters);
+    Future<http.Response> sendRequest() async {
+      final requestHeaders =
+          await _headers(authenticated: authenticated, extra: headers);
+      try {
+        return await _http.get(uri, headers: requestHeaders);
+      } catch (e) {
+        throw ApiNetworkException(e);
+      }
+    }
+
+    return _sendWithAuthRetry(
+      authenticated: authenticated,
+      sendRequest: sendRequest,
+    );
+  }
+
   static Future<http.Response> post(
     String path, {
     Map<String, dynamic>? queryParameters,
@@ -204,6 +229,33 @@ class ApiClient {
           await _headers(authenticated: authenticated, extra: headers);
       try {
         return await _http.patch(uri, headers: requestHeaders, body: payload);
+      } catch (e) {
+        throw ApiNetworkException(e);
+      }
+    }
+
+    final response = await _sendWithAuthRetry(
+      authenticated: authenticated,
+      sendRequest: sendRequest,
+    );
+    _throwIfFailed(response);
+    return response;
+  }
+
+  static Future<http.Response> put(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Object? body,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    final uri = _resolve(path, queryParameters);
+    final payload = body == null || body is String ? body : jsonEncode(body);
+    Future<http.Response> sendRequest() async {
+      final requestHeaders =
+          await _headers(authenticated: authenticated, extra: headers);
+      try {
+        return await _http.put(uri, headers: requestHeaders, body: payload);
       } catch (e) {
         throw ApiNetworkException(e);
       }
