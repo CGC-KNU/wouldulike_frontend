@@ -137,7 +137,7 @@ class Raffle {
       prizeAmount: _asInt(json['prize_amount']),
       costMileage: _asInt(json['cost_mileage']),
       restaurantName: json['restaurant_name']?.toString() ?? '',
-      entriesCount: _asInt(json['entries_count']),
+      entriesCount: _asInt(json['participant_count']),
       entered: json['entered'] == true || myTickets > 0,
       myTickets: myTickets,
       // 서버가 all_stores를 안 주는 구버전이면 매장명 유무로 판단한다.
@@ -279,7 +279,7 @@ class RaffleWinner {
       title: json['title']?.toString() ?? '식사권',
       prizeAmount: _asInt(json['prize_amount']),
       costMileage: _asInt(json['cost_mileage']),
-      entriesCount: _asInt(json['entries_count']),
+      entriesCount: _asInt(json['participant_count']),
       winnerNickname: json['winner_nickname']?.toString() ?? '당첨자 미정',
       allStores: json['all_stores'] != false,
       restaurantName: json['restaurant_name']?.toString() ?? '',
@@ -476,7 +476,7 @@ class MileageService {
           'idempotency_key': idempotencyKey ?? generateRaffleKey(raffleId),
           'quantity': quantity,
         },
-      );
+      ).timeout(const Duration(seconds: 15));
       final decoded = _decode(response);
       final map =
           decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
@@ -484,17 +484,18 @@ class MileageService {
         return RaffleEnterResult(
           ok: false,
           code: map['code']?.toString(),
-          message: map['message']?.toString(),
+          message: map['detail']?.toString(),
           balance: map['balance'] == null ? null : _asInt(map['balance']),
-          entriesCount: map['entries_count'] == null
-              ? null
-              : _asInt(map['entries_count']),
         );
       }
+      final raffle =
+          map['raffle'] is Map ? Map<String, dynamic>.from(map['raffle']) : null;
       return RaffleEnterResult(
         ok: true,
-        balanceAfter: _asInt(map['balance_after']),
-        entriesCount: _asInt(map['entries_count']),
+        balanceAfter: _asInt(map['balance']),
+        entriesCount: raffle?['participant_count'] == null
+            ? null
+            : _asInt(raffle!['participant_count']),
       );
     } catch (_) {
       return const RaffleEnterResult(

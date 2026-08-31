@@ -48,6 +48,12 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
 
   static const int _maxQuantityPerPurchase = 20;
 
+  /// 확인 다이얼로그가 완전히 뜨기 전(비동기 await 시작 직후)의 짧은 틈에
+  /// 버튼이 연타되면 `_enter`가 두 번 동시에 실행돼 같은 멱등 키로 요청이
+  /// 두 번 나갈 수 있다 — `_submittingId`는 다이얼로그 이후에야 세팅되므로
+  /// 그 틈을 못 막는다. 이 셋은 함수 진입 시점에 동기적으로 체크해 막는다.
+  final Set<int> _enteringRaffleIds = {};
+
   /// ticket_purchase_view는 목록 로드 뒤 1회만 보낸다 (새로고침마다 부풀지 않게).
   bool _viewLogged = false;
 
@@ -129,6 +135,15 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   }
 
   Future<void> _enter(Raffle raffle) async {
+    if (!_enteringRaffleIds.add(raffle.id)) return;
+    try {
+      await _enterInternal(raffle);
+    } finally {
+      _enteringRaffleIds.remove(raffle.id);
+    }
+  }
+
+  Future<void> _enterInternal(Raffle raffle) async {
     final quantity = _quantityFor(raffle);
     final totalCost = raffle.costMileage * quantity;
     final confirmed = await showDialog<bool>(
