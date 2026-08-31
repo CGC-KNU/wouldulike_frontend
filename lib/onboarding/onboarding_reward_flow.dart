@@ -18,17 +18,18 @@ enum _RewardStep { pick, spin, guide }
 
 /// 보상 플로우: 식당 선택 → 룰렛 연출 → 다음 단계.
 ///
+/// 식당은 매번 이 화면의 선택 단계에서 직접 고른다 — 이전에 저장된 값이
+/// 있어도 자동으로 이어받아 선택 단계를 건너뛰지 않는다. 그래야 룰렛에
+/// 걸리는 식당과 사용자가 실제로 방금 고른 식당이 항상 일치한다.
+///
 /// 여기서 고른 식당이 곧 "가입 시 고른 식당"이다 — 첫 쿠폰뿐 아니라 이후 웰컴
 /// 미션(쿠폰 사용·스탬프 2회)도 이 식당을 기준으로 진행된다. 그래서 실제 발급
 /// (signupComplete(restaurantId: ...))은 식당이 정해진 뒤인 여기서만 일어난다.
 /// [preLogin]=false (가입 직후): 이 화면 진입 시 [_fetchIssuedCoupon]이 먼저
 /// 발급 여부를 조회하고, 아직이면 그 자리에서 restaurant_id를 실어 발급한 뒤
-/// 룰렛 연출로 공개하고 4컷 사용법으로 이어진다. (프로필 저장 화면에서 로그인
-/// 전 픽이 이미 있으면 먼저 한 번 시도하지만, 보통은 이 화면이 최초 발급 지점이다.)
+/// 룰렛 연출로 공개하고 4컷 사용법으로 이어진다.
 /// [preLogin]=true (프로토타입 화면 2·3, 로그인 전): 쿠폰 API를 쓸 수 없으므로
-/// 연출만 하고 당첨 후 카카오 로그인으로 유도한다. 이때 고른 식당은
-/// [OnboardingPrefs]에 저장해 두고, 로그인 후 다시 뜨는 이 화면(preLogin=false)이
-/// 그 값을 이어받아 실제 발급을 진행한다.
+/// 연출만 하고 당첨 후 카카오 로그인으로 유도한다.
 class OnboardingRewardFlow extends StatefulWidget {
   const OnboardingRewardFlow({
     super.key,
@@ -82,10 +83,6 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   bool _issuanceFailed = false;
   bool _finished = false;
 
-  // 인트로에서 이미 고른 식당 (있으면 선택 단계를 건너뛴다)
-  int? _savedPickId;
-  String? _savedPickName;
-
   @override
   void initState() {
     super.initState();
@@ -101,10 +98,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   }
 
   Future<void> _bootstrap() async {
-    _savedPickId = await OnboardingPrefs.pickedRestaurantId();
-    _savedPickName = await OnboardingPrefs.pickedRestaurantName();
     await _loadRestaurants();
-    _maybeAutoSpinFromSaved();
   }
 
   @override
@@ -164,24 +158,6 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   }
 
   // ---------- 룰렛 ----------
-
-  /// 인트로에서 저장한 식당이 있으면 선택 단계를 건너뛰고 바로 룰렛으로.
-  void _maybeAutoSpinFromSaved() {
-    if (!mounted) return;
-    var name = _savedPickName ?? '';
-    final id = _savedPickId;
-    if (name.isEmpty) {
-      for (final r in _restaurants) {
-        if (r.id == id) {
-          name = r.name;
-          break;
-        }
-      }
-    }
-    if (name.isEmpty) return;
-    // 선택 로깅은 인트로에서 이미 했으므로 생략
-    _beginSpin(name: name, id: id, logPick: false);
-  }
 
   /// 온보딩 이벤트 공통 파라미터. 세션 키가 아직 로드되지 않았으면 생략한다.
   Map<String, Object?> get _sessionParams => {
@@ -256,10 +232,16 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     try {
       var coupons =
           await CouponService.fetchMyCoupons(status: CouponStatus.issued);
-      coupon = _pickRevealCoupon(coupons);
-      // 아직 발급 전이면 여기서 실제 발급을 보장한다. 이 시점엔 식당이 이미
-      // 정해져 있으므로(직접 선택 또는 로그인 전 선택을 이어받음) restaurant_id를
-      // 실어 보낸다 — 서버가 필수로 요구한다. signupComplete는 issue_key
+      // 발급 여부는 "가입 축하 쿠폰(SIGNUP_WELCOME)을 이미 받았는가"로만
+      // 판단한다. 다른 이유로 발급된 쿠폰(스탬프 리워드, 마일리지 응모 당첨
+      // 등)이 있다고 해서 이번 온보딩에서 새로 발급을 건너뛰면 안 된다 —
+      // 특히 이미 여러 쿠폰을 가진 기존 계정은 "가장 최근 발급 쿠폰"이
+      // 방금 고른 식당과 무관한 엉뚱한 쿠폰이라, 아예 발급이 안 된 것처럼
+      // 보인다.
+      coupon = _findWelcomeCoupon(coupons);
+      // 아직 가입 축하 쿠폰을 못 받았으면 여기서 실제 발급을 보장한다. 이
+      // 시점엔 식당이 이미 정해져 있으므로(방금 선택) restaurant_id를 실어
+      // 보낸다 — 서버가 필수로 요구한다. signupComplete는 issue_key
       // Unique로 멱등이라 중복 발급되지 않는다.
       if (coupon == null) {
         final result =
@@ -272,11 +254,18 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
         } else {
           coupons =
               await CouponService.fetchMyCoupons(status: CouponStatus.issued);
-          coupon = _pickRevealCoupon(coupons);
+          coupon = _findWelcomeCoupon(coupons) ?? _pickRevealCoupon(coupons);
         }
       }
     } catch (_) {
-      // 조회/발급 실패해도 연출은 계속 진행 (쿠폰함에서 다시 확인 가능)
+      // 네트워크 오류·서버 500 등으로 조회/발급 자체가 실패한 경우
+    }
+    // 예외가 났든(위 catch), 발급 직후 재조회가 아직 반영 전이든, 결국 보여줄
+    // 쿠폰이 없다면 실패로 표시한다. 그냥 넘어가면 화면엔 "쿠폰을 준비하고
+    // 있어요" 플레이스홀더만 뜨고 버튼은 눌리는 상태라, 실제로는 발급되지
+    // 않았는데 튜토리얼이 정상 완료된 것처럼 지나가 버린다.
+    if (coupon == null) {
+      issuanceFailed = true;
     }
     if (!mounted) return;
     setState(() {
@@ -287,9 +276,8 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     _maybeLogReveal();
   }
 
-  /// 가입 축하 쿠폰 우선, 없으면 가장 최근 발급 쿠폰
-  UserCoupon? _pickRevealCoupon(List<UserCoupon> coupons) {
-    if (coupons.isEmpty) return null;
+  /// 이미 받은 가입 축하 쿠폰이 있으면 반환 (없으면 null → 새로 발급해야 함)
+  UserCoupon? _findWelcomeCoupon(List<UserCoupon> coupons) {
     final sorted = [...coupons]..sort((a, b) {
         final at = a.issuedAt?.millisecondsSinceEpoch ?? 0;
         final bt = b.issuedAt?.millisecondsSinceEpoch ?? 0;
@@ -298,6 +286,18 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     for (final c in sorted) {
       if (c.couponIssueSource == 'SIGNUP_WELCOME') return c;
     }
+    return null;
+  }
+
+  /// 방금 발급을 시도했는데도 응답 목록에서 못 찾았을 때의 최후 폴백 —
+  /// 가장 최근 발급 쿠폰이라도 보여준다 (발급 자체는 성공했을 가능성이 큼).
+  UserCoupon? _pickRevealCoupon(List<UserCoupon> coupons) {
+    if (coupons.isEmpty) return null;
+    final sorted = [...coupons]..sort((a, b) {
+        final at = a.issuedAt?.millisecondsSinceEpoch ?? 0;
+        final bt = b.issuedAt?.millisecondsSinceEpoch ?? 0;
+        return bt.compareTo(at);
+      });
     return sorted.first;
   }
 
@@ -356,6 +356,12 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
       },
     );
     await OnboardingPrefs.markRewardDone();
+    if (!widget.preLogin) {
+      // 로그인 후 인스턴스가 이 온보딩 세션의 최종 종료 지점이다. 로그인 전
+      // 인스턴스는 여기서 지우면 안 된다 — 방금 고른 식당을 로그인 후
+      // 인스턴스가 이어받아야 하기 때문 (클래스 docstring 참고).
+      await OnboardingPrefs.clearPickedRestaurant();
+    }
     if (!mounted) return;
     widget.onFinished();
   }
@@ -670,12 +676,14 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
               crossAxisCount: 2,
               mainAxisSpacing: 12,
               crossAxisSpacing: 12,
-              childAspectRatio: 1.15,
+              // 카드 내용(번호 배지+이모지+제목+설명)이 1.15 비율에서 기기별로
+              // 몇 픽셀씩 오버플로우해서(RenderFlex overflow) 살짝 더 낮췄다.
+              childAspectRatio: 1.02,
               physics: const NeverScrollableScrollPhysics(),
               children: List.generate(_guideCuts.length, (i) {
                 final cut = _guideCuts[i];
                 return Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(16),
@@ -683,6 +691,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Container(
                         width: 22,
@@ -702,19 +711,23 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
                           ),
                         ),
                       ),
-                      const Spacer(),
-                      Text(cut.emoji, style: const TextStyle(fontSize: 30)),
-                      const SizedBox(height: 8),
-                      Text(
-                        cut.title,
-                        style: const TextStyle(
-                          fontFamily: 'Pretendard',
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700,
-                          color: OnboardingStyle.ink,
-                        ),
+                      Text(cut.emoji, style: const TextStyle(fontSize: 26)),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            cut.title,
+                            style: const TextStyle(
+                              fontFamily: 'Pretendard',
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: OnboardingStyle.ink,
+                            ),
+                          ),
+                          Text(cut.sub, style: OnboardingStyle.caption),
+                        ],
                       ),
-                      Text(cut.sub, style: OnboardingStyle.caption),
                     ],
                   ),
                 );

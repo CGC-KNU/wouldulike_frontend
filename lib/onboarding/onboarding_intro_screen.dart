@@ -17,8 +17,15 @@ const TextStyle _headline = TextStyle(
   color: OnboardingStyle.ink,
 );
 
+/// 인트로 카피 종류.
+/// [newUser]: 로그인 전 첫 실행(프로토타입 화면 0·1) — 앱을 처음 보는 사람용.
+/// [renewal]: 이미 쓰던 기존 계정이 개편 후 다시 로그인했을 때 — "처음 오셨네요"가
+/// 아니라 "그동안 앱이 달라졌어요"로 톤을 바꾼다.
+enum OnboardingIntroVariant { newUser, renewal }
+
 // 프로토타입 화면 0·1 카피
-const List<({String title, String subtitle, String button})> _messageCuts = [
+const List<({String title, String subtitle, String button})>
+    _newUserMessageCuts = [
   (
     title: '대학가 맛집,\n우주라이크와 함께 하세요!',
     subtitle: '대학가 인근 제휴 식당의 쿠폰과 스탬프 등\n모든 혜택을 한 곳에 모았어요.',
@@ -31,13 +38,33 @@ const List<({String title, String subtitle, String button})> _messageCuts = [
   ),
 ];
 
-/// 로그인 전 첫 실행 인트로 (프로토타입 화면 0·1).
+// 기존 계정이 개편 후 다시 로그인했을 때 보여줄 카피
+const List<({String title, String subtitle, String button})>
+    _renewalMessageCuts = [
+  (
+    title: '우주라이크가\n새롭게 바뀌었어요',
+    subtitle: '대학가 인근 제휴 식당의 쿠폰과 스탬프 등\n모든 혜택을 한 곳에 모았어요.',
+    button: '둘러보기',
+  ),
+  (
+    title: '지금 식당을 고르면,\n바로 쓸 쿠폰을 드려요',
+    subtitle: '원하는 식당 하나를 고르면\n바로 사용 가능한 쿠폰을 드려요!',
+    button: '쿠폰 즉시 발급 받기',
+  ),
+];
+
+/// 첫 실행 인트로 (프로토타입 화면 0·1).
 ///
 /// 앱 소개 두 컷만 보여주고, 이후 식당 선택→룰렛(OnboardingRewardFlow)으로 이어진다.
 class OnboardingIntroScreen extends StatefulWidget {
-  const OnboardingIntroScreen({super.key, required this.onFinished});
+  const OnboardingIntroScreen({
+    super.key,
+    required this.onFinished,
+    this.variant = OnboardingIntroVariant.newUser,
+  });
 
   final VoidCallback onFinished;
+  final OnboardingIntroVariant variant;
 
   @override
   State<OnboardingIntroScreen> createState() => _OnboardingIntroScreenState();
@@ -51,6 +78,11 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
 
   /// 온보딩~첫 쿠폰 구간을 잇는 조인 키. 이 화면이 구간의 시작점이다.
   String? _firstpickSessionId;
+
+  List<({String title, String subtitle, String button})> get _messageCuts =>
+      widget.variant == OnboardingIntroVariant.renewal
+          ? _renewalMessageCuts
+          : _newUserMessageCuts;
 
   @override
   void initState() {

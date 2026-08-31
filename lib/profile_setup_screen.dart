@@ -7,7 +7,6 @@ import 'data/knu_profile_options.dart';
 import 'onboarding/onboarding_prefs.dart';
 import 'services/api_client.dart';
 import 'services/app_config_service.dart';
-import 'services/coupon_service.dart';
 import 'utils/analytics_logger.dart';
 import 'services/user_service.dart';
 
@@ -114,18 +113,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         departmentName: department.name,
       );
       if (!mounted) return;
-      try {
-        // 식당은 보통 이 화면 다음(온보딩 룰렛)에서 고른다. 로그인 전에 이미
-        // 골라 둔 식당이 로컬에 있을 때만 여기서 먼저 발급을 시도하고,
-        // 없으면 룰렛 화면의 발급 폴백(restaurant_id 포함)에 맡긴다 —
-        // restaurant_id 없이 호출하면 신규 계정은 서버에서 실패한다.
-        final pickedRestaurantId = await OnboardingPrefs.pickedRestaurantId();
-        if (pickedRestaurantId != null) {
-          await CouponService.signupComplete(restaurantId: pickedRestaurantId);
-        }
-      } catch (_) {
-        // 쿠폰 발급 실패는 프로필 저장 성공을 막지 않음
-      }
+      // 쿠폰 발급은 항상 보상 온보딩(튜토리얼)의 식당 선택 단계에서만 일어난다
+      // (OnboardingRewardFlow._fetchIssuedCoupon) — 여기서 미리 발급해 버리면
+      // 사용자가 튜토리얼에서 다른 식당을 골랐을 때 이미 발급된 이전 식당의
+      // 쿠폰이 그대로 공개돼 버린다.
       if (widget.isRequiredFlow) {
         // 가입 완료 → 보상 온보딩(식당 선택→룰렛→사용법) 1회 노출 예약
         await OnboardingPrefs.markRewardPending();

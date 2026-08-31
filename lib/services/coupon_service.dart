@@ -224,7 +224,8 @@ class CouponBenefitInfo {
       restaurantName: _normalizeString(json['restaurant_name']),
       restaurantCategory: _normalizeString(json['restaurant_category']),
       // 식사권 응모 당첨 쿠폰은 매장이 정해져 있지 않고 전 매장에서 쓴다.
-      allStores: _normalizeString(json['scope']) == 'ALL_STORES',
+      // 백엔드는 이를 benefit.open_venue로 내려준다 (scope 필드는 존재하지 않음).
+      allStores: json['open_venue'] == true,
     );
   }
 

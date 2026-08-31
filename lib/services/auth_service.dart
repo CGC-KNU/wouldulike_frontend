@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../onboarding/onboarding_prefs.dart';
+
 class ReloginRequiredException implements Exception {
   final String message;
   final String? code;
@@ -303,6 +305,9 @@ class AuthService {
     await prefs.remove('user_apple_id');
     await prefs.remove('access_expires_at');
     await prefs.remove('refresh_expires_at');
+    // 같은 기기에서 다른 계정으로 로그인했을 때 이전 계정의 보상 온보딩
+    // 상태가 남아 튜토리얼이 안 뜨거나 잘못된 식당으로 쿠폰이 발급되지 않도록.
+    await OnboardingPrefs.clearAccountScoped();
   }
 
   static Future<void> unlink() async {
@@ -335,5 +340,6 @@ class AuthService {
     await prefs.remove('user_apple_id');
     await prefs.remove('access_expires_at');
     await prefs.remove('refresh_expires_at');
+    await OnboardingPrefs.clearAccountScoped();
   }
 }

@@ -393,6 +393,12 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   bool _showRewardFlow = false;
   // 로그인 전 보상 플로우(식당 선택→룰렛→로그인 유도) — 프로토타입 화면 2·3
   bool _showPreLoginReward = false;
+  // 부트스트랩 시점에 이미 프로필이 완성돼 있었는지 — 방금 가입한 신규
+  // 유저와 이미 쓰던 기존 계정(개편으로 튜토리얼이 다시 뜬 경우)을 구분한다.
+  bool _wasExistingAccountAtBoot = false;
+  // 기존 계정에게 보상 플로우 앞에 붙는 "앱이 새롭게 바뀌었어요" 인트로.
+  // 세션 동안만 유지하면 되므로 별도로 로컬에 저장하지 않는다.
+  bool _rewardIntroSeen = false;
 
   @override
   void initState() {
@@ -415,13 +421,22 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
     }
 
     final profile = await UserService.fetchCurrentUserProfile();
+    // 이 기기에 이전 계정 등으로 남아있을 수 있는 로컬 온보딩 값을 서버
+    // 진실로 동기화한다 — 로그인 화면을 거치지 않는 일반 재실행도 포함해서,
+    // 사용자가 따로 조치하지 않아도 다음 실행 때 자동으로 바로잡히게 한다.
+    await OnboardingPrefs.pullFromServer();
     // 앱 종료 등으로 보상 온보딩을 못 본 가입자는 다음 실행에서 이어서 보여준다.
     final showRewardFlow = await OnboardingPrefs.shouldShowRewardFlow();
     if (!mounted) return;
     AnalyticsLogger.setUserPropertiesFromProfile(profile);
+    final profileIncomplete = UserService.isRequiredProfileIncomplete(profile);
     setState(() {
       _profile = profile;
-      _isProfileIncomplete = UserService.isRequiredProfileIncomplete(profile);
+      _isProfileIncomplete = profileIncomplete;
+      // 부트스트랩 시점에 이미 프로필이 완성돼 있었다면 방금 가입한 게 아니라
+      // 예전부터 쓰던 계정이라는 뜻이다 (신규 가입자는 항상 프로필이 비어
+      // 있어 아래 ProfileSetupScreen 분기를 거친다).
+      _wasExistingAccountAtBoot = !profileIncomplete;
       _showRewardFlow = showRewardFlow;
       _isCheckingProfile = false;
     });
@@ -487,6 +502,18 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
       );
     }
     if (_showRewardFlow) {
+      // 기존 계정에게는 "처음 오셨네요" 톤 대신 "그동안 앱이 바뀌었어요" 인트로를
+      // 보상 플로우 앞에 한 번 보여준다. 신규 가입자는 방금 프로필을 막
+      // 만들었으므로 이 인트로 없이 곧장 식당 선택으로 들어간다.
+      if (_wasExistingAccountAtBoot && !_rewardIntroSeen) {
+        return OnboardingIntroScreen(
+          variant: OnboardingIntroVariant.renewal,
+          onFinished: () {
+            if (!mounted) return;
+            setState(() => _rewardIntroSeen = true);
+          },
+        );
+      }
       return OnboardingRewardFlow(
         onFinished: () {
           if (!mounted) return;
