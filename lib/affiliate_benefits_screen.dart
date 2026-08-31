@@ -806,17 +806,17 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                   _selectedCategory,
             )
             .toList();
-    // 일반 식당은 쿠폰·스탬프 데이터가 없어 이름순으로만 정렬한다.
-    if (_sortMode == _RestaurantSort.name) {
-      list.sort((a, b) => a.name.compareTo(b.name));
-    }
+    // 일반 식당은 쿠폰·스탬프 데이터가 없어 정렬 기준과 무관하게 이름순으로 고정한다.
+    // (이름순이 아닐 때 정렬을 건너뛰면 로드 시 섞인 순서가 그대로 남아,
+    //  정렬 드롭다운을 바꿔도 목록 순서가 바뀌지 않는 것처럼 보였다.)
+    list.sort((a, b) => a.name.compareTo(b.name));
     return list;
   }
 
   void _selectCategory(String category) {
     if (_selectedCategory == category) return;
     AnalyticsLogger.logEvent(
-      'affiliate_category_click',
+      AnalyticsEvents.affiliateCategoryClick,
       parameters: {
         'category': category,
         'from_category': _selectedCategory,
@@ -1087,7 +1087,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       AffiliateRestaurantSummary restaurant) async {
     if (_isOpeningDetail) return;
     AnalyticsLogger.logEvent(
-      'affiliate_restaurant_click',
+      AnalyticsEvents.affiliateRestaurantClick,
       parameters: {
         'restaurant_id': restaurant.id,
         'restaurant_name': restaurant.name,

@@ -249,7 +249,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
   void initState() {
     super.initState();
     AnalyticsLogger.logEvent(
-      'coupon_page_view',
+      AnalyticsEvents.couponPageView,
       parameters: {
         if (widget.source != null) 'source': widget.source!,
       },
@@ -854,25 +854,70 @@ class _CouponListScreenState extends State<CouponListScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.only(bottom: 140),
         children: [
-          SizedBox(
-            height: MediaQuery.of(context).size.height * 0.4,
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    '보유한 쿠폰이 아직 없어요.',
-                    style: TextStyle(fontSize: 16),
-                  ),
-                  if (widget.onGoToAffiliate != null) ...[
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: widget.onGoToAffiliate,
-                      child: const Text('대학가 근처 식당 보러 가기'),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(32, 56, 32, 40),
+            child: Column(
+              children: [
+                Container(
+                  width: 88,
+                  height: 88,
+                  alignment: Alignment.center,
+                  decoration: ShapeDecoration(
+                    color: const Color(0xFFEEF0FF),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(26),
                     ),
-                  ],
+                  ),
+                  child: const Icon(
+                    Icons.confirmation_number_outlined,
+                    size: 40,
+                    color: Color(0xFF4F46E5),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  '보유한 쿠폰이 아직 없어요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                const Text(
+                  '식당에서 혜택을 받으면\n이곳에 쿠폰이 모여요',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    height: 1.6,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+                if (widget.onGoToAffiliate != null) ...[
+                  const SizedBox(height: 18),
+                  SizedBox(
+                    height: 44,
+                    child: ElevatedButton(
+                      onPressed: widget.onGoToAffiliate,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF172133),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 22),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(13),
+                        ),
+                      ),
+                      child: const Text(
+                        '대학가 근처 식당 보러 가기',
+                        style:
+                            TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
                 ],
-              ),
+              ],
             ),
           ),
         ],

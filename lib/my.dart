@@ -786,7 +786,7 @@ class _MyScreenState extends State<MyScreen> {
           leading: const Text('코드 입력하기', style: _kItemTitleStyle),
           trailing: _buildChevron(),
           onTap: () {
-            AnalyticsLogger.logEvent('referral_code_input_click');
+            AnalyticsLogger.logEvent(AnalyticsEvents.referralCodeInputClick);
             if (!isKakaoLoggedIn) {
               _promptLoginRequired();
               return;
@@ -1001,7 +1001,7 @@ class _MyScreenState extends State<MyScreen> {
                   )
                 : _buildChevron(),
             onTap: () {
-              AnalyticsLogger.logEvent('kakao_invite_click');
+              AnalyticsLogger.logEvent(AnalyticsEvents.kakaoInviteClick);
               if (!isKakaoLoggedIn) {
                 _promptLoginRequired();
                 return;
