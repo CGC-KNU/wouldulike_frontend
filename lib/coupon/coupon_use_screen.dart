@@ -103,17 +103,6 @@ class CouponUseScreen extends StatelessWidget {
               _buildTicket(dday),
               const SizedBox(height: 22),
               const Text(
-                '따로 말하지 않아도 괜찮아요.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: _muted,
-                ),
-              ),
-              const SizedBox(height: 3),
-              const Text(
                 '화면만 보여주면 끝!',
                 textAlign: TextAlign.center,
                 style: TextStyle(

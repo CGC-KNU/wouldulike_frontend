@@ -14,7 +14,7 @@ import 'widgets/restaurant_pick_list.dart';
 import 'widgets/roulette_wheel.dart';
 import '../widgets/coupon_ticket_card.dart';
 
-enum _RewardStep { pick, spin, guide }
+enum _RewardStep { pick, spin }
 
 /// 보상 플로우: 식당 선택 → 룰렛 연출 → 다음 단계.
 ///
@@ -27,7 +27,7 @@ enum _RewardStep { pick, spin, guide }
 /// (signupComplete(restaurantId: ...))은 식당이 정해진 뒤인 여기서만 일어난다.
 /// [preLogin]=false (가입 직후): 이 화면 진입 시 [_fetchIssuedCoupon]이 먼저
 /// 발급 여부를 조회하고, 아직이면 그 자리에서 restaurant_id를 실어 발급한 뒤
-/// 룰렛 연출로 공개하고 4컷 사용법으로 이어진다.
+/// 룰렛 연출로 공개한 뒤 바로 온보딩을 끝낸다.
 /// [preLogin]=true (프로토타입 화면 2·3, 로그인 전): 쿠폰 API를 쓸 수 없으므로
 /// 연출만 하고 당첨 후 카카오 로그인으로 유도한다.
 class OnboardingRewardFlow extends StatefulWidget {
@@ -322,14 +322,6 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
 
   // ---------- 완료 ----------
 
-  void _goGuide() {
-    AnalyticsLogger.logEvent(
-      AnalyticsEvents.onboardingGuideView,
-      parameters: _sessionParams,
-    );
-    setState(() => _step = _RewardStep.guide);
-  }
-
   /// 로그인 전 당첨 화면에서 "카카오 로그인하고 쿠폰 받기" 탭.
   /// 로그인 게이트로 넘어가기 직전 지점이라, 여기서 이탈하면 첫 쿠폰을 못 받는다.
   void _claimViaLogin() {
@@ -378,7 +370,6 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
           child: switch (_step) {
             _RewardStep.pick => _buildPickStep(),
             _RewardStep.spin => _buildSpinStep(),
-            _RewardStep.guide => _buildGuideStep(),
           },
         ),
       ),
@@ -590,7 +581,8 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
                 )
               : ElevatedButton(
                   style: OnboardingStyle.primaryButton(enabled: _revealReady),
-                  onPressed: _revealReady ? _goGuide : null,
+                  onPressed:
+                      _revealReady ? () => _finish(skipped: false) : null,
                   child: const Text('내 쿠폰에 담기'),
                 ),
         ],
@@ -644,124 +636,8 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
       // 흰 배경과 구분되게 테두리 + 그림자로 입체감만 준다.
       borderColor: const Color(0xFFE1E5EA),
       // 지갑 쿠폰함과 같은 카드 그대로 — 버튼을 누르면 아래 CTA와 같은 동작.
-      onAction: !_revealReady
-          ? null
-          : widget.preLogin
-              ? () => _finish(skipped: false)
-              : _goGuide,
+      onAction: _revealReady ? () => _finish(skipped: false) : null,
       margin: EdgeInsets.zero,
-    );
-  }
-
-  // ---------- STEP 3: 4컷 사용법 ----------
-
-  static const List<({String emoji, String title, String sub})> _guideCuts = [
-    (emoji: '🏃', title: '식당에 가서', sub: '쿠폰 있는 가게로'),
-    (emoji: '📱', title: '우즈라이크 켜고', sub: '보유 쿠폰에서 꺼내요'),
-    (emoji: '🙌', title: '직원분께 보여주면', sub: '말은 안 해도 돼요'),
-    (emoji: '😋', title: '할인 끝!', sub: '맛있게 드세요'),
-  ];
-
-  Widget _buildGuideStep() {
-    return Padding(
-      key: const ValueKey('guide'),
-      padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('쓰는 법,\n딱 네 걸음이에요', style: OnboardingStyle.title),
-          const SizedBox(height: 20),
-          Expanded(
-            child: GridView.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              // 카드 내용(번호 배지+이모지+제목+설명)이 1.15 비율에서 기기별로
-              // 몇 픽셀씩 오버플로우해서(RenderFlex overflow) 살짝 더 낮췄다.
-              childAspectRatio: 1.02,
-              physics: const NeverScrollableScrollPhysics(),
-              children: List.generate(_guideCuts.length, (i) {
-                final cut = _guideCuts[i];
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: OnboardingStyle.line),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Container(
-                        width: 22,
-                        height: 22,
-                        alignment: Alignment.center,
-                        decoration: const BoxDecoration(
-                          color: OnboardingStyle.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Text(
-                          '${i + 1}',
-                          style: const TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      Text(cut.emoji, style: const TextStyle(fontSize: 26)),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            cut.title,
-                            style: const TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: OnboardingStyle.ink,
-                            ),
-                          ),
-                          Text(cut.sub, style: OnboardingStyle.caption),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              }),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: OnboardingStyle.accentSoft,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Text(
-              '따로 말하지 않아도 괜찮아요.\n화면만 보여주면 끝!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 13.5,
-                fontWeight: FontWeight.w600,
-                height: 1.5,
-                color: OnboardingStyle.primary,
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            style: OnboardingStyle.primaryButton(),
-            onPressed: () => _finish(skipped: false),
-            child: const Text('우즈라이크 시작하기'),
-          ),
-        ],
-      ),
     );
   }
 }
