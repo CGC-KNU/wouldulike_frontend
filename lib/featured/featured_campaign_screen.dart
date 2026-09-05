@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:new1/affiliate_benefits_screen.dart';
 import 'package:new1/services/affiliate_service.dart';
@@ -31,6 +32,7 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
       'affiliate_favorite_restaurant_ids';
 
   List<_FeaturedStore> _stores = const [];
+  List<FeaturedCampaignItem> _standaloneBanners = const [];
   bool _isLoading = true;
   String? _error;
   List<UserCoupon> _coupons = const [];
@@ -61,12 +63,19 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
         for (final r in tab.affiliateRestaurants) r.id: r,
       };
       final stores = <_FeaturedStore>[];
+      final standaloneBanners = <FeaturedCampaignItem>[];
       for (final item in widget.campaign.items) {
-        final restaurant = byId[item.restaurantId];
+        final restaurantId = item.restaurantId;
+        if (restaurantId == null) {
+          // 독립형 배너 아이템 — 식당 매칭 없이 그대로 노출한다.
+          standaloneBanners.add(item);
+          continue;
+        }
+        final restaurant = byId[restaurantId];
         if (restaurant == null) {
           // 스펙 7.4: 매칭 실패 항목은 제외하고 로그만 남긴다.
           debugPrint(
-              'featured item excluded: restaurant ${item.restaurantId} not in tab-restaurants');
+              'featured item excluded: restaurant $restaurantId not in tab-restaurants');
           continue;
         }
         stores.add(_FeaturedStore(item: item, restaurant: restaurant));
@@ -74,6 +83,7 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
       if (!mounted) return;
       setState(() {
         _stores = stores;
+        _standaloneBanners = standaloneBanners;
         _isLoading = false;
       });
       await _loadUserData();
@@ -126,6 +136,16 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
     _favoriteIds = next;
     await FavoritesService.setFavorite(restaurantId, isFavorite);
     if (mounted) setState(() {});
+  }
+
+  Future<void> _openBannerLink(Uri url) async {
+    try {
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.platformDefault);
+      }
+    } catch (e) {
+      debugPrint('배너 링크 실행 실패: $e');
+    }
   }
 
   Future<void> _openStoreDetail(AffiliateRestaurantSummary restaurant) async {
@@ -256,6 +276,19 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
         padding: const EdgeInsets.only(bottom: 48),
         children: [
           _buildHero(campaign),
+          if (_standaloneBanners.isNotEmpty)
+            ...List.generate(_standaloneBanners.length, (index) {
+              final item = _standaloneBanners[index];
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: _FeaturedBannerItemCard(
+                  item: item,
+                  onTap: item.linkUrl != null
+                      ? () => _openBannerLink(item.linkUrl!)
+                      : null,
+                ),
+              );
+            }),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
             child: Row(
@@ -403,7 +436,7 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
           Wrap(
             spacing: 6,
             children: [
-              _HeroChip(text: '선별 매장 ${widget.campaign.items.length}곳'),
+              _HeroChip(text: '선별 매장 ${_stores.length}곳'),
               const _HeroChip(text: '기획전 한정 혜택'),
             ],
           ),
@@ -433,6 +466,91 @@ class _HeroChip extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w700,
           color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+/// 식당에 연결되지 않은 독립형 배너 아이템 카드. 이미지+문구만 있고,
+/// 탭하면 링크(있으면)를 열거나 아무 동작도 하지 않는다.
+class _FeaturedBannerItemCard extends StatelessWidget {
+  const _FeaturedBannerItemCard({required this.item, required this.onTap});
+
+  final FeaturedCampaignItem item;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final imageUrl = item.imageUrl;
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: const Color(0xFFE5E7EB)),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              AspectRatio(
+                aspectRatio: 1080 / 1250,
+                child: imageUrl != null
+                    ? Image.network(
+                        imageUrl,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Image.asset(
+                          'assets/images/food_image0.png',
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    : Image.asset(
+                        'assets/images/food_image0.png',
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+              ),
+              if (item.benefitTitle.isNotEmpty || item.benefitSub.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (item.benefitTitle.isNotEmpty)
+                        Text(
+                          item.benefitTitle,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.3,
+                            color: Color(0xFF111827),
+                          ),
+                        ),
+                      if (item.benefitSub.isNotEmpty) ...[
+                        const SizedBox(height: 4),
+                        Text(
+                          item.benefitSub,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

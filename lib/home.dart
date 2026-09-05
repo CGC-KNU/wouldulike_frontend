@@ -1441,17 +1441,27 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
-  String? _featuredBannerImage(int itemIndex) {
-    final campaign = _featuredCampaign;
-    if (campaign == null || campaign.items.isEmpty) return null;
-    // 배너 수가 기획전 매장 수보다 많아도 빈 배너가 없도록 순환 사용
-    final item = campaign.items[itemIndex % campaign.items.length];
+  /// 독립형 배너는 자기 이미지를 그대로 쓰고, 식당 연결형은 연결된 식당 사진을 조회한다.
+  String? _resolveFeaturedItemImage(FeaturedCampaignItem item) {
+    if (item.imageUrl != null) return item.imageUrl;
+    final restaurantId = item.restaurantId;
+    if (restaurantId == null) return null;
     for (final r in _affiliateRestaurants) {
-      if (r.id == item.restaurantId && r.imageUrls.isNotEmpty) {
+      if (r.id == restaurantId && r.imageUrls.isNotEmpty) {
         return r.imageUrls.first;
       }
     }
     return null;
+  }
+
+  /// 독립형 배너는 자기 링크를 열고, 식당 연결형은 기존처럼 기획전 상세 화면을 연다.
+  void _handleFeaturedItemTap(FeaturedCampaignItem item) {
+    final link = item.linkUrl;
+    if (link != null) {
+      _launchURL(link.toString());
+      return;
+    }
+    _openFeaturedCampaign();
   }
 
   Widget _buildFeaturedCarousel(double width) {
@@ -1461,19 +1471,7 @@ class _HomeContentState extends State<HomeContent> {
       return const SizedBox.shrink();
     }
 
-    final banners = <({String tag, String title, String subtitle})>[
-      (tag: '기획전', title: campaign.title, subtitle: campaign.subtitle),
-      (
-        tag: '기획전 한정',
-        title: '기획전 참여 매장',
-        subtitle: '쿠폰·스탬프 혜택을\n한 번에 모아봤어요!',
-      ),
-      (
-        tag: '우주라이크 PICK',
-        title: '선별 매장 ${campaign.items.length}곳',
-        subtitle: '우주라이크가 고른 매장에서만\n열리는 한정 혜택이에요.',
-      ),
-    ];
+    final items = campaign.items;
     // 카드 폭 = viewportFraction 0.92, 카드 사이 간격 10
     // 높이를 카드 폭에서 파생시켜 기기와 무관하게 에셋 비율(1080×1250 = 1 : 1.157)을 유지
     final double cardWidth = width * 0.92 - 10;
@@ -1525,24 +1523,31 @@ class _HomeContentState extends State<HomeContent> {
               controller: _featuredBannerController,
               // 수동 스와이프만 지원. 자동 넘김 타이머 없음 (스펙 7.5).
               physics: const PageScrollPhysics(),
-              itemCount: banners.length,
+              itemCount: items.length,
               onPageChanged: (index) {
                 if (_featuredBannerIndex != index) {
                   setState(() => _featuredBannerIndex = index);
                 }
               },
               itemBuilder: (context, index) {
-                final banner = banners[index];
+                final item = items[index];
+                final String tag = item.badge.isNotEmpty
+                    ? item.badge
+                    : (item.isStandaloneBanner ? '기획전' : '기획전 참여 매장');
+                final String title =
+                    item.benefitTitle.isNotEmpty ? item.benefitTitle : campaign.title;
+                final String subtitle =
+                    item.benefitSub.isNotEmpty ? item.benefitSub : campaign.subtitle;
                 return Padding(
                   padding: const EdgeInsets.only(right: 10),
                   child: _FeaturedBannerCard(
-                    tag: banner.tag,
-                    title: banner.title,
-                    subtitle: banner.subtitle,
-                    imageUrl: _featuredBannerImage(index),
+                    tag: tag,
+                    title: title,
+                    subtitle: subtitle,
+                    imageUrl: _resolveFeaturedItemImage(item),
                     fallbackAsset: _kFeaturedFallbackAssets[
                         index % _kFeaturedFallbackAssets.length],
-                    onTap: _openFeaturedCampaign,
+                    onTap: () => _handleFeaturedItemTap(item),
                   ),
                 );
               },
@@ -1551,7 +1556,7 @@ class _HomeContentState extends State<HomeContent> {
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(banners.length, (index) {
+            children: List.generate(items.length, (index) {
               final bool isActive = index == _featuredBannerIndex;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
