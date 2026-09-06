@@ -1,5 +1,6 @@
 import Flutter
 import UIKit
+import UserNotifications
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -12,8 +13,22 @@ import UIKit
       application,
       didFinishLaunchingWithOptions: launchOptions
     )
+    _clearAppIconBadge(application)
     _registerDeviceInfoChannel()
     return launched
+  }
+
+  override func applicationDidBecomeActive(_ application: UIApplication) {
+    super.applicationDidBecomeActive(application)
+    _clearAppIconBadge(application)
+  }
+
+  /// 홈 화면 앱 아이콘의 알림 숫자 배지를 지운다.
+  private func _clearAppIconBadge(_ application: UIApplication) {
+    application.applicationIconBadgeNumber = 0
+    if #available(iOS 16.0, *) {
+      UNUserNotificationCenter.current().setBadgeCount(0)
+    }
   }
 
   private func _registerDeviceInfoChannel() {

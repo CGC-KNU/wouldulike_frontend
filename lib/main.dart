@@ -934,6 +934,13 @@ class MainScreenState extends State<MainScreen> {
 
     print('알림 권한 상태: ${settings.authorizationStatus}');
 
+    // 포그라운드에서도 아이콘 배지(알림 숫자)는 올리지 않는다.
+    await messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: false,
+      sound: true,
+    );
+
     final isIosSimulator = await _isIosSimulator();
     if (isIosSimulator) {
       debugPrint(

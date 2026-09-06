@@ -1,13 +1,15 @@
 package com.coggiri.new1
 
+import android.app.NotificationManager
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.Signature
 import android.os.Build
 import android.os.Bundle
 import android.util.Base64
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
-import android.content.pm.Signature
-import android.content.Intent
 import java.security.MessageDigest
 
 class MainActivity: FlutterActivity() {
@@ -17,9 +19,11 @@ class MainActivity: FlutterActivity() {
         logIntent("onCreate", intent)
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        logIntent("onNewIntent", intent)
+    override fun onResume() {
+        super.onResume()
+        // 런처 아이콘의 알림 점/숫자를 앱 복귀 시 지운다.
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.cancelAll()
     }
 
     private fun logKakaoKeyHash() {
