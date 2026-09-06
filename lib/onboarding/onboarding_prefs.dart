@@ -69,6 +69,26 @@ class OnboardingPrefs {
     });
   }
 
+  /// 로그인 직후, 신규 계정에 한해 [pullFromServer]보다 먼저 호출한다.
+  ///
+  /// 로그인 전(preLogin) 온보딩에서 건너뛰기/완료로 세팅된 reward_pending/
+  /// reward_done 로컬 값은 그 시점엔 토큰이 없어 서버로 못 올라간다. 이 상태로
+  /// 바로 [pullFromServer]를 부르면, 서버엔 이 계정의 값이 아직 없으니
+  /// "이전 계정 잔여값"으로 오인되어 false로 되돌아가고, 방금 건너뛰거나
+  /// 완료한 식당 선택 화면이 로그인 후 다시 뜨는 문제가 있었다. 신규 계정은
+  /// 이 기기의 다른 계정 잔여값을 걱정할 필요가 없으므로, 로컬 값을 그대로
+  /// 서버에 먼저 반영해 둔다.
+  static Future<void> pushLocalRewardFlagsForNewAccount() async {
+    final prefs = await SharedPreferences.getInstance();
+    final flags = <String, bool>{};
+    final pending = prefs.getBool(_rewardPendingKey);
+    final done = prefs.getBool(_rewardDoneKey);
+    if (pending != null) flags[_rewardPendingKey] = pending;
+    if (done != null) flags[_rewardDoneKey] = done;
+    if (flags.isEmpty) return;
+    await _pushFlags(flags);
+  }
+
   /// 로그인 후(또는 앱 재실행 시) 서버 플래그를 로컬에 병합한다.
   /// 기기 변경 시 재노출을 막는 것 + 같은 기기를 다른 계정이 썼을 때 남은
   /// 로컬 값을 계정별 서버 진실로 덮어써 자동 복구하는 것, 두 목적을 겸한다.

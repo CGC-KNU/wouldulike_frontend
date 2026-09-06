@@ -176,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
       _logLoginCompleted(
         authParams,
         'success',
-        isNewUser: data['user']?['is_new_user'],
+        isNewUser: data['is_new'],
       );
 
       if (!mounted) return;
@@ -193,6 +193,9 @@ class _LoginScreenState extends State<LoginScreen> {
         }
       }
 
+      if (data['is_new'] == true) {
+        await OnboardingPrefs.pushLocalRewardFlagsForNewAccount();
+      }
       if (redirect == 'coupon_list') {
         // 쿠폰 리스트에서 진입한 경우:
         // 로그인 직후 쿠폰 목록을 미리 불러와서 함께 돌려준다.
@@ -253,7 +256,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       final prefs = await SharedPreferences.getInstance();
       final guestUuid = prefs.getString('user_uuid');
-      await AuthService.loginWithApple(
+      final data = await AuthService.loginWithApple(
         credential.identityToken ?? '',
         authorizationCode: credential.authorizationCode,
         userIdentifier: credential.userIdentifier,
@@ -276,6 +279,9 @@ class _LoginScreenState extends State<LoginScreen> {
         final map = Map<String, dynamic>.from(args);
         final value = map['redirect'];
         if (value is String && value.isNotEmpty) redirect = value;
+      }
+      if (data['is_new'] == true) {
+        await OnboardingPrefs.pushLocalRewardFlagsForNewAccount();
       }
       if (redirect == 'coupon_list') {
         List<UserCoupon>? coupons;
