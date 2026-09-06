@@ -213,13 +213,16 @@ class ActiveAffiliateRestaurantsResponse {
 
 class AffiliateService {
   /// GET /api/coupons/signup/restaurants/ — 온보딩 식당 선택 화면 전용 목록.
-  /// 웰컴 미션 보상 쿠폰이 설정된 식당으로만 서버가 필터링해 내려준다(운영팀
-  /// 설정 전에는 필터링이 걸리지 않을 수 있음). **JWT 인증 필수** — 로그인 전
-  /// (preLogin 온보딩 픽 단계)에는 애초에 호출하지 않고, 호출부가 기존
-  /// active/전체 제휴 식당 목록으로 폴백한다. 실패해도 마찬가지로 폴백한다.
+  /// 일반쿠폰+스탬프 혜택이 둘 다 등록된 식당으로만 서버가 필터링해 내려준다.
+  /// 로그인 전(preLogin 온보딩 픽 단계)에는 토큰이 없어 인증 엔드포인트를 호출할
+  /// 수 없으므로, 같은 필터를 쓰는 비인증 미리보기 엔드포인트로 대신 호출한다.
   static Future<List<AffiliateRestaurantSummary>> fetchSignupRestaurants() async {
-    if (!await ApiClient.hasAccessToken()) return const [];
-    final response = await ApiClient.get('/api/coupons/signup/restaurants/');
+    final hasToken = await ApiClient.hasAccessToken();
+    final path = hasToken
+        ? '/api/coupons/signup/restaurants/'
+        : '/api/coupons/signup/restaurants/preview/';
+    final response =
+        await ApiClient.get(path, authenticated: hasToken);
     final Map<String, dynamic> data =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final List<dynamic> list =
