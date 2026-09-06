@@ -22,6 +22,7 @@ import 'services/coupon_service.dart';
 import 'services/favorites_service.dart';
 import 'widgets/network_thumb.dart';
 import 'coupon/redeem_pin_dialog.dart';
+import 'coupon/limited_coupon_offer_flow.dart';
 import 'widgets/coupon_issued_dialog.dart';
 import 'services/deep_link_service.dart';
 import 'services/master_content.dart';
@@ -686,6 +687,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       stampCurrent: status.current,
       stampTarget: status.target,
       couponBenefitsSummary: restaurant.couponBenefitsSummary,
+      promotionText: restaurant.promotionText,
     );
   }
 
@@ -2529,6 +2531,9 @@ class _AffiliateRestaurantDetailSheetState
   CouponBenefitsSummary? _couponBenefitsSummary;
   bool _isCouponBenefitsLoading = false;
 
+  /// 단건 상세 API에서만 채운다. 목록 캐시 값으로는 그리지 않는다.
+  String? _promotionText;
+
   bool get _shouldShowBenefitDetailSection {
     if (_isCouponBenefitsLoading) return true;
     return _couponBenefitsSummary?.hasVisibleContent ?? false;
@@ -2668,30 +2673,28 @@ class _AffiliateRestaurantDetailSheetState
     }
 
     _couponBenefitsSummary = widget.restaurant.couponBenefitsSummary;
-    if (_couponBenefitsSummary == null &&
-        (widget.restaurant.id > 0 ||
-            widget.restaurant.name.trim().isNotEmpty)) {
-      _isCouponBenefitsLoading = true;
-      _loadCouponBenefitsSummary();
+    if (widget.restaurant.id > 0 ||
+        widget.restaurant.name.trim().isNotEmpty) {
+      _isCouponBenefitsLoading = _couponBenefitsSummary == null;
+      _loadRestaurantDetail();
     }
   }
 
-  Future<void> _loadCouponBenefitsSummary() async {
+  Future<void> _loadRestaurantDetail() async {
     final name = widget.restaurant.name.trim();
     final id = widget.restaurant.id;
     if (name.isEmpty && id <= 0) return;
 
-    if (!_isCouponBenefitsLoading) {
-      setState(() => _isCouponBenefitsLoading = true);
-    }
     try {
       final detail = await AffiliateService.fetchRestaurantDetail(
         restaurantId: id > 0 ? id : null,
-        name: name.isNotEmpty ? name : null,
+        name: id > 0 ? null : (name.isNotEmpty ? name : null),
       );
       if (!mounted) return;
       setState(() {
-        _couponBenefitsSummary = detail?.couponBenefitsSummary;
+        _couponBenefitsSummary =
+            detail?.couponBenefitsSummary ?? _couponBenefitsSummary;
+        _promotionText = detail?.promotionText;
         _isCouponBenefitsLoading = false;
       });
     } catch (_) {
@@ -3140,6 +3143,8 @@ class _AffiliateRestaurantDetailSheetState
             '쿠폰은 사용됐어요. 스탬프는 적립하지 못했어요.\n${outcome.stampError}',
           );
         }
+        if (!mounted) return;
+        await presentLimitedBonusIfAny(context, outcome.bonusCoupon);
       }
     } finally {
       if (mounted) {
@@ -3888,6 +3893,20 @@ class _AffiliateRestaurantDetailSheetState
                   ),
                 ],
               ),
+              if (_promotionText != null && _promotionText!.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  _promotionText!,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    height: 1.45,
+                    letterSpacing: -0.2,
+                    color: Color(0xFF4F46E5),
+                  ),
+                ),
+              ],
               if (meta.isNotEmpty) ...[
                 const SizedBox(height: 3),
                 Text(

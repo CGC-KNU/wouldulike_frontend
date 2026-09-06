@@ -6,6 +6,7 @@ import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
 import 'coupon/redeem_pin_dialog.dart';
+import 'coupon/limited_coupon_offer_flow.dart';
 import 'package:new1/widgets/coupon_ticket_card.dart';
 
 import 'services/api_client.dart';
@@ -254,7 +255,18 @@ class _CouponListScreenState extends State<CouponListScreen> {
         if (widget.source != null) 'source': widget.source!,
       },
     );
-    _loadCoupons();
+    _bootstrap();
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadCoupons();
+    if (!mounted) return;
+    await LimitedCouponOfferFlow.maybePresent(
+      context,
+      onCouponsChanged: () {
+        if (mounted) _loadCoupons();
+      },
+    );
   }
 
   Future<void> _loadCoupons() async {
@@ -572,6 +584,14 @@ class _CouponListScreenState extends State<CouponListScreen> {
               ? null
               : (added > 0 ? added : outcome.stampCount),
           stampError: outcome.stampError,
+        );
+        if (!mounted) return;
+        await presentLimitedBonusIfAny(
+          context,
+          outcome.bonusCoupon,
+          onCouponsChanged: () {
+            if (mounted) _loadCoupons();
+          },
         );
       }
     } finally {

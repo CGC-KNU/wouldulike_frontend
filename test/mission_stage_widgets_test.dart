@@ -5,6 +5,7 @@ import 'package:new1/mission/promo_block.dart';
 import 'package:new1/widgets/coupon_issued_dialog.dart';
 import 'package:new1/mission/welcome_missions.dart';
 import 'package:new1/services/coupon_service.dart';
+import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/services/mission_service.dart';
 
 /// 작은 화면(iPhone SE급)에서도 미션 UI가 오버플로 없이 들어가야 한다.
@@ -146,6 +147,41 @@ void main() {
     await tester.tap(find.text('닫기'));
     await tester.pumpAndSettle();
     expect(find.text('제휴 매장 쿠폰 1장'), findsNothing);
+  });
+
+  testWidgets('내 지갑 바로가기는 지갑 화면을 새로 쌓지 않고 탭만 바꾼다', (tester) async {
+    int? openedTab;
+    final sub = DeepLinkService.instance.tabStream.listen((i) => openedTab = i);
+    addTearDown(sub.cancel);
+
+    await tester.pumpWidget(MaterialApp(
+      home: Builder(
+        builder: (context) => Scaffold(
+          body: Center(
+            child: ElevatedButton(
+              onPressed: () => showCouponIssuedDialog(
+                context,
+                tag: '환영 미션 완주',
+                title: '제휴 매장 쿠폰 1장',
+                coupon: const UserCoupon(
+                  code: 'WUL-TEST',
+                  status: CouponStatus.issued,
+                ),
+              ),
+              child: const Text('열기'),
+            ),
+          ),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('열기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('내 지갑 바로가기'));
+    await tester.pumpAndSettle();
+
+    expect(openedTab, 2);
+    expect(find.text('열기'), findsOneWidget);
+    expect(find.text('내 지갑 바로가기'), findsNothing);
   });
 
   testWidgets('환영 미션이 끝나면 친구 초대 배너가 자리를 잇는다', (tester) async {

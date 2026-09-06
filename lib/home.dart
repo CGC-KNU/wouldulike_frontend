@@ -19,6 +19,7 @@ import 'mission/invite_friend.dart';
 import 'mission/promo_block.dart';
 import 'mission/welcome_missions.dart';
 import 'coupon/redeem_pin_dialog.dart';
+import 'coupon/limited_coupon_offer_flow.dart';
 import 'services/affiliate_service.dart';
 import 'services/coupon_service.dart';
 import 'services/favorites_service.dart';
@@ -129,8 +130,7 @@ class _HomeContentState extends State<HomeContent> {
   /// 미션 배너 카운트다운용 서버 시각 보정값. 기기 시간을 그대로 쓰지 않는다.
   Duration _missionServerOffset = Duration.zero;
   int _featuredBannerIndex = 0;
-  final PageController _featuredBannerController =
-      PageController(viewportFraction: 0.92);
+  final PageController _featuredBannerController = PageController();
 
   @override
   void initState() {
@@ -997,6 +997,14 @@ class _HomeContentState extends State<HomeContent> {
         } else {
           _showHomeSnack('쿠폰을 사용했어요.');
         }
+        if (!mounted) return;
+        await presentLimitedBonusIfAny(
+          context,
+          outcome.bonusCoupon,
+          onCouponsChanged: () {
+            if (mounted) _loadAffiliateCoupons();
+          },
+        );
       }
     } finally {
       if (mounted && _processingHomeCouponCode == coupon.code) {
@@ -1472,51 +1480,14 @@ class _HomeContentState extends State<HomeContent> {
     }
 
     final items = campaign.items;
-    // 카드 폭 = viewportFraction 0.92, 카드 사이 간격 10
-    // 높이를 카드 폭에서 파생시켜 기기와 무관하게 에셋 비율(1080×1250 = 1 : 1.157)을 유지
-    final double cardWidth = width * 0.92 - 10;
-    final double bannerHeight =
-        (cardWidth * 1.157).clamp(0.0, 480.0).toDouble();
+    // 기본(트렌드) 배너와 같은 좌우 폭. 에셋 비율(1080×1250 = 1 : 1.157)로 높이만 잡는다.
+    final double bannerHeight = (width * 1.157).clamp(0.0, 480.0).toDouble();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  campaign.title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Color(0xFF111827),
-                    fontSize: 18,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -0.5,
-                  ),
-                ),
-              ),
-              GestureDetector(
-                onTap: _openFeaturedCampaign,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Text(
-                    '더보기 >',
-                    style: TextStyle(
-                      color: Color(0xFF6B7280),
-                      fontSize: 12.5,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           SizedBox(
             height: bannerHeight,
             child: PageView.builder(
@@ -1531,24 +1502,11 @@ class _HomeContentState extends State<HomeContent> {
               },
               itemBuilder: (context, index) {
                 final item = items[index];
-                final String tag = item.badge.isNotEmpty
-                    ? item.badge
-                    : (item.isStandaloneBanner ? '기획전' : '기획전 참여 매장');
-                final String title =
-                    item.benefitTitle.isNotEmpty ? item.benefitTitle : campaign.title;
-                final String subtitle =
-                    item.benefitSub.isNotEmpty ? item.benefitSub : campaign.subtitle;
-                return Padding(
-                  padding: const EdgeInsets.only(right: 10),
-                  child: _FeaturedBannerCard(
-                    tag: tag,
-                    title: title,
-                    subtitle: subtitle,
-                    imageUrl: _resolveFeaturedItemImage(item),
-                    fallbackAsset: _kFeaturedFallbackAssets[
-                        index % _kFeaturedFallbackAssets.length],
-                    onTap: () => _handleFeaturedItemTap(item),
-                  ),
+                return _FeaturedBannerCard(
+                  imageUrl: _resolveFeaturedItemImage(item),
+                  fallbackAsset: _kFeaturedFallbackAssets[
+                      index % _kFeaturedFallbackAssets.length],
+                  onTap: () => _handleFeaturedItemTap(item),
                 );
               },
             ),
@@ -1618,9 +1576,10 @@ class _HomeContentState extends State<HomeContent> {
     if (track == null) return const SizedBox.shrink();
 
     final welcome = track.welcome;
-    // 3일이 지나 닫힌 환영 미션은 배너에서도 친구 초대로 넘긴다.
+    // 3일이 지나 닫혔거나 리워드를 이미 수령한 환영 미션은 배너에서도 친구 초대로 넘긴다.
     if (track.stage == MissionStage.welcome &&
         welcome != null &&
+        !welcome.rewardClaimed &&
         !welcome.isClosedAt(DateTime.now().add(_missionServerOffset))) {
       return WelcomeMissionBanner(
         welcome: welcome,
@@ -1776,21 +1735,14 @@ const List<String> _kFeaturedFallbackAssets = <String>[
 ];
 
 const Color _placeholderGray = Color(0xFFD9D9D9);
-const Color _placeholderInk = Color(0xFF39393E);
 
 class _FeaturedBannerCard extends StatelessWidget {
   const _FeaturedBannerCard({
-    required this.tag,
-    required this.title,
-    required this.subtitle,
     required this.imageUrl,
     required this.fallbackAsset,
     required this.onTap,
   });
 
-  final String tag;
-  final String title;
-  final String subtitle;
   final String? imageUrl;
 
   /// 기획전 매장 사진이 없을 때 쓸 로컬 이미지. 배너가 회색으로 비지 않게 한다.
@@ -1824,68 +1776,6 @@ class _FeaturedBannerCard extends StatelessWidget {
             // 이미지 로딩 전 바탕. 그 위에 기획전 매장 사진(없으면 로컬 이미지)을 채운다.
             const ColoredBox(color: _placeholderGray),
             _buildBackground(),
-            // 사진 위에서도 문구가 읽히도록 하단 스크림을 깐다.
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.center,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0x00000000), Color(0xCC000000)],
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.7),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      tag,
-                      style: const TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w700,
-                        color: _placeholderInk,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 20,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.5,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    subtitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 11.5,
-                      fontWeight: FontWeight.w400,
-                      height: 1.5,
-                      color: Color(0xE6FFFFFF),
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ],
         ),
       ),
@@ -2018,7 +1908,7 @@ class _AffiliateRestaurantCard extends StatelessWidget {
                     child: TextButton(
                       style: TextButton.styleFrom(
                         padding: EdgeInsets.zero,
-                        backgroundColor: const Color(0xFF2D3B53),
+                        backgroundColor: const Color(0xFF4F46E5),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(6),
                         ),

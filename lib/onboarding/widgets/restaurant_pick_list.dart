@@ -15,6 +15,7 @@ class RestaurantPickList extends StatelessWidget {
     required this.selectedIndex,
     required this.onSelect,
     required this.onRetry,
+    this.detailOf,
   });
 
   final bool loading;
@@ -23,6 +24,9 @@ class RestaurantPickList extends StatelessWidget {
   final int? selectedIndex;
   final ValueChanged<int> onSelect;
   final VoidCallback onRetry;
+
+  /// 이름·카테고리 아래에 붙는 부가 문구 (한정쿠폰 혜택 등). 없으면 튜토리얼과 동일.
+  final String? Function(AffiliateRestaurantSummary restaurant)? detailOf;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +57,7 @@ class RestaurantPickList extends StatelessWidget {
         final meta = [restaurant.category, restaurant.zone]
             .where((s) => s.isNotEmpty)
             .join(' · ');
+        final detail = detailOf?.call(restaurant);
         return Material(
           color: selected ? OnboardingStyle.accentSoft : Colors.white,
           borderRadius: BorderRadius.circular(14),
@@ -97,6 +102,21 @@ class RestaurantPickList extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: OnboardingStyle.caption,
+                            ),
+                          ),
+                        if (detail != null && detail.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              detail,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: OnboardingStyle.caption.copyWith(
+                                color: selected
+                                    ? OnboardingStyle.primary
+                                    : OnboardingStyle.body,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                       ],

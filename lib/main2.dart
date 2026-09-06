@@ -11,6 +11,7 @@ import 'package:new1/services/api_client.dart';
 import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
+import 'package:new1/coupon/limited_coupon_offer_flow.dart';
 import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
 
 class MainAppScreen extends StatefulWidget {
@@ -40,6 +41,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkTokenIfNeeded();
       _logTabView(_selectedIndex);
+      LimitedCouponOfferFlow.maybePresent(context);
     });
   }
 
@@ -57,6 +59,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     if (state == AppLifecycleState.resumed) {
       // 앱이 포그라운드로 돌아올 때 토큰 상태 확인 및 타이머 재설정
       _checkTokenIfNeeded();
+      LimitedCouponOfferFlow.maybePresent(context);
     } else if (state == AppLifecycleState.paused) {
       // 백그라운드로 갈 때 타이머 취소 (배터리 절약)
       ApiClient.cancelTokenRefreshTimer();

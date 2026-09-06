@@ -18,6 +18,7 @@ class AffiliateRestaurantSummary {
     required this.stampCurrent,
     required this.stampTarget,
     this.couponBenefitsSummary,
+    this.promotionText,
   });
 
   factory AffiliateRestaurantSummary.fromJson(Map<String, dynamic> json) {
@@ -66,6 +67,13 @@ class AffiliateRestaurantSummary {
       return CouponBenefitsSummary.tryParse(json['coupon_benefits_summary']);
     }
 
+    String? parsePromotionText() {
+      final raw = json['promotion_text'];
+      if (raw is! String) return null;
+      final trimmed = raw.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
     return AffiliateRestaurantSummary(
       id: json['restaurant_id'] is int
           ? json['restaurant_id'] as int
@@ -81,6 +89,7 @@ class AffiliateRestaurantSummary {
       stampCurrent: parseStampCurrent(),
       stampTarget: parseStampTarget(),
       couponBenefitsSummary: parseCouponBenefitsSummary(),
+      promotionText: parsePromotionText(),
     );
   }
 
@@ -96,6 +105,9 @@ class AffiliateRestaurantSummary {
   final int stampCurrent;
   final int stampTarget;
   final CouponBenefitsSummary? couponBenefitsSummary;
+
+  /// 상세 단건 API(`affiliate-restaurants/detail/`)에만 있다. 목록 응답에는 없다고 본다.
+  final String? promotionText;
 }
 
 class GeneralRestaurantSummary {

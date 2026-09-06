@@ -83,9 +83,21 @@ class UserCoupon {
       return null;
     }
 
-    final benefit = _parseCouponBenefit(json);
+    var benefit = _parseCouponBenefit(json);
     final resolvedRestaurantId =
         parseRestaurant(json['restaurant_id']) ?? benefit?.restaurantId;
+    final topRestaurantName = _normalizeString(json['restaurant_name']);
+    if (topRestaurantName != null) {
+      benefit = benefit == null
+          ? CouponBenefitInfo(
+              restaurantId: resolvedRestaurantId,
+              restaurantName: topRestaurantName,
+            )
+          : benefit.copyWith(
+              restaurantId: benefit.restaurantId ?? resolvedRestaurantId,
+              restaurantName: benefit.restaurantName ?? topRestaurantName,
+            );
+    }
     final rawIssueKey = json['issue_key'];
     final issueKey = (rawIssueKey is String && rawIssueKey.trim().isNotEmpty)
         ? rawIssueKey.trim()
@@ -144,6 +156,13 @@ class UserCoupon {
     if (code.isEmpty) return false;
     return code.startsWith('WELCOME') || code.startsWith('SIGNUP');
   }
+
+  /// 한정쿠폰 사용 보너스 1장. 선택 UI를 다시 띄우지 않는다.
+  bool get isLimitedBonus {
+    if (benefit?.isBonus == true) return true;
+    final key = issueKey?.trim() ?? '';
+    return key.startsWith('LIMITED_BONUS:');
+  }
 }
 
 /// 만료 임박 여부. 만료일 자체는 서버 `expires_at`만 쓰고, 임박 창만 여기서 본다.
@@ -170,6 +189,8 @@ String getCouponIssuanceSource(String? issueKey) {
   if (issueKey.startsWith('STAMP_REWARD:')) return 'stamp';
   if (issueKey.startsWith('FLASH:')) return 'flash';
   if (issueKey.startsWith('FINAL_EXAM:')) return 'final_exam';
+  if (issueKey.startsWith('LIMITED_BONUS:')) return 'limited_bonus';
+  if (issueKey.startsWith('LIMITED:')) return 'limited';
   return 'other';
 }
 
@@ -189,6 +210,8 @@ String resolveCouponIssueSource(String? issueKey) {
   if (issueKey.startsWith('STAMP_REWARD:')) return 'STAMP_REWARD';
   if (issueKey.startsWith('FLASH:')) return 'FLASH_8PM';
   if (issueKey.startsWith('FINAL_EXAM:')) return 'FINAL_EXAM_EVENT';
+  if (issueKey.startsWith('LIMITED_BONUS:')) return 'LIMITED_BONUS';
+  if (issueKey.startsWith('LIMITED:')) return 'LIMITED_CAMPAIGN';
   return 'other';
 }
 
@@ -202,6 +225,8 @@ class CouponBenefitInfo {
     this.restaurantName,
     this.restaurantCategory,
     this.allStores = false,
+    this.isBonus = false,
+    this.bonusSourceCouponCode,
   });
 
   factory CouponBenefitInfo.fromJson(Map<String, dynamic> json) {
@@ -226,6 +251,11 @@ class CouponBenefitInfo {
       // 식사권 응모 당첨 쿠폰은 매장이 정해져 있지 않고 전 매장에서 쓴다.
       // 백엔드는 이를 benefit.open_venue로 내려준다 (scope 필드는 존재하지 않음).
       allStores: json['open_venue'] == true,
+      isBonus: json['is_bonus'] == true || details?['is_bonus'] == true,
+      bonusSourceCouponCode: _normalizeString(json['bonus_source_coupon_code']) ??
+          (details != null
+              ? _normalizeString(details['bonus_source_coupon_code'])
+              : null),
     );
   }
 
@@ -239,6 +269,37 @@ class CouponBenefitInfo {
 
   /// 전 매장 공통 쿠폰 (마일리지 식사권 당첨분)
   final bool allStores;
+
+  /// 한정쿠폰 사용 보너스로 추가 발급된 쿠폰
+  final bool isBonus;
+  final String? bonusSourceCouponCode;
+
+  CouponBenefitInfo copyWith({
+    String? title,
+    String? subtitle,
+    String? description,
+    String? notes,
+    int? restaurantId,
+    String? restaurantName,
+    String? restaurantCategory,
+    bool? allStores,
+    bool? isBonus,
+    String? bonusSourceCouponCode,
+  }) {
+    return CouponBenefitInfo(
+      title: title ?? this.title,
+      subtitle: subtitle ?? this.subtitle,
+      description: description ?? this.description,
+      notes: notes ?? this.notes,
+      restaurantId: restaurantId ?? this.restaurantId,
+      restaurantName: restaurantName ?? this.restaurantName,
+      restaurantCategory: restaurantCategory ?? this.restaurantCategory,
+      allStores: allStores ?? this.allStores,
+      isBonus: isBonus ?? this.isBonus,
+      bonusSourceCouponCode:
+          bonusSourceCouponCode ?? this.bonusSourceCouponCode,
+    );
+  }
 
   String get resolvedTitle => (title != null && title!.isNotEmpty)
       ? title!
@@ -624,17 +685,226 @@ class CouponRedeemResult {
   const CouponRedeemResult({
     required this.ok,
     required this.couponCode,
+    this.bonusCoupon,
   });
 
   factory CouponRedeemResult.fromJson(Map<String, dynamic> json) {
+    UserCoupon? bonus;
+    final raw = json['bonus_coupon'];
+    if (raw is Map<String, dynamic>) {
+      bonus = UserCoupon.fromJson(raw);
+    } else if (raw is Map) {
+      bonus = UserCoupon.fromJson(Map<String, dynamic>.from(raw));
+    }
+    if (bonus != null && bonus.code.isEmpty) {
+      bonus = null;
+    }
     return CouponRedeemResult(
       ok: json['ok'] is bool ? json['ok'] as bool : true,
       couponCode: json['coupon_code']?.toString() ?? '',
+      bonusCoupon: bonus,
     );
   }
 
   final bool ok;
   final String couponCode;
+
+  /// 한정쿠폰 사용 시 같은 기획전 풀에서 랜덤 발급된 보너스 1장.
+  /// 없으면 기존 사용 완료 UI만 보여 준다.
+  final UserCoupon? bonusCoupon;
+}
+
+/// GET /api/coupons/limited/offers/ 의 식당 후보.
+/// 프론트에서 추가로 필터하지 않고 이 목록만 보여 준다.
+class LimitedCouponRestaurant {
+  const LimitedCouponRestaurant({
+    required this.restaurantId,
+    required this.name,
+    this.category,
+    this.zone,
+    this.imageUrl,
+    this.title,
+    this.subtitle,
+    this.notes,
+  });
+
+  factory LimitedCouponRestaurant.fromJson(Map<String, dynamic> json) {
+    String? firstImage(dynamic value) {
+      if (value is String) {
+        final trimmed = value.trim();
+        return trimmed.isEmpty ? null : trimmed;
+      }
+      if (value is List) {
+        for (final item in value) {
+          final s = item?.toString().trim();
+          if (s != null && s.isNotEmpty) return s;
+        }
+      }
+      return null;
+    }
+
+    return LimitedCouponRestaurant(
+      restaurantId: _parseInt(json['restaurant_id']),
+      name: json['name']?.toString() ?? '',
+      category: _normalizeString(json['category']),
+      zone: _normalizeString(json['zone']),
+      imageUrl: firstImage(json['image_url']) ?? firstImage(json['s3_image_urls']),
+      title: _normalizeString(json['title']),
+      subtitle: _normalizeString(json['subtitle']),
+      notes: _normalizeString(json['notes']),
+    );
+  }
+
+  final int restaurantId;
+  final String name;
+  final String? category;
+  final String? zone;
+  final String? imageUrl;
+  final String? title;
+  final String? subtitle;
+  final String? notes;
+
+  String get metaLabel {
+    return [category, zone].where((s) => s != null && s.isNotEmpty).join(' · ');
+  }
+
+  String? get benefitLine {
+    final parts = <String>[
+      if (title != null && title!.isNotEmpty) title!,
+      if (subtitle != null && subtitle!.isNotEmpty) subtitle!,
+    ];
+    if (parts.isEmpty) return notes;
+    return parts.join(' · ');
+  }
+}
+
+class LimitedCouponOffer {
+  const LimitedCouponOffer({
+    required this.couponTypeCode,
+    this.couponTypeTitle,
+    this.validDays,
+    this.startAt,
+    this.endAt,
+    required this.claimed,
+    required this.redeemBonus,
+    this.restaurants = const [],
+    this.issuedCoupons = const [],
+  });
+
+  factory LimitedCouponOffer.fromJson(Map<String, dynamic> json) {
+    List<LimitedCouponRestaurant> parseRestaurants() {
+      final value = json['restaurants'];
+      if (value is! List) return const [];
+      return value
+          .map((item) {
+            if (item is Map<String, dynamic>) {
+              return LimitedCouponRestaurant.fromJson(item);
+            }
+            if (item is Map) {
+              return LimitedCouponRestaurant.fromJson(
+                  Map<String, dynamic>.from(item));
+            }
+            return null;
+          })
+          .whereType<LimitedCouponRestaurant>()
+          .where((r) => r.restaurantId > 0)
+          .toList();
+    }
+
+    List<IssuedCouponInfo> parseIssued() {
+      final value = json['issued_coupons'];
+      if (value is! List) return const [];
+      return value
+          .map((item) {
+            if (item is Map<String, dynamic>) {
+              return IssuedCouponInfo.fromJson(item);
+            }
+            if (item is Map) {
+              return IssuedCouponInfo.fromJson(Map<String, dynamic>.from(item));
+            }
+            return null;
+          })
+          .whereType<IssuedCouponInfo>()
+          .where((c) => c.code.isNotEmpty)
+          .toList();
+    }
+
+    return LimitedCouponOffer(
+      couponTypeCode: _normalizeString(json['coupon_type_code']) ?? '',
+      couponTypeTitle: _normalizeString(json['coupon_type_title']),
+      validDays: _parseOptionalInt(json['valid_days']),
+      startAt: _parseDate(json['start_at']),
+      endAt: _parseDate(json['end_at']),
+      claimed: json['claimed'] == true,
+      redeemBonus: json['redeem_bonus'] == true,
+      restaurants: parseRestaurants(),
+      issuedCoupons: parseIssued(),
+    );
+  }
+
+  final String couponTypeCode;
+  final String? couponTypeTitle;
+  final int? validDays;
+  final DateTime? startAt;
+  final DateTime? endAt;
+  final bool claimed;
+  final bool redeemBonus;
+  final List<LimitedCouponRestaurant> restaurants;
+  final List<IssuedCouponInfo> issuedCoupons;
+
+  bool get needsSelection =>
+      !claimed && couponTypeCode.isNotEmpty && restaurants.isNotEmpty;
+}
+
+class LimitedCouponClaimResult {
+  const LimitedCouponClaimResult._({
+    this.couponCode,
+    this.issuedCoupons = const [],
+    this.errorMessage,
+    this.errorCode,
+  });
+
+  factory LimitedCouponClaimResult.success({
+    required String couponCode,
+    List<IssuedCouponInfo> issuedCoupons = const [],
+  }) =>
+      LimitedCouponClaimResult._(
+        couponCode: couponCode,
+        issuedCoupons: issuedCoupons,
+      );
+
+  factory LimitedCouponClaimResult.failure(String message, {String? code}) =>
+      LimitedCouponClaimResult._(errorMessage: message, errorCode: code);
+
+  final String? couponCode;
+  final List<IssuedCouponInfo> issuedCoupons;
+  final String? errorMessage;
+  final String? errorCode;
+  bool get isSuccess => errorMessage == null;
+}
+
+String limitedClaimErrorMessage(String? code, String? detail) {
+  final trimmed = detail?.trim();
+  if (trimmed != null && trimmed.isNotEmpty) return trimmed;
+  switch (code) {
+    case 'coupon_type_required':
+      return '쿠폰 정보가 없어요. 다시 시도해 주세요.';
+    case 'restaurant_required':
+      return '식당을 선택해 주세요.';
+    case 'invalid_restaurant':
+      return '이 식당은 한정쿠폰 대상이 아니에요.';
+    case 'not_in_window':
+      return '기획전 기간이 아니에요.';
+    case 'invalid_coupon_type':
+      return '선택형 한정쿠폰이 아니에요.';
+    case 'inactive':
+    case 'not_configured':
+      return '아직 준비되지 않은 기획전이에요.';
+    case 'not_found':
+      return '쿠폰 정보를 찾지 못했어요.';
+    default:
+      return '쿠폰을 받지 못했어요. 잠시 후 다시 시도해 주세요.';
+  }
 }
 
 /// 쿠폰 사용 시도 결과 (throw 없이 반환)
@@ -1181,8 +1451,23 @@ class CouponService {
       }
       final decoded = _decodeResponseBody(response);
       if (decoded is Map<String, dynamic>) {
-        return CouponRedeemAttemptResult.success(
-            CouponRedeemResult.fromJson(decoded));
+        final result = CouponRedeemResult.fromJson(decoded);
+        final bonus = result.bonusCoupon;
+        if (bonus != null && bonus.code.isNotEmpty) {
+          final logged = _logIssuedCouponsFromResponse({
+            'issued_coupons': [
+              {
+                'code': bonus.code,
+                'restaurant_id': bonus.restaurantId,
+                'issue_key': bonus.issueKey,
+                'campaign_code': bonus.campaignCode,
+                'coupon_type_code': bonus.couponTypeCode,
+              },
+            ],
+          });
+          await markCouponsAsSeen(logged);
+        }
+        return CouponRedeemAttemptResult.success(result);
       }
       return CouponRedeemAttemptResult.success(
           CouponRedeemResult(ok: true, couponCode: couponCode));
@@ -1327,6 +1612,87 @@ class CouponService {
     final logged = _logIssuedCouponsFromResponse(map);
     await markCouponsAsSeen(logged);
     return map;
+  }
+
+  /// GET /api/coupons/limited/offers/ — 기간 한정 기획전 선택형 한정쿠폰.
+  /// 앱 접속 시 자동 발급하지 않고, claimed == false 이고 식당 목록이 있을 때만 선택 UI.
+  static Future<List<LimitedCouponOffer>> fetchLimitedOffers() async {
+    if (kDemoWallet) return const [];
+    if (!await ApiClient.hasAccessToken()) {
+      return const [];
+    }
+    final response = await ApiClient.get('/api/coupons/limited/offers/');
+    final decoded = _decodeResponseBody(response);
+    if (decoded is! Map<String, dynamic>) return const [];
+    final results = decoded['results'];
+    if (results is! List) return const [];
+    return results
+        .map((item) {
+          if (item is Map<String, dynamic>) {
+            return LimitedCouponOffer.fromJson(item);
+          }
+          if (item is Map) {
+            return LimitedCouponOffer.fromJson(Map<String, dynamic>.from(item));
+          }
+          return null;
+        })
+        .whereType<LimitedCouponOffer>()
+        .toList();
+  }
+
+  /// POST /api/coupons/limited/claim/
+  static Future<LimitedCouponClaimResult> claimLimitedCoupon({
+    required String couponTypeCode,
+    required int restaurantId,
+  }) async {
+    try {
+      final response = await ApiClient.postWithoutThrow(
+        '/api/coupons/limited/claim/',
+        body: {
+          'coupon_type_code': couponTypeCode,
+          'restaurant_id': restaurantId,
+        },
+      );
+      if (response.statusCode >= 400) {
+        final error = _extractApiErrorFromBody(response.body);
+        return LimitedCouponClaimResult.failure(
+          limitedClaimErrorMessage(error?.code, error?.detail),
+          code: error?.code,
+        );
+      }
+      final decoded = _decodeResponseBody(response);
+      final map =
+          decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+      final logged = _logIssuedCouponsFromResponse(map);
+      await markCouponsAsSeen(logged);
+      final issued = <IssuedCouponInfo>[];
+      final rawIssued = map['issued_coupons'];
+      if (rawIssued is List) {
+        for (final item in rawIssued) {
+          if (item is Map<String, dynamic>) {
+            issued.add(IssuedCouponInfo.fromJson(item));
+          } else if (item is Map) {
+            issued.add(
+                IssuedCouponInfo.fromJson(Map<String, dynamic>.from(item)));
+          }
+        }
+      }
+      final couponCode = map['coupon_code']?.toString() ??
+          (issued.isNotEmpty ? issued.first.code : '');
+      return LimitedCouponClaimResult.success(
+        couponCode: couponCode,
+        issuedCoupons: issued.where((c) => c.code.isNotEmpty).toList(),
+      );
+    } on ApiAuthException catch (e) {
+      return LimitedCouponClaimResult.failure(e.message, code: 'auth');
+    } on ApiNetworkException catch (e) {
+      return LimitedCouponClaimResult.failure(
+        '네트워크 오류: ${e.cause}',
+        code: 'network',
+      );
+    } catch (e) {
+      return LimitedCouponClaimResult.failure(e.toString());
+    }
   }
 
   /// 다른 경로(추천인 입력 등)에서 coupon_issued 로깅한 코드를 등록.

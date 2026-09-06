@@ -18,6 +18,7 @@ class CouponRedeemOutcome {
     this.stampCount = 1,
     this.stampResult,
     this.stampError,
+    this.bonusCoupon,
   });
 
   final bool redeemed;
@@ -26,6 +27,7 @@ class CouponRedeemOutcome {
   final int stampCount;
   final StampActionResult? stampResult;
   final String? stampError;
+  final UserCoupon? bonusCoupon;
 }
 
 /// 쿠폰 사용 확인 + (기본 선택) 스탬프 동시 적립.
@@ -220,6 +222,7 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
         stampCount: _stampCount,
         stampResult: stampResult,
         stampError: stampError,
+        bonusCoupon: redeem.result?.bonusCoupon,
       ),
     );
   }

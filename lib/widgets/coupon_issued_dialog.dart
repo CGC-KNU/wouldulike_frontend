@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:new1/services/coupon_service.dart';
-import 'package:new1/wallet/wallet_screen.dart';
+import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/widgets/coupon_ticket_card.dart';
 
 /// 쿠폰이 발급될 때마다 띄우는 공용 팝업.
@@ -347,12 +347,7 @@ class _RewardBurstState extends State<_RewardBurst>
         SizedBox(
           width: 240,
           child: TextButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(builder: (_) => const WalletScreen()),
-              );
-            },
+            onPressed: _openWalletTab,
             style: TextButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: _deep,
@@ -374,6 +369,19 @@ class _RewardBurstState extends State<_RewardBurst>
         _closeButton(widget.closeText, filled: false),
       ],
     );
+  }
+
+  /// 지갑을 새 화면으로 쌓지 않고 메인 하단 탭으로 전환한다.
+  void _openWalletTab() {
+    const walletTabIndex = 2;
+    final navigator = Navigator.of(context, rootNavigator: true);
+    navigator.pop();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (navigator.canPop()) {
+        navigator.popUntil((route) => route.isFirst);
+      }
+      DeepLinkService.instance.openTab(walletTabIndex);
+    });
   }
 
   Widget _closeButton(String label, {required bool filled}) {
