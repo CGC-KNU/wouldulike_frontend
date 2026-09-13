@@ -8,6 +8,7 @@ import 'package:new1/utils/analytics_logger.dart';
 import 'coupon/redeem_pin_dialog.dart';
 import 'coupon/limited_coupon_offer_flow.dart';
 import 'package:new1/widgets/coupon_ticket_card.dart';
+import 'package:new1/widgets/referral_code_sheet.dart';
 
 import 'services/api_client.dart';
 import 'services/app_config_service.dart';
@@ -426,10 +427,10 @@ class _CouponListScreenState extends State<CouponListScreen> {
     );
   }
 
-  /// 문자·이벤트로 받은 쿠폰 번호를 직접 입력해 바로 사용 화면으로 넘어가는 버튼.
+  /// 마이페이지와 같은 친구 초대·이벤트 코드 입력. 쿠폰을 받아 목록에 반영한다.
   Widget _buildCouponCodeButton() {
     return InkWell(
-      onTap: _showCouponCodeDialog,
+      onTap: _showCouponCodeSheet,
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
@@ -459,23 +460,15 @@ class _CouponListScreenState extends State<CouponListScreen> {
     );
   }
 
-  /// 쿠폰 번호 입력 다이얼로그.
-  /// `POST /api/coupons/check/`는 로그인한 사용자 본인 쿠폰만 조회하므로,
-  /// 남의 쿠폰이나 발급되지 않은 번호는 조회되지 않는다(= 코드로 새 쿠폰을 받는 기능이 아니다).
-  Future<void> _showCouponCodeDialog() async {
-    final coupon = await showDialog<UserCoupon>(
-      context: context,
-      builder: (_) => const _CouponCodeDialog(),
-    );
-    if (!mounted || coupon == null) return;
-    AnalyticsLogger.logEvent(
-      'coupon_code_lookup',
-      parameters: {AnalyticsEvents.paramCouponCode: coupon.code},
-    );
-    await _handleRedeem(coupon);
+  /// 마이페이지와 동일하게 `POST /api/coupons/referrals/accept/`로 코드를 받아 쿠폰을 발급한다.
+  Future<void> _showCouponCodeSheet() async {
+    AnalyticsLogger.logEvent(AnalyticsEvents.referralCodeInputClick);
+    final result = await presentReferralCodeSheet(context);
     if (!mounted) return;
-    // 조회한 쿠폰이 목록에 없을 수 있으므로(만료 갱신 등) 사용 후 최신 목록으로 맞춘다.
-    await _loadCoupons();
+    if (result?.status == ReferralSheetStatus.success ||
+        result?.status == ReferralSheetStatus.loginRequired) {
+      await _loadCoupons();
+    }
   }
 
   /// 카테고리 줄. 식당 탭(`affiliate_benefits_screen.dart`)과 같은 원형 SVG 아이콘을 쓴다.
@@ -1041,201 +1034,6 @@ class _CouponUsageNotice extends StatelessWidget {
             letterSpacing: -0.3,
             color: Color(0xFF8B95A1),
           ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 쿠폰 번호 입력 다이얼로그.
-/// 컨트롤러를 다이얼로그 자신이 들고 있어야 한다. 호출부에서
-/// `await showDialog(...)` 뒤에 dispose하면 닫힘 애니메이션이 끝나기 전에
-/// 정리돼, 아직 살아 있는 TextField가 사라진 컨트롤러를 건드린다.
-class _CouponCodeDialog extends StatefulWidget {
-  const _CouponCodeDialog();
-
-  @override
-  State<_CouponCodeDialog> createState() => _CouponCodeDialogState();
-}
-
-class _CouponCodeDialogState extends State<_CouponCodeDialog> {
-  final TextEditingController _controller = TextEditingController();
-  String? error;
-  bool isLoading = false;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    final code = _controller.text.trim().toUpperCase();
-    if (code.isEmpty) {
-      setState(() => error = '쿠폰 번호를 입력해 주세요.');
-      return;
-    }
-    setState(() {
-      error = null;
-      isLoading = true;
-    });
-    try {
-      final found = await CouponService.checkCoupon(couponCode: code);
-      if (!mounted) return;
-      if (found.status != CouponStatus.issued) {
-        setState(() {
-          error = found.status == CouponStatus.redeemed
-              ? '이미 사용한 쿠폰이에요.'
-              : '지금은 사용할 수 없는 쿠폰이에요.';
-          isLoading = false;
-        });
-        return;
-      }
-      Navigator.of(context).pop(found);
-    } on ApiAuthException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        error = e.message;
-        isLoading = false;
-      });
-    } on ApiHttpException catch (e) {
-      if (!mounted) return;
-      setState(() {
-        error = e.statusCode == 404
-            ? '이 번호로 발급된 쿠폰을 찾지 못했어요. 번호를 다시 확인해 주세요.'
-            : '조회에 실패했어요 (HTTP ${e.statusCode})';
-        isLoading = false;
-      });
-    } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        error = '네트워크 오류로 조회하지 못했어요. 잠시 후 다시 시도해 주세요.';
-        isLoading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
-      ),
-      title: const Text(
-        '쿠폰 번호 입력',
-        style: TextStyle(
-          fontSize: 17,
-          fontFamily: 'Pretendard',
-          fontWeight: FontWeight.w800,
-          color: Color(0xFF111827),
-        ),
-      ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '문자·이벤트로 받은 쿠폰 번호를 입력하면\n바로 사용 화면으로 넘어가요.',
-            style: TextStyle(
-              fontSize: 13,
-              height: 1.5,
-              fontFamily: 'Pretendard',
-              color: Color(0xFF6B7280),
-            ),
-          ),
-          const SizedBox(height: 14),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            enabled: !isLoading,
-            textCapitalization: TextCapitalization.characters,
-            textInputAction: TextInputAction.done,
-            onSubmitted: (_) {
-              if (!isLoading) _submit();
-            },
-            style: const TextStyle(
-              fontSize: 16,
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-              letterSpacing: 1.2,
-              color: Color(0xFF111827),
-            ),
-            decoration: InputDecoration(
-              hintText: '예: WUL-8F2K9A',
-              hintStyle: const TextStyle(
-                fontWeight: FontWeight.w500,
-                letterSpacing: 0,
-                color: Color(0xFFB0B5BF),
-              ),
-              filled: true,
-              fillColor: const Color(0xFFF6F7F9),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 14,
-                vertical: 13,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide.none,
-              ),
-            ),
-          ),
-          if (error != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              error!,
-              style: const TextStyle(
-                fontSize: 12,
-                fontFamily: 'Pretendard',
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFEF4444),
-              ),
-            ),
-          ],
-        ],
-      ),
-      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-      actions: [
-        TextButton(
-          onPressed: isLoading ? null : () => Navigator.of(context).pop(),
-          child: const Text(
-            '취소',
-            style: TextStyle(
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF6B7280),
-            ),
-          ),
-        ),
-        ElevatedButton(
-          onPressed: isLoading ? null : _submit,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xFF1C203C),
-            foregroundColor: Colors.white,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(
-              horizontal: 20,
-              vertical: 12,
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(13),
-            ),
-            textStyle: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontWeight: FontWeight.w700,
-              fontSize: 15,
-            ),
-          ),
-          child: isLoading
-              ? const SizedBox(
-                  width: 18,
-                  height: 18,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Text('확인'),
         ),
       ],
     );
