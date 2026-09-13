@@ -221,6 +221,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     _searchFocusNode.addListener(() => setState(() {}));
     DeepLinkService.instance.pendingRestaurantId
         .addListener(_handleDeepLinkRestaurant);
+    DeepLinkService.instance.pendingQrVisitCoupon
+        .addListener(_handleQrVisitCoupon);
     _load();
   }
 
@@ -228,6 +230,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   void dispose() {
     DeepLinkService.instance.pendingRestaurantId
         .removeListener(_handleDeepLinkRestaurant);
+    DeepLinkService.instance.pendingQrVisitCoupon
+        .removeListener(_handleQrVisitCoupon);
     _searchDebounce?.cancel();
     _scrollController.dispose();
     _searchController.dispose();
@@ -250,6 +254,38 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _openRestaurantDetail(restaurant);
     });
+  }
+
+  /// QR 방문으로 방금 그 식당 일반쿠폰이 새로 발급됐으면, 보유 쿠폰 목록/카운트를
+  /// 새로고침한 뒤 안내 팝업을 띄운다(그래야 팝업을 닫은 뒤 목록·뱃지에도 바로 반영된다).
+  void _handleQrVisitCoupon() {
+    final issued = DeepLinkService.instance.pendingQrVisitCoupon.value;
+    if (issued == null || issued.codes.isEmpty) return;
+    DeepLinkService.instance.pendingQrVisitCoupon.value = null;
+
+    () async {
+      final refreshed = await _refreshCouponsForRestaurant(issued.restaurantId);
+      if (mounted && refreshed.isNotEmpty) {
+        setState(() {
+          _issuedCoupons = _sortCouponsByStatus(
+            List<UserCoupon>.from(_issuedCoupons)
+              ..removeWhere((c) => c.restaurantId == issued.restaurantId)
+              ..addAll(refreshed),
+          );
+          _couponCounts = _buildCouponCounts(_issuedCoupons);
+        });
+      }
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        showCouponIssuedDialog(
+          context,
+          tag: 'QR 방문 쿠폰',
+          title: '방문 쿠폰을 받았어요',
+          issuedCodes: issued.codes,
+        );
+      });
+    }();
   }
 
   Future<void> _load() async {

@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_client.dart';
+import 'coupon_service.dart' show UserCoupon;
 
 /// 마일리지 잔액 요약 (GET /api/mileage/summary/)
 class MileageSummary {
@@ -505,7 +506,8 @@ class MileageService {
     }
   }
 
-  /// QR 스캔 딥링크로 식당 화면에 진입했을 때 방문 마일리지 적립을 시도한다.
+  /// QR 스캔 딥링크로 식당 화면에 진입했을 때 방문 마일리지 적립 + 그 식당
+  /// 일반쿠폰 최초 1회 발급을 시도한다.
   /// 하루 최대 적립 횟수를 넘겨도 credited: false로 정상 응답이 오므로,
   /// 화면 이동 자체는 이 결과와 무관하게 계속 진행하면 된다.
   static Future<QrVisitResult> creditQrVisit(
@@ -525,11 +527,20 @@ class MileageService {
       if (response.statusCode >= 400) {
         return QrVisitResult(credited: false, code: map['code']?.toString());
       }
+      final rawCoupons = map['coupons'];
+      final issuedCoupons = rawCoupons is List
+          ? rawCoupons
+              .whereType<Map>()
+              .map((c) => UserCoupon.fromJson(Map<String, dynamic>.from(c)))
+              .toList()
+          : const <UserCoupon>[];
       return QrVisitResult(
         credited: map['credited'] == true,
         code: map['code']?.toString(),
         delta: _asInt(map['delta']),
         balance: map['balance'] == null ? null : _asInt(map['balance']),
+        couponIssued: map['coupon_issued'] == true,
+        issuedCoupons: issuedCoupons,
       );
     } catch (e) {
       debugPrint('[Mileage] QR visit credit failed: $e');
@@ -545,6 +556,8 @@ class QrVisitResult {
     this.code,
     this.delta = 0,
     this.balance,
+    this.couponIssued = false,
+    this.issuedCoupons = const [],
   });
 
   final bool credited;
@@ -553,6 +566,10 @@ class QrVisitResult {
   final String? code;
   final int delta;
   final int? balance;
+
+  /// 이 요청으로 그 식당 일반쿠폰이 새로 발급됐는지 (최초 1회만 true).
+  final bool couponIssued;
+  final List<UserCoupon> issuedCoupons;
 }
 
 /// qr-visit-<restaurantId>-<난수>. 같은 딥링크 오픈 이벤트를 재시도할 때

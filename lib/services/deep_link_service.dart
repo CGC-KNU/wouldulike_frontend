@@ -88,6 +88,15 @@ class DeepLinkTarget {
   }
 }
 
+/// QR 방문으로 새로 발급된 쿠폰. 어느 식당(restaurantId) 쿠폰인지 알아야
+/// 화면단에서 그 식당의 보유 쿠폰 목록/카운트도 함께 새로고침할 수 있다.
+class QrVisitCouponIssued {
+  const QrVisitCouponIssued({required this.restaurantId, required this.codes});
+
+  final int restaurantId;
+  final List<String> codes;
+}
+
 const _bridgeHost = 'cgc-knu.github.io';
 const _bridgePathPrefix = '/wouldulike_deeplink';
 
@@ -364,6 +373,10 @@ class DeepLinkService {
 
   final ValueNotifier<int?> pendingRestaurantId = ValueNotifier(null);
   final ValueNotifier<int?> pendingWalletTab = ValueNotifier(null);
+
+  /// QR 방문으로 방금 새로 발급된 쿠폰. 화면단에서 소비 후 null로 되돌린다.
+  final ValueNotifier<QrVisitCouponIssued?> pendingQrVisitCoupon =
+      ValueNotifier(null);
   int? _pendingTabIndex;
   DeepLinkTarget? _pendingTarget;
   final _tabController = StreamController<int>.broadcast();
@@ -414,12 +427,19 @@ class DeepLinkService {
     _creditQrVisitIfRestaurant(target);
   }
 
-  /// 외부 딥링크로 식당 상세 화면에 진입한 경우에만 방문 마일리지를 적립 시도한다.
-  void _creditQrVisitIfRestaurant(DeepLinkTarget target) {
+  /// 외부 딥링크로 식당 상세 화면에 진입한 경우에만 방문 마일리지 적립과
+  /// 그 식당 일반쿠폰(최초 1회) 발급을 시도한다.
+  Future<void> _creditQrVisitIfRestaurant(DeepLinkTarget target) async {
     if (target.screen != DeepLinkScreen.restaurantDetail) return;
     final restaurantId = target.restaurantId;
     if (restaurantId == null) return;
-    MileageService.creditQrVisit(restaurantId);
+    final result = await MileageService.creditQrVisit(restaurantId);
+    if (result.couponIssued && result.issuedCoupons.isNotEmpty) {
+      pendingQrVisitCoupon.value = QrVisitCouponIssued(
+        restaurantId: restaurantId,
+        codes: result.issuedCoupons.map((c) => c.code).toList(),
+      );
+    }
   }
 
   void _apply(DeepLinkTarget target) {
