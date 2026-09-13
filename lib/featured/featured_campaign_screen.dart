@@ -8,6 +8,7 @@ import 'package:new1/services/api_client.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/services/favorites_service.dart';
 import 'package:new1/services/promotion_service.dart';
+import 'package:new1/services/deep_link_service.dart';
 
 /// 기획전 특집 화면 (스펙 7.4, 프로토타입 화면 13)
 class FeaturedCampaignScreen extends StatefulWidget {
@@ -139,6 +140,7 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
   }
 
   Future<void> _openBannerLink(Uri url) async {
+    if (DeepLinkService.instance.tryHandle(url)) return;
     try {
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.platformDefault);

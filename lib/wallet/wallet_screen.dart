@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'package:new1/coupon_list_screen.dart';
 import 'package:new1/mileage/mileage_shop_screen.dart';
+import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/services/mileage_service.dart';
 import 'package:new1/wallet/mileage_tab.dart';
 import 'package:new1/wallet/stamp_tab.dart';
@@ -28,12 +29,30 @@ class _WalletScreenState extends State<WalletScreen>
   void initState() {
     super.initState();
     // 시연 빌드에서 특정 탭부터 열 수 있게: --dart-define=DEMO_TAB=1 (0 쿠폰/1 스탬프/2 마일리지)
+    final pending = DeepLinkService.instance.pendingWalletTab.value;
+    const demoTab = int.fromEnvironment('DEMO_TAB');
+    final initial = (pending != null && pending >= 0 && pending <= 2)
+        ? pending
+        : demoTab;
+    if (pending != null) {
+      DeepLinkService.instance.pendingWalletTab.value = null;
+    }
     _tabController = TabController(
       length: 3,
-      initialIndex: const int.fromEnvironment('DEMO_TAB'),
+      initialIndex: initial,
       vsync: this,
     );
+    DeepLinkService.instance.pendingWalletTab.addListener(_onPendingWalletTab);
     _loadSummary();
+  }
+
+  void _onPendingWalletTab() {
+    final idx = DeepLinkService.instance.pendingWalletTab.value;
+    if (idx == null || !mounted) return;
+    DeepLinkService.instance.pendingWalletTab.value = null;
+    if (idx >= 0 && idx < 3 && _tabController.index != idx) {
+      _tabController.animateTo(idx);
+    }
   }
 
   Future<void> _loadSummary() async {
@@ -63,6 +82,7 @@ class _WalletScreenState extends State<WalletScreen>
 
   @override
   void dispose() {
+    DeepLinkService.instance.pendingWalletTab.removeListener(_onPendingWalletTab);
     _tabController.dispose();
     super.dispose();
   }

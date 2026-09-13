@@ -34,7 +34,9 @@ class FeaturedCampaignItem {
       restaurantId: parseIntOrNull(json['restaurant_id']),
       badge: json['badge']?.toString() ?? '',
       benefitTitle: json['benefit_title']?.toString() ?? '',
-      benefitSub: json['benefit_sub']?.toString() ?? '',
+      benefitSub: json['benefit_sub']?.toString() ??
+          json['benefit_subtitle']?.toString() ??
+          '',
       imageUrl: _isSafeBannerUrl(image) ? image : null,
       linkUrl: sanitizeBannerLink(json['link_url']?.toString()),
       sortOrder: parseInt(json['sort_order']),
@@ -82,9 +84,17 @@ class FeaturedCampaign {
     required this.startsAt,
     required this.endsAt,
     required this.items,
+    this.sortOrder = 0,
   });
 
   factory FeaturedCampaign.fromJson(Map<String, dynamic> json) {
+    int parseInt(dynamic value) {
+      if (value is int) return value;
+      if (value is double) return value.toInt();
+      if (value is String) return int.tryParse(value) ?? 0;
+      return 0;
+    }
+
     final rawItems = json['items'] as List<dynamic>? ?? const <dynamic>[];
     final items = rawItems
         .whereType<Map>()
@@ -101,6 +111,7 @@ class FeaturedCampaign {
       startsAt: _parseDate(json['starts_at']),
       endsAt: _parseDate(json['ends_at']),
       items: items,
+      sortOrder: parseInt(json['sort_order']),
     );
   }
 
@@ -111,6 +122,7 @@ class FeaturedCampaign {
   final DateTime? startsAt;
   final DateTime? endsAt;
   final List<FeaturedCampaignItem> items;
+  final int sortOrder;
 
   bool get hasItems => items.isNotEmpty;
 
@@ -129,49 +141,58 @@ class FeaturedCampaign {
 }
 
 class PromotionService {
-  static Future<FeaturedCampaign?> fetchCurrentFeatured({String? zone}) async {
+  static Future<List<FeaturedCampaign>> fetchCurrentFeatured({
+    String? zone,
+  }) async {
     try {
       final response = await ApiClient.getWithoutThrow(
         '/api/promotions/featured/current/',
         authenticated: false,
         queryParameters: {if (zone != null && zone.isNotEmpty) 'zone': zone},
       );
-      if (response.statusCode >= 400) return null;
+      if (response.statusCode >= 400) return const [];
       final body = utf8.decode(response.bodyBytes).trim();
-      if (response.statusCode == 204 || body.isEmpty) return null;
-      final decoded = jsonDecode(body);
-      final campaignJson = _campaignMap(decoded);
-      if (campaignJson == null) return null;
-      final campaign = FeaturedCampaign.fromJson(campaignJson);
-      return campaign.hasItems ? campaign : null;
+      if (response.statusCode == 204 || body.isEmpty) return const [];
+      return parseFeaturedCampaigns(jsonDecode(body));
     } catch (e) {
       // 기획전은 부가 정보이므로 실패 시 배너를 아예 숨긴다.
       debugPrint('featured campaign API unavailable: $e');
-      return null;
+      return const [];
     }
   }
 }
 
-Map<String, dynamic>? _campaignMap(dynamic decoded) {
-  if (decoded is! Map) return null;
+/// 진행 중 기획전 응답을 캠페인 목록으로 푼다.
+/// DRF `results`에는 캠페인이 여러 개 올 수 있고, 세로 배너는 캠페인마다 items로 내려온다.
+List<FeaturedCampaign> parseFeaturedCampaigns(dynamic decoded) {
+  final raw = _rawCampaignMaps(decoded);
+  final campaigns = raw
+      .map(FeaturedCampaign.fromJson)
+      .where((campaign) => campaign.hasItems)
+      .toList()
+    ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+  return campaigns;
+}
+
+List<Map<String, dynamic>> _rawCampaignMaps(dynamic decoded) {
+  if (decoded is List) {
+    return decoded
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+  }
+  if (decoded is! Map) return const [];
   final map = Map<String, dynamic>.from(decoded);
   final results = map['results'];
-  if (results is List) {
-    for (final item in results) {
-      if (item is! Map) continue;
-      final campaign = Map<String, dynamic>.from(item);
-      final items = campaign['items'];
-      if (items is List && items.isNotEmpty) return campaign;
-    }
-    return null;
-  }
+  if (results is List) return _rawCampaignMaps(results);
   final nested = map['campaign'];
-  if (nested is Map) return Map<String, dynamic>.from(nested);
+  if (nested is Map) return [Map<String, dynamic>.from(nested)];
+  if (nested is List) return _rawCampaignMaps(nested);
   if (map['items'] is List ||
       (map['code']?.toString().trim().isNotEmpty ?? false)) {
-    return map;
+    return [map];
   }
-  return null;
+  return const [];
 }
 
 DateTime? _parseDate(dynamic raw) {

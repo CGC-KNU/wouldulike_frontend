@@ -28,6 +28,7 @@ import 'services/mission_service.dart';
 import 'services/popup_service.dart';
 import 'services/promotion_service.dart';
 import 'services/trend_service.dart';
+import 'services/deep_link_service.dart';
 
 bool _isValidHttpImageUrl(String? value) {
   if (value == null) return false;
@@ -43,6 +44,7 @@ bool _isValidHttpImageUrl(String? value) {
 class UrlLauncherUtil {
   static Future<void> launchURL(String urlString) async {
     final Uri url = Uri.parse(urlString);
+    if (DeepLinkService.instance.tryHandle(url)) return;
 
     try {
       if (await canLaunchUrl(url)) {
@@ -91,9 +93,6 @@ class _HomeContentState extends State<HomeContent> {
     '가입 축하',
   ];
   static const String _defaultPromotionTitle = '우주라이크 사용 가이드';
-  static const String _defaultPromotionDescription = '앱 사용 가이드를 바로 만나보세요.';
-  static const String _defaultPromotionImage =
-      'https://placehold.co/345x220.png';
   late SharedPreferences prefs;
   List<TrendItem> _trends = [];
   final PageController _bannerController = PageController();
@@ -124,7 +123,7 @@ class _HomeContentState extends State<HomeContent> {
   Set<int> _favoriteRestaurantIds = <int>{};
   Timer? _bannerAutoScrollTimer;
   static const Duration _bannerAutoScrollDuration = Duration(seconds: 3);
-  FeaturedCampaign? _featuredCampaign;
+  List<FeaturedCampaign> _featuredCampaigns = const [];
   MissionTrack? _missionTrack;
 
   /// 미션 배너 카운트다운용 서버 시각 보정값. 기기 시간을 그대로 쓰지 않는다.
@@ -163,18 +162,20 @@ class _HomeContentState extends State<HomeContent> {
 
   Future<void> _loadFeaturedCampaign() async {
     try {
-      final campaign = await PromotionService.fetchCurrentFeatured();
+      final campaigns = await PromotionService.fetchCurrentFeatured();
       if (!mounted) return;
       setState(() {
-        _featuredCampaign =
-            (campaign != null && campaign.hasItems) ? campaign : null;
+        _featuredCampaigns = campaigns;
         _featuredBannerIndex = 0;
       });
+      if (_featuredBannerController.hasClients) {
+        _featuredBannerController.jumpToPage(0);
+      }
     } catch (e) {
       // 진행 중 기획전 확인 실패 시 섹션만 숨긴다 (스펙 7.4).
       debugPrint('Failed to load featured campaign: $e');
       if (!mounted) return;
-      setState(() => _featuredCampaign = null);
+      setState(() => _featuredCampaigns = const []);
     }
   }
 
@@ -882,7 +883,7 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
-  void _handleTrendTap(TrendItem item, int index, bool hasRemoteData) {
+  void _handleTrendTap(TrendItem item, int index) {
     final String url = item.blogLink ?? '';
     final String title = (item.title != null && item.title!.trim().isNotEmpty)
         ? item.title!.trim()
@@ -896,7 +897,7 @@ class _HomeContentState extends State<HomeContent> {
         AnalyticsEvents.paramBannerIndex: index,
         'banner_title': title,
         'banner_url': url,
-        'banner_source': hasRemoteData ? 'remote' : 'fallback',
+        'banner_source': 'remote',
       },
     );
     final trimmed = url.trim();
@@ -1038,106 +1039,81 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
-  List<TrendItem> get _promotionItems =>
-      _trends.isNotEmpty ? _trends : _defaultPromotionItems;
-
-  List<TrendItem> get _defaultPromotionItems => const <TrendItem>[
-        TrendItem(
-          imageUrl: _defaultPromotionImage,
-          title: _defaultPromotionTitle,
-          description: _defaultPromotionDescription,
-          blogLink: 'https://example.com/guides/get-started',
-        ),
-        TrendItem(
-          imageUrl: 'https://placehold.co/345x220.png?text=Promo',
-          title: '제휴 매장 혜택 모음',
-          description: '주변 제휴 매장의 신규 쿠폰과 이벤트를 확인해보세요.',
-          blogLink: 'https://example.com/promotions/benefits',
-        ),
-      ];
-
   Widget _buildPromotionBanner(double width) {
-    final List<TrendItem> items = _promotionItems;
-    final int itemCount = items.isNotEmpty ? items.length : 1;
-    final bool hasRemoteData = _trends.isNotEmpty;
+    final List<TrendItem> items = _trends
+        .where((item) => _isValidHttpImageUrl(item.imageUrl))
+        .toList();
     // 배너 비율: 가로:세로 = 5:2 → 세로 = 가로 * (2 / 5)
     final double bannerHeight = width <= 0 ? 0 : width * (2 / 5);
 
     // 로딩 중에는 해상도 표시(placehold) 대신 빈 영역만 표시
-    if (_isTrendLoading && !hasRemoteData) {
-      return SizedBox(
-        height: bannerHeight,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(15),
-            color: Colors.grey.shade100,
+    if (_isTrendLoading && items.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: SizedBox(
+          height: bannerHeight,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              color: Colors.grey.shade100,
+            ),
           ),
         ),
       );
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        SizedBox(
-          height: bannerHeight,
-          child: Stack(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(15),
-                child: PageView.builder(
-                  key: ValueKey(
-                      '${hasRemoteData ? 'remote' : 'fallback'}-$itemCount'),
-                  controller: _bannerController,
-                  itemCount: itemCount,
-                  physics: itemCount > 1
-                      ? const PageScrollPhysics()
-                      : const NeverScrollableScrollPhysics(),
-                  onPageChanged: (index) {
-                    if (_currentBannerIndex != index) {
-                      setState(() {
-                        _currentBannerIndex = index;
-                      });
-                      // 사용자가 수동으로 넘기면 타이머 재시작
-                      _startBannerAutoScroll();
-                    }
-                  },
-                  itemBuilder: (context, index) {
-                    final TrendItem item = items[index];
-                    return _buildPromotionSlide(item, index, hasRemoteData);
-                  },
-                ),
+    // 서버에 가로배너가 없으면 섹션(여백 포함)을 숨긴다. 더미 데이터로 대체하지 않는다.
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final int itemCount = items.length;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: bannerHeight,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(15),
+              child: PageView.builder(
+                key: ValueKey('remote-$itemCount'),
+                controller: _bannerController,
+                itemCount: itemCount,
+                physics: itemCount > 1
+                    ? const PageScrollPhysics()
+                    : const NeverScrollableScrollPhysics(),
+                onPageChanged: (index) {
+                  if (_currentBannerIndex != index) {
+                    setState(() {
+                      _currentBannerIndex = index;
+                    });
+                    // 사용자가 수동으로 넘기면 타이머 재시작
+                    _startBannerAutoScroll();
+                  }
+                },
+                itemBuilder: (context, index) {
+                  final TrendItem item = items[index];
+                  return _buildPromotionSlide(item, index);
+                },
               ),
-              if (_isTrendLoading && !hasRemoteData)
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(15),
-                      color: Colors.black.withOpacity(0.05),
-                    ),
-                  ),
-                ),
-              if (_bannerAutoScrollTimer?.isActive ?? false)
-                const SizedBox(), // Cleaned up debug text
-            ],
+            ),
           ),
-        ),
-        if (itemCount > 1)
-          Padding(
-            // 배너 설명과 인디케이터 사이, 인디케이터와 다음 섹션 사이
-            // 간격을 동일하게 맞추기 위해 상하 대칭 패딩을 사용
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: _buildBannerIndicators(itemCount),
-          ),
-      ],
+          if (itemCount > 1)
+            Padding(
+              // 배너 설명과 인디케이터 사이, 인디케이터와 다음 섹션 사이
+              // 간격을 동일하게 맞추기 위해 상하 대칭 패딩을 사용
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: _buildBannerIndicators(itemCount),
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildPromotionSlide(
-    TrendItem item,
-    int index,
-    bool hasRemoteData,
-  ) {
+  Widget _buildPromotionSlide(TrendItem item, int index) {
     final bool hasLink = item.hasBlogLink;
 
     return ClipRRect(
@@ -1145,9 +1121,7 @@ class _HomeContentState extends State<HomeContent> {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: hasLink
-              ? () => _handleTrendTap(item, index, hasRemoteData)
-              : null,
+          onTap: hasLink ? () => _handleTrendTap(item, index) : null,
           child: _buildTrendImage(item.imageUrl),
         ),
       ),
@@ -1208,22 +1182,14 @@ class _HomeContentState extends State<HomeContent> {
 
   Widget _buildTrendImage(String imageUrl) {
     if (!_isValidHttpImageUrl(imageUrl)) {
-      return Image.asset(
-        'assets/images/food_image0.png',
-        width: double.infinity,
-        fit: BoxFit.cover,
-      );
+      return const ColoredBox(color: _placeholderGray);
     }
     return Image.network(
       imageUrl.trim(),
       width: double.infinity,
       fit: BoxFit.cover,
       alignment: Alignment.center,
-      errorBuilder: (_, __, ___) => Image.asset(
-        'assets/images/food_image0.png',
-        width: double.infinity,
-        fit: BoxFit.cover,
-      ),
+      errorBuilder: (_, __, ___) => const ColoredBox(color: _placeholderGray),
     );
   }
 
@@ -1411,7 +1377,7 @@ class _HomeContentState extends State<HomeContent> {
         return;
       }
 
-      final itemCount = _promotionItems.length;
+      final itemCount = _trends.length;
       if (itemCount <= 1) return;
 
       final nextPage = (_currentBannerIndex + 1) % itemCount;
@@ -1439,9 +1405,15 @@ class _HomeContentState extends State<HomeContent> {
 
   // ===== 기획전 캐러셀 (스펙 7.4·7.5, 프로토타입 화면 4) =====
 
-  void _openFeaturedCampaign() {
-    final campaign = _featuredCampaign;
-    if (campaign == null) return;
+  List<_FeaturedBannerSlide> get _featuredBannerSlides {
+    return [
+      for (final campaign in _featuredCampaigns)
+        for (final item in campaign.items)
+          _FeaturedBannerSlide(campaign: campaign, item: item),
+    ];
+  }
+
+  void _openFeaturedCampaign(FeaturedCampaign campaign) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => FeaturedCampaignScreen(campaign: campaign),
@@ -1462,24 +1434,23 @@ class _HomeContentState extends State<HomeContent> {
     return null;
   }
 
-  /// 독립형 배너는 자기 링크를 열고, 식당 연결형은 기존처럼 기획전 상세 화면을 연다.
-  void _handleFeaturedItemTap(FeaturedCampaignItem item) {
-    final link = item.linkUrl;
+  /// 독립형 배너는 자기 링크를 열고, 식당 연결형은 그 배너가 속한 기획전 상세 화면을 연다.
+  void _handleFeaturedItemTap(_FeaturedBannerSlide slide) {
+    final link = slide.item.linkUrl;
     if (link != null) {
       _launchURL(link.toString());
       return;
     }
-    _openFeaturedCampaign();
+    _openFeaturedCampaign(slide.campaign);
   }
 
   Widget _buildFeaturedCarousel(double width) {
-    final campaign = _featuredCampaign;
+    final slides = _featuredBannerSlides;
     // 진행 중 기획전이 없으면 섹션 전체를 숨긴다. 빈 캐러셀 노출 금지 (스펙 7.4).
-    if (campaign == null || !campaign.hasItems) {
+    if (slides.isEmpty) {
       return const SizedBox.shrink();
     }
 
-    final items = campaign.items;
     // 기본(트렌드) 배너와 같은 좌우 폭. 에셋 비율(1080×1250 = 1 : 1.157)로 높이만 잡는다.
     final double bannerHeight = (width * 1.157).clamp(0.0, 480.0).toDouble();
 
@@ -1491,22 +1462,25 @@ class _HomeContentState extends State<HomeContent> {
           SizedBox(
             height: bannerHeight,
             child: PageView.builder(
+              key: ValueKey('featured-${slides.length}'),
               controller: _featuredBannerController,
               // 수동 스와이프만 지원. 자동 넘김 타이머 없음 (스펙 7.5).
-              physics: const PageScrollPhysics(),
-              itemCount: items.length,
+              physics: slides.length > 1
+                  ? const PageScrollPhysics()
+                  : const NeverScrollableScrollPhysics(),
+              itemCount: slides.length,
               onPageChanged: (index) {
                 if (_featuredBannerIndex != index) {
                   setState(() => _featuredBannerIndex = index);
                 }
               },
               itemBuilder: (context, index) {
-                final item = items[index];
+                final item = slides[index].item;
                 return _FeaturedBannerCard(
                   imageUrl: _resolveFeaturedItemImage(item),
                   fallbackAsset: _kFeaturedFallbackAssets[
                       index % _kFeaturedFallbackAssets.length],
-                  onTap: () => _handleFeaturedItemTap(item),
+                  onTap: () => _handleFeaturedItemTap(slides[index]),
                 );
               },
             ),
@@ -1514,7 +1488,7 @@ class _HomeContentState extends State<HomeContent> {
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(items.length, (index) {
+            children: List.generate(slides.length, (index) {
               final bool isActive = index == _featuredBannerIndex;
               return AnimatedContainer(
                 duration: const Duration(milliseconds: 200),
@@ -1709,12 +1683,8 @@ class _HomeContentState extends State<HomeContent> {
                 _buildMissionBanner(),
                 // 기획전 캐러셀: 진행 중 기획전 있을 때만 노출 (기존 섹션 순서 유지)
                 _buildFeaturedCarousel(screenWidth - padding * 2),
-                // 일반 배너(트렌드): 기획전이 없는 주(예: 3주차)에 그 자리가
-                // 비지 않도록 기획전 아래에 되살렸다 (2.4.5 당시 배너).
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20),
-                  child: _buildPromotionBanner(screenWidth - padding * 2),
-                ),
+                // 일반 가로배너(트렌드): 서버에 등록된 항목이 있을 때만 노출한다.
+                _buildPromotionBanner(screenWidth - padding * 2),
                 // 현재 혜택이 있는 식당 목록도 같은 시기에 함께 되살렸다.
                 _buildAffiliateRestaurantsSection(),
               ],
@@ -1724,6 +1694,16 @@ class _HomeContentState extends State<HomeContent> {
       ),
     );
   }
+}
+
+class _FeaturedBannerSlide {
+  const _FeaturedBannerSlide({
+    required this.campaign,
+    required this.item,
+  });
+
+  final FeaturedCampaign campaign;
+  final FeaturedCampaignItem item;
 }
 
 /// 이미지 준비 전까지 배너/썸네일 자리를 채우는 회색 플레이스홀더 색상.

@@ -504,6 +504,64 @@ class MileageService {
       );
     }
   }
+
+  /// QR 스캔 딥링크로 식당 화면에 진입했을 때 방문 마일리지 적립을 시도한다.
+  /// 하루 최대 적립 횟수를 넘겨도 credited: false로 정상 응답이 오므로,
+  /// 화면 이동 자체는 이 결과와 무관하게 계속 진행하면 된다.
+  static Future<QrVisitResult> creditQrVisit(
+    int restaurantId, {
+    String? idempotencyKey,
+  }) async {
+    try {
+      final response = await ApiClient.postWithoutThrow(
+        '/api/mileage/qr-visit/',
+        body: {'restaurant_id': restaurantId},
+        headers: {
+          'Idempotency-Key': idempotencyKey ?? generateQrVisitKey(restaurantId),
+        },
+      ).timeout(const Duration(seconds: 8));
+      final decoded = _decode(response);
+      final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+      if (response.statusCode >= 400) {
+        return QrVisitResult(credited: false, code: map['code']?.toString());
+      }
+      return QrVisitResult(
+        credited: map['credited'] == true,
+        code: map['code']?.toString(),
+        delta: _asInt(map['delta']),
+        balance: map['balance'] == null ? null : _asInt(map['balance']),
+      );
+    } catch (e) {
+      debugPrint('[Mileage] QR visit credit failed: $e');
+      return const QrVisitResult(credited: false, code: 'network_error');
+    }
+  }
+}
+
+/// QR 딥링크 방문 적립 결과 (POST /api/mileage/qr-visit/)
+class QrVisitResult {
+  const QrVisitResult({
+    required this.credited,
+    this.code,
+    this.delta = 0,
+    this.balance,
+  });
+
+  final bool credited;
+
+  /// disabled · daily_limit_reached · network_error 등
+  final String? code;
+  final int delta;
+  final int? balance;
+}
+
+/// qr-visit-<restaurantId>-<난수>. 같은 딥링크 오픈 이벤트를 재시도할 때
+/// 동일 키를 넘겨야 중복 적립이 막힌다.
+String generateQrVisitKey(int restaurantId) {
+  final random = Random.secure();
+  final suffix =
+      List.generate(12, (_) => '0123456789abcdef'[random.nextInt(16)]).join();
+  return 'qr-visit-$restaurantId-$suffix';
 }
 
 /// 디버그 전용 샘플 (프로토타입 화면 11 기준). 배포 후 아래 두 함수를 삭제할 것.

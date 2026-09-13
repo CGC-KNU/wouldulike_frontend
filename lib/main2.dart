@@ -8,6 +8,7 @@ import 'package:new1/wallet/wallet_screen.dart';
 import 'home.dart';
 import 'my.dart';
 import 'package:new1/services/api_client.dart';
+import 'package:new1/services/deep_link_router.dart';
 import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
@@ -25,29 +26,32 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   // 시연 빌드에서 시작 탭 지정: --dart-define=DEMO_NAV=2 (0 홈/1 식당/2 내 지갑/3 마이페이지)
   int _selectedIndex = const int.fromEnvironment('DEMO_NAV');
   static const List<String> _tabNames = <String>['home', 'affiliate', 'wallet', 'my'];
-  StreamSubscription<int>? _deepLinkSub;
+  StreamSubscription<int>? _deepLinkTabSub;
+  StreamSubscription<DeepLinkTarget>? _deepLinkTargetSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // 앱 최초 실행 시 딥링크로 진입한 경우 해당 탭으로 이동
-    final pendingTab = DeepLinkService.instance.consumePendingTabIndex();
-    if (pendingTab != null) _selectedIndex = pendingTab;
-    // 앱 실행 중 딥링크 수신 시 탭 전환
-    _deepLinkSub = DeepLinkService.instance.tabStream.listen((tabIndex) {
+    final pending = DeepLinkService.instance.consumePendingTarget();
+    if (pending != null) _selectedIndex = pending.tabIndex;
+    _deepLinkTabSub = DeepLinkService.instance.tabStream.listen((tabIndex) {
       if (mounted) setState(() => _selectedIndex = tabIndex);
     });
+    _deepLinkTargetSub =
+        DeepLinkService.instance.targetStream.listen(_onDeepLinkTarget);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkTokenIfNeeded();
       _logTabView(_selectedIndex);
+      if (pending != null) _openDeepLink(pending);
       LimitedCouponOfferFlow.maybePresent(context);
     });
   }
 
   @override
   void dispose() {
-    _deepLinkSub?.cancel();
+    _deepLinkTabSub?.cancel();
+    _deepLinkTargetSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     ApiClient.cancelTokenRefreshTimer();
     super.dispose();
@@ -76,6 +80,25 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
       // 토큰 갱신 실패는 조용히 처리 (API 요청 시 다시 시도됨)
       debugPrint('[MainAppScreen] Token validation error: $e');
     }
+  }
+
+  void _onDeepLinkTarget(DeepLinkTarget target) {
+    if (!mounted) return;
+    _popToThisRoute();
+    setState(() => _selectedIndex = target.tabIndex);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _openDeepLink(target);
+    });
+  }
+
+  void _popToThisRoute() {
+    final here = ModalRoute.of(context);
+    if (here == null) return;
+    Navigator.of(context).popUntil((route) => route == here);
+  }
+
+  Future<void> _openDeepLink(DeepLinkTarget target) {
+    return DeepLinkRouter.open(context, target);
   }
 
   void _onItemTapped(int index) {

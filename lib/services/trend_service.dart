@@ -30,7 +30,14 @@ class TrendItem {
   final String? title;
   final String? description;
 
-  bool get hasImage => imageUrl.trim().isNotEmpty;
+  bool get hasImage {
+    final trimmed = imageUrl.trim();
+    if (trimmed.isEmpty) return false;
+    final uri = Uri.tryParse(trimmed);
+    return uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+  }
   bool get hasBlogLink => blogLink != null && blogLink!.trim().isNotEmpty;
 }
 
