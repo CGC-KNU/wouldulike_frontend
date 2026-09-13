@@ -1002,6 +1002,16 @@ class MainScreenState extends State<MainScreen> {
     // campaign은 구매 유도 알림의 효과를 측정할 유일한 키다. 서버가 payload에
     // 실어 보내는 값을 그대로 옮겨, 마감 임박·추첨 결과·미션 리마인드를 구분한다.
     final data = message.data;
+
+    final deepLink = data['deep_link'];
+    if (deepLink is String && deepLink.isNotEmpty) {
+      final uri = Uri.tryParse(deepLink);
+      if (uri != null) {
+        // 외부 wouldulike:// 링크와 동일한 경로로 처리 — 탭/화면 이동 로직을 재사용한다.
+        DeepLinkService.instance.handleUri(uri);
+      }
+    }
+
     AnalyticsLogger.logEvent(
       AnalyticsEvents.notificationOpen,
       parameters: {
