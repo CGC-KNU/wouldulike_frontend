@@ -135,8 +135,12 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
       return;
     }
 
+    setState(() => _claimingCode = code);
+    final result = await MissionService.claim(code);
+
     // 달성(mission_completed)과 분리해 남긴다. 두 이벤트의 UU 차이가
     // "깼는데 안 받아간 사용자" — 리마인드 푸시의 타깃 모수다.
+    // 서버 응답 뒤에 result 와 함께 남겨, 실패한 시도가 수령으로 섞이지 않게 한다.
     AnalyticsLogger.logEvent(
       AnalyticsEvents.missionRewardClaim,
       parameters: {
@@ -146,11 +150,9 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
         AnalyticsEvents.paramDoneCount:
             welcome.missions.where((m) => m.isDone).length,
         AnalyticsEvents.paramTotalCount: welcome.missions.length,
+        AnalyticsEvents.paramResult: result == null ? 'error' : 'success',
       },
     );
-
-    setState(() => _claimingCode = code);
-    final result = await MissionService.claim(code);
     if (!mounted) return;
     setState(() => _claimingCode = null);
     if (result == null) {

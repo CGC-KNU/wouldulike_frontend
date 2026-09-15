@@ -35,7 +35,9 @@ class AnalyticsEvents {
   // 아래 둘은 코드에 문자열 리터럴로 박혀 있던 것을 상수로 끌어올린 것이다.
   // 이벤트명은 그대로라 기존 데이터와 이어진다.
   static const String homeBannerClick = 'home_banner_click';
-  static const String notificationOpen = 'notification_open';
+  /// 푸시 알림 탭. 'notification_open'은 Firebase 예약 이벤트명이라 logEvent가
+  /// ArgumentError로 거부해 한 건도 쌓이지 않았다 — 같은 이름으로 되돌리지 말 것.
+  static const String pushOpen = 'push_open';
   static const String tabView = 'tab_view';
   static const String couponPageView = 'coupon_page_view';
   static const String affiliateCategoryClick = 'affiliate_category_click';
@@ -54,8 +56,14 @@ class AnalyticsEvents {
   static const String loginCompleted = 'login_completed';
 
   // ===== 마일리지 · 식사권 응모 =====
-  /// QR 스캔 등으로 마일리지 적립 성공
-  static const String mileageEarn = 'mileage_earn';
+  // 적립 건수·금액의 정본은 서버 원장(MileageEvent)이다. 앱 로그는 누락될 수
+  // 있어 계약 수치로 쓰지 않는다. 그래서 'mileage_earn' 같은 적립 합계 이벤트는
+  // 두지 않고, 앱에서만 보이는 흐름(링크 진입 → 적립 시도 결과)만 남긴다.
+  /// OS 밖에서 들어온 딥링크 처리 (source: link_stream · initial_link · push_tap)
+  static const String deepLinkOpen = 'deep_link_open';
+  /// QR 방문 적립 시도 결과. 적립 실패·한도 초과·비로그인까지 result로 남긴다.
+  /// 푸시 탭은 적립을 요청하지 않으므로 남지 않는다.
+  static const String qrVisitCredit = 'qr_visit_credit';
   /// 마일리지 상점(응모 목록) 진입
   static const String ticketPurchaseView = 'ticket_purchase_view';
   /// 식사권 응모 확정 (마일리지 차감 성공)
@@ -73,7 +81,8 @@ class AnalyticsEvents {
   static const String missionTrackView = 'mission_track_view';
   /// 개별 미션 달성 (서버 응답 기준)
   static const String missionCompleted = 'mission_completed';
-  /// "리워드 받기" 탭 — 달성과 반드시 분리해 집계한다
+  /// "리워드 받기" 요청 결과 (result: success · error) — 달성과 반드시 분리해 집계한다.
+  /// 수령 수는 result=success 로 거른다.
   static const String missionRewardClaim = 'mission_reward_claim';
 
   // ===== 쿠폰 사용 =====
@@ -166,6 +175,13 @@ class AnalyticsEvents {
   static const String paramEntriesCount = 'entries_count';
   static const String paramIsWinner = 'is_winner';
   static const String paramPrizeType = 'prize_type';
+
+  // ===== 딥링크 · QR 방문 =====
+  /// 링크 자체에 붙은 출처 표기 (src=qr · share 등, 없으면 none).
+  /// 앱에 들어온 통로(source)와 다르다 — 같은 QR도 link_stream·initial_link 로 들어온다.
+  static const String paramLinkSource = 'link_source';
+  /// 딥링크가 연 화면 (DeepLinkScreen 이름)
+  static const String paramTargetScreen = 'target_screen';
 
   // ===== 식사권 =====
   static const String paramVoucherId = 'voucher_id';
