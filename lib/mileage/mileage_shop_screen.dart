@@ -80,13 +80,13 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
 
   /// 응모 화면 진입. 잔액 대비 응모 가능 건수를 함께 실어, 마일리지가 모자라
   /// 되돌아가는 이탈과 그냥 둘러보는 이탈을 구분할 수 있게 한다.
+  /// 같은 대회에 여러 장 추가 응모할 수 있으므로 이미 응모한 대회도 센다.
   void _logShopView() {
     if (_viewLogged) return;
     _viewLogged = true;
     final balance = _summary?.balance ?? 0;
-    final affordable = _raffles
-        .where((r) => !r.entered && r.costMileage <= balance)
-        .length;
+    final affordable =
+        _raffles.where((r) => r.costMileage <= balance).length;
     AnalyticsLogger.logEvent(
       AnalyticsEvents.ticketPurchaseView,
       parameters: {
@@ -95,23 +95,6 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
         AnalyticsEvents.paramCount: _raffles.length,
       },
     );
-  }
-
-  /// 추첨 회차 식별자. 서버가 회차 개념을 내려주지 않아 마감일의 주차로
-  /// 파생한다 (같은 주 마감 건을 한 회차로 묶는다).
-  ///
-  /// 주의: ISO 8601 주차가 아니라 1월 1일 기준 단순 주차다. 서버가 회차를
-  /// 내려주기 시작하면 그 값으로 교체해야 하며, 그 전까지 BigQuery 집계는
-  /// 이 규칙과 동일하게 맞춰야 한다.
-  static String? _drawRound(DateTime? closesAt) {
-    if (closesAt == null) return null;
-    final d = DateTime.utc(closesAt.year, closesAt.month, closesAt.day);
-    final week = ((d.difference(DateTime.utc(d.year, 1, 1)).inDays +
-                DateTime.utc(d.year, 1, 1).weekday -
-                1) ~/
-            7) +
-        1;
-    return '${d.year}-W${week.toString().padLeft(2, '0')}';
   }
 
   /// 마감까지 남은 일수. 서버가 준 closes_at 기준으로만 계산한다.
@@ -226,13 +209,14 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
             .toList();
       });
       // 중복 응모(멱등 키 재사용)는 마일리지 차감이 없으므로 구매로 세지 않는다.
+      // 타임아웃 뒤 같은 키 재시도는 서버가 첫 성공 응답을 그대로 주므로 ok 로 잡힌다.
       if (result.ok) {
+        final drawRound = drawRoundFromClosesAt(raffle.closesAt);
         AnalyticsLogger.logEvent(
           AnalyticsEvents.ticketPurchase,
           parameters: {
             AnalyticsEvents.paramRaffleId: raffle.id,
-            if (_drawRound(raffle.closesAt) != null)
-              AnalyticsEvents.paramDrawRound: _drawRound(raffle.closesAt),
+            if (drawRound != null) AnalyticsEvents.paramDrawRound: drawRound,
             AnalyticsEvents.paramCount: quantity,
             AnalyticsEvents.paramPointsSpent: totalCost,
             if (result.balanceAfter != null)
@@ -281,12 +265,12 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
     int? balance,
   }) {
     final shortfall = balance != null ? totalCost - balance : null;
+    final drawRound = drawRoundFromClosesAt(raffle.closesAt);
     AnalyticsLogger.logEvent(
       AnalyticsEvents.ticketPurchaseFailed,
       parameters: {
         AnalyticsEvents.paramRaffleId: raffle.id,
-        if (_drawRound(raffle.closesAt) != null)
-          AnalyticsEvents.paramDrawRound: _drawRound(raffle.closesAt),
+        if (drawRound != null) AnalyticsEvents.paramDrawRound: drawRound,
         AnalyticsEvents.paramFailReason: reason,
         AnalyticsEvents.paramPointsSpent: totalCost,
         if (balance != null) AnalyticsEvents.paramBalance: balance,
