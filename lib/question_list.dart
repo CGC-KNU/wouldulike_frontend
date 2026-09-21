@@ -1,4 +1,4 @@
-List<Map<String, dynamic>> questionList = [
+List<Map<String, dynamic>> kFallbackQuestionList = [
   {
     "questionText": "스트레스 받을 때 생각나는 음식은?",
     "answers": [

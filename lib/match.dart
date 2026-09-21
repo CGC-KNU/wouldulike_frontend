@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
+import 'package:new1/services/api_client.dart';
 
 bool _isValidNetworkImageUrl(String? value) {
   if (value == null) return false;
@@ -188,7 +189,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         throw Exception('??? UUID? ?? ? ????');
       }
       final url =
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/food-by-type/unique-random-foods/?uuid=$userUUID';
+          '${ApiClient.baseUrl}/food-by-type/unique-random-foods/?uuid=$userUUID';
       http.Response response;
       int retry = 0;
       int delay = 1;
@@ -272,7 +273,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
     try {
       print('1. 요청 시작 - 음식 이름: $foodName');
 
-      final url = 'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-random-restaurants/';
+      final url = '${ApiClient.baseUrl}/restaurants/get-random-restaurants/';
       final requestBody = json.encode({
         'food_names': [foodName],
       });
@@ -300,15 +301,16 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
         print('5. 추출된 음식점 수: ${restaurants.length}');
 
         final position = await LocationHelper.getLatLon();
-        final userLat = position?['lat'] ?? 35.8714;
-        final userLon = position?['lon'] ?? 128.6014;
+        final defaults = LocationHelper.getDefaultLatLon();
+        final userLat = position?['lat'] ?? defaults['lat']!;
+        final userLon = position?['lon'] ?? defaults['lon']!;
 
         print('6. 음식점 데이터 매핑 시작');
         final prefs = await SharedPreferences.getInstance();
 
         final mappedRestaurants = restaurants.map<Map<String, dynamic>>((restaurant) {
-          final restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? 35.8714;
-          final restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? 128.6014;
+          final restLat = double.tryParse(restaurant['y']?.toString() ?? '') ?? defaults['lat']!;
+          final restLon = double.tryParse(restaurant['x']?.toString() ?? '') ?? defaults['lon']!;
 
           final distance = DistanceCalculator.haversine(userLat, userLon, restLat, restLon);
           final name = restaurant['name'] ?? '이름 없음';
@@ -402,7 +404,7 @@ class _MatchingScreenState extends State<MatchingScreen> with SingleTickerProvid
   Future<void> _updateFavoriteRestaurant(String uuid, String restaurantName, String action) async {
     if (restaurantName.isEmpty) return;
 
-    final url = Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/update/favorite_restaurants/');
+    final url = Uri.parse('${ApiClient.baseUrl}/update/favorite_restaurants/');
     try {
       await http.post(
         url,

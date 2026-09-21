@@ -30,7 +30,14 @@ class TrendItem {
   final String? title;
   final String? description;
 
-  bool get hasImage => imageUrl.trim().isNotEmpty;
+  bool get hasImage {
+    final trimmed = imageUrl.trim();
+    if (trimmed.isEmpty) return false;
+    final uri = Uri.tryParse(trimmed);
+    return uri != null &&
+        (uri.scheme == 'http' || uri.scheme == 'https') &&
+        uri.host.isNotEmpty;
+  }
   bool get hasBlogLink => blogLink != null && blogLink!.trim().isNotEmpty;
 }
 
@@ -38,6 +45,10 @@ class TrendService {
   static Future<List<TrendItem>> fetchTrends() async {
     final response = await ApiClient.get('/trends/trend_list/', authenticated: false);
     final body = utf8.decode(response.bodyBytes);
+    final trimmed = body.trimLeft();
+    if (trimmed.isEmpty || trimmed.startsWith('<')) {
+      return const <TrendItem>[];
+    }
     final decoded = jsonDecode(body);
 
     final List<dynamic> items;

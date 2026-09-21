@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 2.4.5+45
+version: 2.5.7+53
 
 environment:
   sdk: ^3.5.3
@@ -72,6 +72,11 @@ dev_dependencies:
 # The following section is specific to Flutter packages.
 flutter:
 
+  # Swift Package Manager 모드에서 구버전 flutter_native_splash가
+  # "public headers directory path is invalid" 오류를 내므로 CocoaPods로 고정
+  config:
+    enable-swift-package-manager: false
+
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
   # the material Icons class.
@@ -126,7 +131,9 @@ flutter:
           weight: 700
   assets:
     - assets/images/
+    - assets/images/stamp/
     - assets/icons/
+    - assets/icons/category/
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 

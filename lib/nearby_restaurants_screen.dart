@@ -5,6 +5,7 @@ import 'dart:convert';
 
 import 'utils/location_helper.dart';
 import 'utils/distance_calculator.dart';
+import 'services/api_client.dart';
 
 class NearbyRestaurantsScreen extends StatefulWidget {
   const NearbyRestaurantsScreen({super.key});
@@ -40,7 +41,7 @@ class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
       final pos = position ?? LocationHelper.getDefaultLatLon();
 
       final response = await http.post(
-        Uri.parse('https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/restaurants/get-nearby-restaurants/'),
+        Uri.parse('${ApiClient.baseUrl}/restaurants/get-nearby-restaurants/'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'food_names': foodNames,

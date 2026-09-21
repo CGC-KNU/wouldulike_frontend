@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/knu_profile_options.dart';
 import 'api_client.dart';
+import 'master_content.dart';
 
 class NicknameAvailabilityResult {
   const NicknameAvailabilityResult({
@@ -42,7 +43,11 @@ class UserService {
 
     try {
       final response = await ApiClient.get('/api/users/me/');
-      final dynamic data = json.decode(utf8.decode(response.bodyBytes));
+      final text = utf8.decode(response.bodyBytes).trimLeft();
+      if (text.isEmpty || text.startsWith('<')) {
+        return null;
+      }
+      final dynamic data = json.decode(text);
       if (data is Map<String, dynamic>) {
         return data;
       }
@@ -144,9 +149,10 @@ class UserService {
     final colleges = _parseColleges(profile?['colleges']);
     final departments = _parseDepartments(profile?['departments']);
     return ProfileSetupOptions(
-      schools: schools.isNotEmpty ? schools : knuSchools,
-      colleges: colleges.isNotEmpty ? colleges : knuColleges,
-      departments: departments.isNotEmpty ? departments : knuDepartments,
+      schools: schools.isNotEmpty ? schools : MasterContent.schools,
+      colleges: colleges.isNotEmpty ? colleges : MasterContent.colleges,
+      departments:
+          departments.isNotEmpty ? departments : MasterContent.departments,
     );
   }
 

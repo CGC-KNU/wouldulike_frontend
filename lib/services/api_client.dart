@@ -74,6 +74,19 @@ class ApiClient {
     return ensureTokenValid();
   }
 
+  static Future<bool> hasAccessToken() async {
+    try {
+      // prefs 채널이 응답하지 않으면 호출한 화면이 로딩에서 빠져나오지 못한다.
+      // 토큰 검사는 부가 판단이므로 막히면 '없음'으로 보고 흐름을 계속한다.
+      final prefs = await SharedPreferences.getInstance()
+          .timeout(const Duration(seconds: 2));
+      final token = prefs.getString('jwt_access_token');
+      return token != null && token.isNotEmpty;
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<Map<String, String>> _headers({
     bool authenticated = true,
     Map<String, String>? extra,
@@ -92,21 +105,11 @@ class ApiClient {
     }
 
     final prefs = await SharedPreferences.getInstance();
-    final token = prefs.getString('jwt_access_token');
-    if (token == null || token.isEmpty) {
-      throw const ApiAuthException('로그인이 필요해요. 다시 로그인해 주세요.');
-    }
-
-    // 토큰이 곧 만료될 것 같으면 미리 갱신 시도
     await _ensureTokenValid();
-
-    // 갱신 후 최신 토큰 가져오기
     final latestToken = prefs.getString('jwt_access_token');
-    if (latestToken == null || latestToken.isEmpty) {
-      throw const ApiAuthException('로그인이 필요해요. 다시 로그인해 주세요.');
+    if (latestToken != null && latestToken.isNotEmpty) {
+      headers[HttpHeaders.authorizationHeader] = 'Bearer $latestToken';
     }
-
-    headers[HttpHeaders.authorizationHeader] = 'Bearer $latestToken';
     return headers;
   }
 
@@ -133,6 +136,31 @@ class ApiClient {
     );
     _throwIfFailed(response);
     return response;
+  }
+
+  /// get과 동일하나 4xx/5xx 시 throw 대신 response를 반환한다.
+  /// 콘텐츠 미설정(404)처럼 정상적인 빈 상태를 디버거가 잡지 않게 한다.
+  static Future<http.Response> getWithoutThrow(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    final uri = _resolve(path, queryParameters);
+    Future<http.Response> sendRequest() async {
+      final requestHeaders =
+          await _headers(authenticated: authenticated, extra: headers);
+      try {
+        return await _http.get(uri, headers: requestHeaders);
+      } catch (e) {
+        throw ApiNetworkException(e);
+      }
+    }
+
+    return _sendWithAuthRetry(
+      authenticated: authenticated,
+      sendRequest: sendRequest,
+    );
   }
 
   static Future<http.Response> post(
@@ -214,6 +242,33 @@ class ApiClient {
     return response;
   }
 
+  static Future<http.Response> put(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+    Object? body,
+    bool authenticated = true,
+    Map<String, String>? headers,
+  }) async {
+    final uri = _resolve(path, queryParameters);
+    final payload = body == null || body is String ? body : jsonEncode(body);
+    Future<http.Response> sendRequest() async {
+      final requestHeaders =
+          await _headers(authenticated: authenticated, extra: headers);
+      try {
+        return await _http.put(uri, headers: requestHeaders, body: payload);
+      } catch (e) {
+        throw ApiNetworkException(e);
+      }
+    }
+
+    final response = await _sendWithAuthRetry(
+      authenticated: authenticated,
+      sendRequest: sendRequest,
+    );
+    _throwIfFailed(response);
+    return response;
+  }
+
   static Future<http.Response> delete(
     String path, {
     Map<String, dynamic>? queryParameters,
@@ -249,6 +304,23 @@ class ApiClient {
 
     // 요청 전에 토큰이 유효한지 확인하고 필요시 갱신
     await _ensureTokenValid();
+
+    final prefs = await SharedPreferences.getInstance();
+    var accessToken = prefs.getString('jwt_access_token');
+    if (accessToken == null || accessToken.isEmpty) {
+      await _refreshAccessToken();
+      accessToken = prefs.getString('jwt_access_token');
+    }
+    // 비로그인 상태에서는 throw 하지 않는다. 디버거가 잡힌 예외에서 멈추는 것을 막는다.
+    if (accessToken == null || accessToken.isEmpty) {
+      return http.Response(
+        '{"detail":"로그인이 필요해요. 다시 로그인해 주세요."}',
+        401,
+        headers: const {
+          HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
+        },
+      );
+    }
 
     const maxRetries = 2;
     var retryCount = 0;
@@ -490,8 +562,41 @@ class ApiClient {
 
   static void _throwIfFailed(http.Response response) {
     if (response.statusCode >= 400) {
-      throw ApiHttpException(response.statusCode, response.body);
+      throw ApiHttpException(
+        response.statusCode,
+        _summarizeErrorBody(response),
+      );
     }
+    // 게이트웨이/앱 장애 시 200으로 HTML 에러 페이지가 오는 경우가 있다.
+    // 그대로 두면 jsonDecode에서 FormatException이 나며 디버그에서 화면이 덮인다.
+    if (_isHtmlBody(response)) {
+      throw ApiHttpException(
+        response.statusCode,
+        '서버가 일시적으로 응답하지 않아요. 잠시 후 다시 시도해 주세요.',
+      );
+    }
+  }
+
+  static bool _isHtmlBody(http.Response response) {
+    final contentType =
+        response.headers[HttpHeaders.contentTypeHeader]?.toLowerCase() ?? '';
+    if (contentType.contains('text/html')) {
+      return true;
+    }
+    final trimmed = response.body.trimLeft();
+    if (trimmed.isEmpty) {
+      return false;
+    }
+    final head = trimmed.length > 15 ? trimmed.substring(0, 15) : trimmed;
+    final lower = head.toLowerCase();
+    return lower.startsWith('<!doctype') || lower.startsWith('<html');
+  }
+
+  static String _summarizeErrorBody(http.Response response) {
+    if (_isHtmlBody(response)) {
+      return '서버가 일시적으로 응답하지 않아요. 잠시 후 다시 시도해 주세요.';
+    }
+    return response.body;
   }
 
   /// 토큰 검증 API를 호출하여 현재 ACCESS_TOKEN의 유효성을 확인합니다.

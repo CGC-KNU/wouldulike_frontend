@@ -18,6 +18,7 @@ class AffiliateRestaurantSummary {
     required this.stampCurrent,
     required this.stampTarget,
     this.couponBenefitsSummary,
+    this.promotionText,
   });
 
   factory AffiliateRestaurantSummary.fromJson(Map<String, dynamic> json) {
@@ -66,6 +67,13 @@ class AffiliateRestaurantSummary {
       return CouponBenefitsSummary.tryParse(json['coupon_benefits_summary']);
     }
 
+    String? parsePromotionText() {
+      final raw = json['promotion_text'];
+      if (raw is! String) return null;
+      final trimmed = raw.trim();
+      return trimmed.isEmpty ? null : trimmed;
+    }
+
     return AffiliateRestaurantSummary(
       id: json['restaurant_id'] is int
           ? json['restaurant_id'] as int
@@ -81,6 +89,7 @@ class AffiliateRestaurantSummary {
       stampCurrent: parseStampCurrent(),
       stampTarget: parseStampTarget(),
       couponBenefitsSummary: parseCouponBenefitsSummary(),
+      promotionText: parsePromotionText(),
     );
   }
 
@@ -96,6 +105,9 @@ class AffiliateRestaurantSummary {
   final int stampCurrent;
   final int stampTarget;
   final CouponBenefitsSummary? couponBenefitsSummary;
+
+  /// 상세 단건 API(`affiliate-restaurants/detail/`)에만 있다. 목록 응답에는 없다고 본다.
+  final String? promotionText;
 }
 
 class GeneralRestaurantSummary {
@@ -212,6 +224,30 @@ class ActiveAffiliateRestaurantsResponse {
 }
 
 class AffiliateService {
+  /// GET /api/coupons/signup/restaurants/ — 온보딩 식당 선택 화면 전용 목록.
+  /// 일반쿠폰+스탬프 혜택이 둘 다 등록된 식당으로만 서버가 필터링해 내려준다.
+  /// 로그인 전(preLogin 온보딩 픽 단계)에는 토큰이 없어 인증 엔드포인트를 호출할
+  /// 수 없으므로, 같은 필터를 쓰는 비인증 미리보기 엔드포인트로 대신 호출한다.
+  static Future<List<AffiliateRestaurantSummary>> fetchSignupRestaurants() async {
+    final hasToken = await ApiClient.hasAccessToken();
+    final path = hasToken
+        ? '/api/coupons/signup/restaurants/'
+        : '/api/coupons/signup/restaurants/preview/';
+    final response =
+        await ApiClient.get(path, authenticated: hasToken);
+    final Map<String, dynamic> data =
+        jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+    final List<dynamic> list =
+        data['restaurants'] as List<dynamic>? ?? const [];
+    return list
+        .map(
+          (item) => AffiliateRestaurantSummary.fromJson(
+            Map<String, dynamic>.from(item as Map),
+          ),
+        )
+        .toList();
+  }
+
   static Future<List<AffiliateRestaurantSummary>> fetchRestaurants() async {
     final response = await ApiClient.get('/restaurants/affiliate-restaurants/',
         authenticated: false);
@@ -268,6 +304,13 @@ class AffiliateService {
 
   static Future<ActiveAffiliateRestaurantsResponse> fetchActiveRestaurants()
   async {
+    if (!await ApiClient.hasAccessToken()) {
+      final restaurants = await fetchRestaurants();
+      return ActiveAffiliateRestaurantsResponse(
+        source: 'all',
+        restaurants: restaurants,
+      );
+    }
     final response = await ApiClient.get(
       '/restaurants/affiliate-restaurants/active/',
       authenticated: true,

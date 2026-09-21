@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/api_client.dart';
+import 'services/app_config_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -21,6 +22,10 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'firebase_options.dart';
 import 'config/analytics_events.dart';
+import 'onboarding/onboarding_intro_screen.dart';
+import 'onboarding/onboarding_prefs.dart';
+import 'onboarding/onboarding_reward_flow.dart';
+import 'onboarding/signup_onboarding_gate.dart';
 import 'utils/analytics_logger.dart';
 import 'utils/analytics_navigator_observer.dart';
 import 'services/auth_service.dart';
@@ -29,6 +34,28 @@ import 'services/user_service.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 const MethodChannel _deviceInfoChannel = MethodChannel('app/device_info');
+
+/// 리브랜딩 기본 스플래시 배경 (보라)
+const Color _kBrandSplashColor = Color(0xFF4F46E5);
+
+/// 기본 스플래시: 보라 배경 + 흰 로고 블록 (splash_logo.png)
+class _BrandSplashView extends StatelessWidget {
+  const _BrandSplashView();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: _kBrandSplashColor,
+      child: Center(
+        child: Image.asset(
+          'assets/images/splash_logo.png',
+          width: MediaQuery.of(context).size.width * 0.3,
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+}
 class _CampaignSplashConfig {
   const _CampaignSplashConfig({
     required this.asset,
@@ -144,7 +171,8 @@ Future<void> main() async {
     final initialUri = await appLinks.getInitialAppLink();
     if (initialUri != null) {
       debugPrint('Initial deep link: $initialUri');
-      DeepLinkService.instance.handleUri(initialUri);
+      DeepLinkService.instance
+          .handleUri(initialUri, channel: DeepLinkChannel.initialLink);
     }
   } on PlatformException {
     // Ignored: platform not ready for deep links.
@@ -329,8 +357,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         fontFamily: 'Pretendard',
+        // Material 3 기본 surface(#FEF7FF)는 분홍기가 돌아 상단 안전영역이 분홍으로 보인다.
+        scaffoldBackgroundColor: Colors.white,
       ),
       home: AppEntryScreen(isLoggedIn: widget.isLoggedIn),
       navigatorObservers: [
@@ -358,6 +389,17 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   bool _isCheckingProfile = true;
   bool _isProfileIncomplete = false;
   Map<String, dynamic>? _profile;
+  // 온보딩(튜토리얼) 게이트: 첫 실행 인삿말 컷 / 가입 직후 보상 플로우
+  bool _introSeen = true;
+  bool _showRewardFlow = false;
+  // 로그인 전 보상 플로우(식당 선택→룰렛→로그인 유도) — 프로토타입 화면 2·3
+  bool _showPreLoginReward = false;
+  // 부트스트랩 시점에 이미 프로필이 완성돼 있었는지 — 방금 가입한 신규
+  // 유저와 이미 쓰던 기존 계정(개편으로 튜토리얼이 다시 뜬 경우)을 구분한다.
+  bool _wasExistingAccountAtBoot = false;
+  // 기존 계정에게 보상 플로우 앞에 붙는 "앱이 새롭게 바뀌었어요" 인트로.
+  // 세션 동안만 유지하면 되므로 별도로 로컬에 저장하지 않는다.
+  bool _rewardIntroSeen = false;
 
   @override
   void initState() {
@@ -367,19 +409,39 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
 
   Future<void> _bootstrap() async {
     if (!widget.isLoggedIn) {
+      final introSeen = await OnboardingPrefs.isIntroSeen();
+      // 룰렛 연출을 이미 봤으면(완료/건너뜀) 바로 로그인 화면으로
+      final rewardDone = await OnboardingPrefs.isRewardDone();
       if (!mounted) return;
       setState(() {
+        _introSeen = introSeen;
+        _showPreLoginReward = !rewardDone;
         _isCheckingProfile = false;
       });
       return;
     }
 
+    // 로그인 직후에는 AuthService가 넣는다. 재실행·업데이트 후에도 이어지도록 다시 넣는다.
+    unawaited(SharedPreferences.getInstance()
+        .then((p) => AnalyticsLogger.setUserId(p.getInt('user_id'))));
     final profile = await UserService.fetchCurrentUserProfile();
+    // 이 기기에 이전 계정 등으로 남아있을 수 있는 로컬 온보딩 값을 서버
+    // 진실로 동기화한다 — 로그인 화면을 거치지 않는 일반 재실행도 포함해서,
+    // 사용자가 따로 조치하지 않아도 다음 실행 때 자동으로 바로잡히게 한다.
+    await OnboardingPrefs.pullFromServer();
+    // 앱 종료 등으로 보상 온보딩을 못 본 가입자는 다음 실행에서 이어서 보여준다.
+    final showRewardFlow = await OnboardingPrefs.shouldShowRewardFlow();
     if (!mounted) return;
     AnalyticsLogger.setUserPropertiesFromProfile(profile);
+    final profileIncomplete = UserService.isRequiredProfileIncomplete(profile);
     setState(() {
       _profile = profile;
-      _isProfileIncomplete = UserService.isRequiredProfileIncomplete(profile);
+      _isProfileIncomplete = profileIncomplete;
+      // 부트스트랩 시점에 이미 프로필이 완성돼 있었다면 방금 가입한 게 아니라
+      // 예전부터 쓰던 계정이라는 뜻이다 (신규 가입자는 항상 프로필이 비어
+      // 있어 아래 ProfileSetupScreen 분기를 거친다).
+      _wasExistingAccountAtBoot = !profileIncomplete;
+      _showRewardFlow = showRewardFlow;
       _isCheckingProfile = false;
     });
   }
@@ -389,20 +451,52 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
     setState(() {
       _isProfileIncomplete = false;
     });
+    // 방금 가입을 마쳤으면(플래그는 프로필 저장 시 세팅) 보상 온보딩으로 진입
+    OnboardingPrefs.shouldShowRewardFlow().then((show) {
+      if (!mounted) return;
+      setState(() {
+        _showRewardFlow = show;
+      });
+    });
+  }
+
+  void _handleIntroFinished() {
+    OnboardingPrefs.markIntroSeen();
+    if (!mounted) return;
+    setState(() {
+      _introSeen = true;
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.isLoggedIn) {
-      return const LoginScreen();
-    }
     if (_isCheckingProfile) {
       final showCampaignSplash = _shouldShowCampaignSplash();
       return Scaffold(
-        backgroundColor:
-            showCampaignSplash ? _campaignSplashBackground() : Colors.white,
+        backgroundColor: showCampaignSplash
+            ? _campaignSplashBackground()
+            : _kBrandSplashColor,
         body: const _AppEntryLoadingView(),
       );
+    }
+    if (!widget.isLoggedIn) {
+      // 첫 실행: 홈/로그인 직행 대신 인삿말 컷부터
+      if (!_introSeen) {
+        return OnboardingIntroScreen(onFinished: _handleIntroFinished);
+      }
+      // 프로토타입 순서: 인트로 → 식당 선택 → 룰렛 당첨 → 카카오 로그인 유도
+      if (_showPreLoginReward) {
+        return OnboardingRewardFlow(
+          preLogin: true,
+          onFinished: () {
+            if (!mounted) return;
+            setState(() {
+              _showPreLoginReward = false;
+            });
+          },
+        );
+      }
+      return const LoginScreen();
     }
     if (_isProfileIncomplete) {
       return ProfileSetupScreen(
@@ -411,7 +505,30 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
         isRequiredFlow: true,
       );
     }
-    return const MainScreen();
+    if (_showRewardFlow) {
+      // 기존 계정에게는 "처음 오셨네요" 톤 대신 "그동안 앱이 바뀌었어요" 인트로를
+      // 보상 플로우 앞에 한 번 보여준다. 신규 가입자는 방금 프로필을 막
+      // 만들었으므로 이 인트로 없이 곧장 식당 선택으로 들어간다.
+      if (_wasExistingAccountAtBoot && !_rewardIntroSeen) {
+        return OnboardingIntroScreen(
+          variant: OnboardingIntroVariant.renewal,
+          onFinished: () {
+            if (!mounted) return;
+            setState(() => _rewardIntroSeen = true);
+          },
+        );
+      }
+      return OnboardingRewardFlow(
+        onFinished: () {
+          if (!mounted) return;
+          setState(() {
+            _showRewardFlow = false;
+          });
+        },
+      );
+    }
+    // 이 화면에서 이미 프로필/온보딩 게이트를 통과했으므로 중복 확인 생략
+    return const MainScreen(skipOnboardingGate: true);
   }
 }
 
@@ -424,16 +541,17 @@ class _AppEntryLoadingView extends StatelessWidget {
     if (shouldShowSplash) {
       return SizedBox.expand(child: _buildCampaignSplashBody());
     }
-    return const Center(
-      child: CircularProgressIndicator(
-        color: Color(0xFF312E81),
-      ),
-    );
+    return const SizedBox.expand(child: _BrandSplashView());
   }
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  const MainScreen({super.key, this.skipOnboardingGate = false});
+
+  /// AppEntryScreen이 이미 프로필/온보딩 게이트를 통과시킨 경우 true.
+  /// false면(로그인 직후 '/main' 라우트 등) 신규 가입자의 홈 직행을 막기 위해
+  /// 프로필 완성 여부와 보상 온보딩 플래그를 확인한다.
+  final bool skipOnboardingGate;
 
   @override
   MainScreenState createState() => MainScreenState();
@@ -442,8 +560,6 @@ class MainScreen extends StatefulWidget {
 class MainScreenState extends State<MainScreen> {
   bool _isLoading = true;
   static const String _uuidKey = 'user_uuid'; // SharedPreferences ??
-  // 운영 중 필요 시 강제 업데이트 하한 버전을 지정해 사용할 수 있습니다. (예: '2.3.0')
-  static const String? _kIosMinimumRequiredVersion = '2.3.0';
   StreamSubscription<InstallStatus>? _flexibleUpdateSubscription;
   bool get _isSeasonalSplashPeriod => _shouldShowCampaignSplash();
 
@@ -459,12 +575,35 @@ class MainScreenState extends State<MainScreen> {
     final jwt = prefs.getString('jwt_access_token');
     final isLoggedIn = jwt != null && jwt.isNotEmpty;
 
+    Widget destination;
+    if (!isLoggedIn) {
+      destination = const LoginScreen();
+    } else if (widget.skipOnboardingGate) {
+      destination = const MainAppScreen();
+    } else {
+      // 로그인 직후 경로: 신규 가입자는 홈 직행 대신
+      // 프로필 설정 → 보상 온보딩(식당 선택→룰렛→사용법)을 거친다.
+      Map<String, dynamic>? profile;
+      bool profileIncomplete = false;
+      try {
+        profile = await UserService.fetchCurrentUserProfile();
+        profileIncomplete = UserService.isRequiredProfileIncomplete(profile);
+      } catch (_) {
+        // 프로필 확인 실패 시 기존 동작(메인 진입) 유지
+      }
+      final showRewardFlow = await OnboardingPrefs.shouldShowRewardFlow();
+      destination = (profileIncomplete || showRewardFlow)
+          ? SignupOnboardingGate(
+              profileIncomplete: profileIncomplete,
+              initialProfile: profile,
+            )
+          : const MainAppScreen();
+    }
+
     if (!mounted) return;
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute<void>(
-        builder: (_) => isLoggedIn ? const MainAppScreen() : const LoginScreen(),
-      ),
+      MaterialPageRoute<void>(builder: (_) => destination),
     );
   }
 
@@ -475,6 +614,24 @@ class MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _checkForAppUpdate() async {
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentVersion = packageInfo.version;
+      final belowMin = AppConfigService.isBelowMinSupported(currentVersion);
+      final force = AppConfigService.forceUpdateFlag() || belowMin;
+      final storeUrl = AppConfigService.storeUrl();
+      final hasStoreTarget =
+          storeUrl.isNotEmpty || AppConfigService.appleAppId.isNotEmpty;
+      if (force && hasStoreTarget) {
+        await _showServerForceUpdateDialog(
+          currentVersion: currentVersion,
+          minSupported: AppConfigService.minSupportedVersion(),
+        );
+      }
+    } catch (e) {
+      debugPrint('[Update] 서버 버전 확인 실패: $e');
+    }
+
     if (Platform.isAndroid) {
       try {
         final info = await InAppUpdate.checkForUpdate();
@@ -567,28 +724,35 @@ class MainScreenState extends State<MainScreen> {
         return;
       }
       final latestVersion = latestVersionRaw.trim();
-      final isBelowMinimum = _kIosMinimumRequiredVersion != null &&
-          _compareVersions(currentVersion, _kIosMinimumRequiredVersion!) < 0;
+      final minSupported = AppConfigService.minSupportedVersion();
+      final isBelowMinimum = minSupported.isNotEmpty &&
+          AppConfigService.compareVersions(currentVersion, minSupported) < 0;
       final hasNewerStoreVersion =
-          _compareVersions(currentVersion, latestVersion) < 0;
+          AppConfigService.compareVersions(currentVersion, latestVersion) < 0;
 
-      if (!hasNewerStoreVersion && !isBelowMinimum) return;
+      if (!hasNewerStoreVersion &&
+          !isBelowMinimum &&
+          !AppConfigService.forceUpdateFlag()) {
+        return;
+      }
 
+      final configStoreUrl = AppConfigService.storeUrl();
       final trackViewUrlRaw = map['trackViewUrl'];
-      final trackViewUrl =
-          trackViewUrlRaw is String && trackViewUrlRaw.isNotEmpty
+      final trackViewUrl = configStoreUrl.isNotEmpty
+          ? configStoreUrl
+          : (trackViewUrlRaw is String && trackViewUrlRaw.isNotEmpty
               ? trackViewUrlRaw
-              : null;
+              : null);
       final trackIdRaw = map['trackId'];
       final trackId =
           trackIdRaw is int ? trackIdRaw : int.tryParse('$trackIdRaw');
       final displayVersion = hasNewerStoreVersion
           ? latestVersion
-          : (_kIosMinimumRequiredVersion ?? latestVersion);
+          : (minSupported.isNotEmpty ? minSupported : latestVersion);
 
       if (!mounted) return;
       await _showIosUpdateDialog(
-        isForceUpdate: isBelowMinimum,
+        isForceUpdate: isBelowMinimum || AppConfigService.forceUpdateFlag(),
         displayVersion: displayVersion,
         storeUrl: trackViewUrl,
         trackId: trackId,
@@ -616,6 +780,52 @@ class MainScreenState extends State<MainScreen> {
       if (lv != rv) return lv.compareTo(rv);
     }
     return 0;
+  }
+
+  Future<void> _showServerForceUpdateDialog({
+    required String currentVersion,
+    required String minSupported,
+  }) async {
+    if (!mounted) return;
+    final storeUrl = AppConfigService.storeUrl();
+    final appleAppId = AppConfigService.appleAppId;
+    final display = minSupported.isNotEmpty ? minSupported : currentVersion;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            title: const Text('업데이트 안내'),
+            content: Text(
+              '안정적인 서비스 이용을 위해 버전 $display 이상으로 업데이트가 필요해요.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  if (Platform.isIOS) {
+                    await _launchIosStoreUrl(
+                      storeUrl: storeUrl.isNotEmpty ? storeUrl : null,
+                      trackId: int.tryParse(appleAppId),
+                    );
+                  } else if (storeUrl.isNotEmpty) {
+                    final uri = Uri.tryParse(storeUrl);
+                    if (uri != null) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                      );
+                    }
+                  }
+                },
+                child: const Text('업데이트'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _showIosUpdateDialog({
@@ -671,7 +881,10 @@ class MainScreenState extends State<MainScreen> {
     }
     final fallback = trackId != null
         ? Uri.parse('itms-apps://itunes.apple.com/app/id$trackId')
-        : null;
+        : (AppConfigService.appleAppId.isNotEmpty
+            ? Uri.parse(
+                'itms-apps://itunes.apple.com/app/id${AppConfigService.appleAppId}')
+            : null);
 
     if (preferred != null) {
       final ok =
@@ -684,6 +897,8 @@ class MainScreenState extends State<MainScreen> {
   }
 
   Future<void> _initializeApp() async {
+    await AppConfigService.prefetch();
+    await OnboardingPrefs.pullFromServer();
     await _checkForAppUpdate();
 
     final prefs = await SharedPreferences.getInstance();
@@ -723,6 +938,13 @@ class MainScreenState extends State<MainScreen> {
 
     print('알림 권한 상태: ${settings.authorizationStatus}');
 
+    // 포그라운드에서도 아이콘 배지(알림 숫자)는 올리지 않는다.
+    await messaging.setForegroundNotificationPresentationOptions(
+      alert: true,
+      badge: false,
+      sound: true,
+    );
+
     final isIosSimulator = await _isIosSimulator();
     if (isIosSimulator) {
       debugPrint(
@@ -737,7 +959,9 @@ class MainScreenState extends State<MainScreen> {
       print('FCM token fetch error/timeout: $e');
     }
     if (token != null) {
-      print('FCM Token: $token');
+      if (kDebugMode) {
+        print('FCM Token: $token');
+      }
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('fcm_token', token);
       await _updateFcmToken(token);
@@ -746,7 +970,9 @@ class MainScreenState extends State<MainScreen> {
     // 토큰이 회전/갱신될 때마다 서버에 최신 토큰을 업로드
     FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
       try {
-        print('FCM Token refreshed: $newToken');
+        if (kDebugMode) {
+          print('FCM Token refreshed: $newToken');
+        }
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('fcm_token', newToken);
         await _updateFcmToken(newToken);
@@ -777,12 +1003,30 @@ class MainScreenState extends State<MainScreen> {
   }
 
   void _handleNotificationOpen(RemoteMessage message) {
+    // campaign은 구매 유도 알림의 효과를 측정할 유일한 키다. 서버가 payload에
+    // 실어 보내는 값을 그대로 옮겨, 마감 임박·추첨 결과·미션 리마인드를 구분한다.
+    final data = message.data;
+
+    final deepLink = data['deep_link'];
+    if (deepLink is String && deepLink.isNotEmpty) {
+      final uri = Uri.tryParse(deepLink);
+      if (uri != null) {
+        // 외부 wouldulike:// 링크와 동일한 경로로 처리 — 탭/화면 이동 로직을 재사용한다.
+        DeepLinkService.instance
+            .handleUri(uri, channel: DeepLinkChannel.pushTap);
+      }
+    }
+
     AnalyticsLogger.logEvent(
-      'notification_open',
+      AnalyticsEvents.pushOpen,
       parameters: {
         'message_id': message.messageId ?? '',
         'from': message.from ?? '',
-        'has_data': message.data.isNotEmpty,
+        'has_data': data.isNotEmpty,
+        AnalyticsEvents.paramCampaign:
+            data['campaign']?.toString() ?? 'unknown',
+        if (data['draw_round'] != null)
+          AnalyticsEvents.paramDrawRound: data['draw_round'].toString(),
       },
     );
   }
@@ -796,8 +1040,7 @@ class MainScreenState extends State<MainScreen> {
       return;
     }
 
-    final url = Uri.parse(
-        'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/update/fcm_token/');
+    final url = Uri.parse('${ApiClient.baseUrl}/guests/update/fcm_token/');
 
     try {
       final response = await http.post(
@@ -816,6 +1059,23 @@ class MainScreenState extends State<MainScreen> {
     }
   }
 
+  Map<String, dynamic>? _tryDecodeJsonMap(String body) {
+    final trimmed = body.trimLeft();
+    if (trimmed.isEmpty || trimmed.startsWith('<')) {
+      return null;
+    }
+    try {
+      final decoded = json.decode(body);
+      if (decoded is Map<String, dynamic>) {
+        return decoded;
+      }
+      if (decoded is Map) {
+        return Map<String, dynamic>.from(decoded);
+      }
+    } catch (_) {}
+    return null;
+  }
+
   Future<void> _checkUUID() async {
     if (mounted && !_isLoading) {
       setState(() {
@@ -823,12 +1083,14 @@ class MainScreenState extends State<MainScreen> {
       });
     }
     try {
-      final checkUrl = Uri.parse(
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
+      final checkUrl = Uri.parse('${ApiClient.baseUrl}/guests/retrieve/');
       final checkResponse = await http.get(checkUrl);
 
       if (checkResponse.statusCode == 200) {
-        final data = json.decode(checkResponse.body);
+        final data = _tryDecodeJsonMap(checkResponse.body);
+        if (data == null) {
+          throw Exception('UUID 응답이 JSON이 아니에요.');
+        }
 
         if (data['uuid'] != null) {
           final prefs = await SharedPreferences.getInstance();
@@ -854,12 +1116,14 @@ class MainScreenState extends State<MainScreen> {
       });
     }
     try {
-      final url = Uri.parse(
-          'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app/guests/retrieve/');
+      final url = Uri.parse('${ApiClient.baseUrl}/guests/retrieve/');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
+        final data = _tryDecodeJsonMap(response.body);
+        if (data == null) {
+          throw Exception('UUID 응답이 JSON이 아니에요.');
+        }
 
         if (data['uuid'] != null) {
           final prefs = await SharedPreferences.getInstance();
@@ -907,23 +1171,12 @@ class MainScreenState extends State<MainScreen> {
     if (_isLoading) {
       final isSeasonalSplash = _isSeasonalSplashPeriod;
       return Scaffold(
-        backgroundColor:
-            isSeasonalSplash ? _campaignSplashBackground() : Colors.white,
+        backgroundColor: isSeasonalSplash
+            ? _campaignSplashBackground()
+            : _kBrandSplashColor,
         body: isSeasonalSplash
             ? SizedBox.expand(child: _buildCampaignSplashBody())
-            : Column(
-                children: [
-                  const Spacer(flex: 9),
-                  Center(
-                    child: Image.asset(
-                      'assets/images/Logo-Final.png',
-                      width: MediaQuery.of(context).size.width * 0.6,
-                      fit: BoxFit.contain,
-                    ),
-                  ),
-                  const Spacer(flex: 10),
-                ],
-              ),
+            : const SizedBox.expand(child: _BrandSplashView()),
       );
     }
     // 濡쒕???꾨땺 ??? ?붾㈃

@@ -185,6 +185,34 @@ class CouponBenefitsStampSection {
   bool get hasNotesOnly => !enabled && notes.trim().isNotEmpty;
 }
 
+/// 개인 스탬프 현황(GET /api/coupons/stamps/my/)에 판 정보가 없을 때
+/// 매장 공개 혜택 요약(coupon_benefits_summary.stamp)으로 판을 채운다.
+/// 비로그인·미적립 상태에서도 "몇 개 모으면 무슨 리워드"를 서버 값대로 보여주기 위함.
+StampStatus resolveStampStatus({
+  required StampStatus? personal,
+  required CouponBenefitsStampSection? summary,
+  int fallbackCurrent = 0,
+}) {
+  if (personal != null && personal.boardLength > 0) return personal;
+
+  final enabled = summary?.enabled == true;
+  final rewards = (personal != null && personal.rewards.isNotEmpty)
+      ? personal.rewards
+      : (enabled ? summary!.rewards : const <StampReward>[]);
+  final target = (personal?.target ?? 0) > 0
+      ? personal!.target
+      : (enabled ? (summary!.cycleTarget ?? 0) : 0);
+  final summaryNotes = summary?.notes.trim() ?? '';
+  return StampStatus(
+    current: personal?.current ?? fallbackCurrent,
+    target: target,
+    updatedAt: personal?.updatedAt,
+    rewardCoupons: personal?.rewardCoupons ?? const [],
+    rewards: rewards,
+    notes: personal?.notes ?? (summaryNotes.isNotEmpty ? summaryNotes : null),
+  );
+}
+
 class CouponBenefitsSummary {
   const CouponBenefitsSummary({
     required this.restaurantId,

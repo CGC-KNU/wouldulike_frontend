@@ -1,4 +1,5 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:flutter/foundation.dart';
 
 class AnalyticsLogger {
   AnalyticsLogger._();
@@ -63,9 +64,21 @@ class AnalyticsLogger {
         name: name,
         parameters: _sanitizeParameters(parameters),
       );
-    } catch (_) {
+    } catch (e) {
       // Analytics failures shouldn't block user flows.
+      // 다만 예약어 충돌처럼 조용히 전부 버려지는 실패는 개발 중에 보여야 한다.
+      if (kDebugMode) debugPrint('[Analytics] $name 전송 실패: $e');
     }
+  }
+
+  /// 앱 이벤트를 서버 기록(마일리지 원장 등)과 사용자 단위로 잇는 키.
+  /// 내부 회원 id만 넣는다(카카오 id·닉네임 금지). null이면 해제한다.
+  static Future<void> setUserId(int? userId) async {
+    try {
+      await FirebaseAnalytics.instance.setUserId(
+        id: userId != null && userId > 0 ? userId.toString() : null,
+      );
+    } catch (_) {}
   }
 
   /// 프로필에서 단대/학과 정보를 Firebase User Property로 설정
