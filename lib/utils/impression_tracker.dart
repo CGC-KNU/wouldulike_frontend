@@ -49,8 +49,8 @@ class ImpressionSession {
 ///     노출 이벤트 주석이 처음부터 이 기준으로 적혀 있었다.
 ///   · **세션에 한 번** : [ImpressionSession] 이 맡는다.
 ///
-/// 「보이는가」는 자기 [RenderBox] 와 **가장 가까운 스크롤 뷰포트**를 겹쳐
-/// 재는 것으로 판단한다. 스크롤 영역이 없으면 화면 전체를 뷰포트로 본다.
+/// 「보이는가」는 자기 [RenderBox] 를 **화면과 조상 스크롤 뷰포트 전부**에
+/// 겹쳐 재는 것으로 판단한다. 스크롤 영역이 없으면 화면 전체를 뷰포트로 본다.
 /// 바텀시트나 대화상자가 덮고 있는 동안에는 찍지 않는다([ModalRoute.isCurrent]).
 ///
 /// 재사용되는 목록에 넣을 때는 [dedupKey] 가 항목마다 달라야 한다.
@@ -89,7 +89,15 @@ class ImpressionDetector extends StatefulWidget {
 }
 
 class _ImpressionDetectorState extends State<ImpressionDetector> {
-  ScrollPosition? _position;
+  /// 조상 스크롤 **전부**. 하나만 듣는 것으로는 모자란다 — 홈 배너는 세로 홈
+  /// 안의 가로 캐러셀이라, 가까운 캐러셀만 들으면 홈을 내렸다 다시 올려도
+  /// 다시 재지 않아 **화면에 있는 배너를 놓친다**(0924 재현).
+  List<ScrollableState> _scrollables = const [];
+
+  /// 위에 덮인 화면이 걷히는 움직임. 이것을 안 들으면 **노출이 영구히 사라진다** —
+  /// 카드를 보자마자 상세로 들어가면 1초를 채우는 시점에 화면이 덮여 있어
+  /// 세지 못하는데, 돌아와도 스크롤이 없으니 다시 재지 않는다(0924 재현).
+  Animation<double>? _covered;
   Timer? _timer;
   bool _evalScheduled = false;
 
@@ -129,16 +137,46 @@ class _ImpressionDetectorState extends State<ImpressionDetector> {
   }
 
   void _attach() {
-    final next = Scrollable.maybeOf(context)?.position;
-    if (next == _position) return;
-    _position?.removeListener(_onScroll);
-    _position = next;
-    _position?.addListener(_onScroll);
+    final found = <ScrollableState>[];
+    context.visitAncestorElements((element) {
+      if (element is StatefulElement && element.state is ScrollableState) {
+        found.add(element.state as ScrollableState);
+      }
+      return true;
+    });
+    final route = ModalRoute.of(context)?.secondaryAnimation;
+    if (_sameAs(found) && route == _covered) return;
+    _detach();
+    _scrollables = found;
+    for (final s in _scrollables) {
+      s.position.addListener(_onScroll);
+    }
+    _covered = route;
+    _covered?.addListener(_onScroll);
   }
 
-  /// 스크롤 알림은 **레이아웃 전에** 온다. 그 자리에서 좌표를 읽으면 아직
-  /// 옮겨지지 않은 위치가 나와, 이미 화면을 벗어난 것을 보이는 것으로 읽는다.
-  /// 그래서 재는 일은 프레임이 그려진 뒤로 미룬다.
+  bool _sameAs(List<ScrollableState> next) {
+    if (next.length != _scrollables.length) return false;
+    for (var i = 0; i < next.length; i++) {
+      if (next[i] != _scrollables[i]) return false;
+    }
+    return true;
+  }
+
+  void _detach() {
+    for (final s in _scrollables) {
+      s.position.removeListener(_onScroll);
+    }
+    _scrollables = const [];
+    _covered?.removeListener(_onScroll);
+    _covered = null;
+  }
+
+  /// 다시 재야 할 일이 생겼다 — 스크롤했거나, 덮고 있던 화면이 걷혔다.
+  ///
+  /// 알림은 **레이아웃 전에** 온다. 그 자리에서 좌표를 읽으면 아직 옮겨지지
+  /// 않은 위치가 나와, 이미 화면을 벗어난 것을 보이는 것으로 읽는다. 그래서
+  /// 재는 일은 프레임이 그려진 뒤로 미룬다.
   void _onScroll() {
     if (_settled || _evalScheduled || !mounted) return;
     _evalScheduled = true;
@@ -186,13 +224,13 @@ class _ImpressionDetectorState extends State<ImpressionDetector> {
     return (overlap.width * overlap.height) / area;
   }
 
-  /// 잘라 내는 창 — **화면**과 **가장 가까운 스크롤 뷰포트**가 겹치는 부분.
+  /// 잘라 내는 창 — **화면**과 **조상 스크롤 뷰포트 전부**가 겹치는 부분.
   ///
-  /// 둘을 곱하는 이유는 스크롤이 겹쳐 있기 때문이다. 홈 배너는 세로로 흐르는
+  /// 전부 곱하는 이유는 스크롤이 겹쳐 있기 때문이다. 홈 배너는 세로로 흐르는
   /// 홈 안에 가로 캐러셀(`PageView`)로 들어 있어서, 가까운 뷰포트만 보면
   /// **홈을 내려 배너가 화면 밖으로 나간 뒤에도** 캐러셀 안에서는 그 장이
-  /// 100% 보이는 것으로 읽힌다. 3초마다 자동으로 넘어가니, 보지도 않은 배너의
-  /// 노출이 계속 쌓인다. 화면과 겹쳐야 비로소 「보였다」가 된다.
+  /// 100% 보이는 것으로 읽힌다. 3초마다 저절로 넘어가니, 보지도 않은 배너의
+  /// 노출이 계속 쌓인다. 바깥 홈까지 겹쳐야 비로소 「보였다」가 된다.
   Rect _viewportRect() {
     final view = View.maybeOf(context);
     Rect window;
@@ -203,8 +241,11 @@ class _ImpressionDetectorState extends State<ImpressionDetector> {
       window = Rect.fromLTWH(0, 0, logical.width, logical.height);
     }
 
-    final viewport = Scrollable.maybeOf(context)?.context.findRenderObject();
-    if (viewport is RenderBox && viewport.attached && viewport.hasSize) {
+    for (final scrollable in _scrollables) {
+      final viewport = scrollable.context.findRenderObject();
+      if (viewport is! RenderBox || !viewport.attached || !viewport.hasSize) {
+        continue;
+      }
       final origin = viewport.localToGlobal(Offset.zero);
       window = window.intersect(Rect.fromLTWH(
         origin.dx,
@@ -212,6 +253,7 @@ class _ImpressionDetectorState extends State<ImpressionDetector> {
         viewport.size.width,
         viewport.size.height,
       ));
+      if (window.width <= 0 || window.height <= 0) return Rect.zero;
     }
     return window;
   }
@@ -219,7 +261,7 @@ class _ImpressionDetectorState extends State<ImpressionDetector> {
   @override
   void dispose() {
     _cancel();
-    _position?.removeListener(_onScroll);
+    _detach();
     super.dispose();
   }
 

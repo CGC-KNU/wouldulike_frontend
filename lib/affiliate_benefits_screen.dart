@@ -1133,6 +1133,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   /// 매장·같은 목록은 한 번」으로 잠그면 건수가 매장 수만큼으로 묶여서(수십 건)
   /// 묶음 전송이 필요할 만큼 늘지 않고, 낱개로 보내야 BigQuery 에서
   /// restaurant_id 로 클릭과 바로 붙는다.
+  ///
+  /// **position 은 순위가 아니다.** 목록은 불러올 때마다 섞이므로(`shuffle`),
+  /// 「몇 번째 자리가 잘 눌리는지」로는 읽을 수 없다. 「그때 그 자리에서
+  /// 보였다」는 뜻으로만 쓴다.
   void _logRestaurantImpression({
     required int restaurantId,
     required String category,
@@ -1153,15 +1157,23 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   }
 
   Future<void> _openRestaurantDetail(
-      AffiliateRestaurantSummary restaurant) async {
+    AffiliateRestaurantSummary restaurant, {
+    int? position,
+  }) async {
     if (_isOpeningDetail) return;
+    // list_name·position 은 노출 이벤트와 **붙이기 위해** 싣는다. 이게 없으면
+    // 목록 CTR 을 매장별로만 낼 수 있고 목록·자리별로는 못 낸다.
+    // 파라미터 이름을 문자열로 쓰던 것도 상수로 바꿨다 — 노출 쪽과 한 글자라도
+    // 다르면 join 이 조용히 빈다.
     AnalyticsLogger.logEvent(
       AnalyticsEvents.affiliateRestaurantClick,
       parameters: {
-        'restaurant_id': restaurant.id,
-        'restaurant_name': restaurant.name,
-        'category': restaurant.category,
-        'zone': restaurant.zone,
+        AnalyticsEvents.paramRestaurantId: restaurant.id,
+        AnalyticsEvents.paramRestaurantName: restaurant.name,
+        AnalyticsEvents.paramCategory: restaurant.category,
+        AnalyticsEvents.paramZone: restaurant.zone,
+        if (position != null) AnalyticsEvents.paramPosition: position,
+        if (position != null) AnalyticsEvents.paramListName: 'affiliate',
       },
     );
     setState(() => _isOpeningDetail = true);
@@ -1429,7 +1441,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             ),
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: _buildAffiliateRestaurantCard(affiliates[i]),
+              child: _buildAffiliateRestaurantCard(affiliates[i], position: i),
             ),
           ),
         ),
@@ -1438,21 +1450,15 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
           child: _buildSectionHeader('그 외 근처 식당', generals.length),
         ),
         // 예전 둥근 카드 묶음을 유지하되, 테두리를 항목마다 그려 지연 빌드가 되게 한다.
+        // 「그 외 근처 식당」에는 노출을 심지 않았다. 이 카드를 누르면 상세가
+        // 아니라 **바깥 링크가 열리고**, 그 탭은 아무 이벤트도 남기지 않는다
+        // (`_openGeneralRestaurantUrl`). 분자가 없는 분모만 쌓이면 비율을 낼 수
+        // 없는데 이벤트 수만 늘고, 이 목록은 Castor 의 흐름
+        // (목록 → 상세 → 쿠폰)에 들어 있지도 않다.
         SliverList.builder(
           itemCount: generals.length,
-          // 혜택 있는 곳과 그 외 근처 식당은 클릭률이 크게 다르다. 한 이름으로
-          // 묶으면 평균이 뭉개지므로 list_name 을 나눠 둔다.
-          itemBuilder: (context, i) => ImpressionDetector(
-            dedupKey: 'list:affiliate_general:${generals[i].id}',
-            onImpression: () => _logRestaurantImpression(
-              restaurantId: generals[i].id,
-              category: generals[i].category,
-              zone: generals[i].zone,
-              position: i,
-              listName: 'affiliate_general',
-            ),
-            child: _buildGeneralGroupItem(generals[i], i, generals.length),
-          ),
+          itemBuilder: (context, i) =>
+              _buildGeneralGroupItem(generals[i], i, generals.length),
         ),
       ],
       if (_isAppending)
@@ -2029,7 +2035,10 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     );
   }
 
-  Widget _buildAffiliateRestaurantCard(AffiliateRestaurantSummary restaurant) {
+  Widget _buildAffiliateRestaurantCard(
+    AffiliateRestaurantSummary restaurant, {
+    int? position,
+  }) {
     final couponCounts = _couponCountsDetailed[restaurant.id];
     final hasImage = restaurant.imageUrls.isNotEmpty;
     final String? thumbnailUrl = hasImage ? restaurant.imageUrls.first : null;
@@ -2074,7 +2083,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     final highlighted = rewardReady || rewardSoon;
 
     return InkWell(
-      onTap: () => _openRestaurantDetail(restaurant),
+      onTap: () => _openRestaurantDetail(restaurant, position: position),
       borderRadius: BorderRadius.circular(16),
       child: Container(
         width: double.infinity,
@@ -2180,7 +2189,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
                     _buildCardCta(
                       label: '리워드 받기',
                       filled: true,
-                      onTap: () => _openRestaurantDetail(restaurant),
+                      onTap: () =>
+                          _openRestaurantDetail(restaurant, position: position),
                     ),
                 ],
               ),
