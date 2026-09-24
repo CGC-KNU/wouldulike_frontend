@@ -1517,7 +1517,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             leading: 'assets/images/coupon.svg',
             onTap: () {
               AnalyticsLogger.logEvent(
-                'affiliate_filter_click',
+                AnalyticsEvents.affiliateFilterClick,
                 parameters: {'filter': 'coupon_only', 'enabled': !_couponOnly},
               );
               setState(() => _couponOnly = !_couponOnly);
@@ -1530,7 +1530,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             leading: 'assets/images/medal.svg',
             onTap: () {
               AnalyticsLogger.logEvent(
-                'affiliate_filter_click',
+                AnalyticsEvents.affiliateFilterClick,
                 parameters: {'filter': 'stamp_only', 'enabled': !_stampOnly},
               );
               setState(() => _stampOnly = !_stampOnly);
@@ -1622,7 +1622,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         if (value == favoriteMenuValue) {
           if (widget.lockFavoritesOnly) return;
           AnalyticsLogger.logEvent(
-            'affiliate_filter_click',
+            AnalyticsEvents.affiliateFilterClick,
             parameters: {
               'filter': 'favorite_only',
               'enabled': !_favoriteOnly,
@@ -1633,7 +1633,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         }
         if (value is! _RestaurantSort || value == _sortMode) return;
         AnalyticsLogger.logEvent(
-          'affiliate_sort_click',
+          AnalyticsEvents.affiliateSortClick,
           parameters: {'sort': value.name},
         );
         setState(() => _sortMode = value);

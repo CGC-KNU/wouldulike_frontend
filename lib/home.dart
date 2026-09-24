@@ -1543,7 +1543,7 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   void _openMissionScreen(String stage, int remaining) {
-    AnalyticsLogger.logEvent('mission_banner_tap', parameters: {
+    AnalyticsLogger.logEvent(AnalyticsEvents.missionBannerTap, parameters: {
       'stage': stage,
       'remaining': remaining,
     });
@@ -1568,7 +1568,7 @@ class _HomeContentState extends State<HomeContent> {
       onTap: link == null
           ? null
           : () {
-              AnalyticsLogger.logEvent('promo_block_tap', parameters: {
+              AnalyticsLogger.logEvent(AnalyticsEvents.promoBlockTap, parameters: {
                 'title': block.title,
               });
               UrlLauncherUtil.launchURL(link.toString());
@@ -1597,13 +1597,13 @@ class _HomeContentState extends State<HomeContent> {
     if (_inviteBannerDismissed) return const SizedBox.shrink();
     return InviteFriendBanner(
       onTap: () {
-        AnalyticsLogger.logEvent('invite_banner_tap');
+        AnalyticsLogger.logEvent(AnalyticsEvents.inviteBannerTap);
         Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => const InviteFriendScreen()),
         );
       },
       onDismiss: () {
-        AnalyticsLogger.logEvent('invite_banner_dismiss');
+        AnalyticsLogger.logEvent(AnalyticsEvents.inviteBannerDismiss);
         setState(() => _inviteBannerDismissed = true);
         prefs.setBool(_kInviteBannerDismissedKey, true);
       },
