@@ -5,7 +5,20 @@ class AnalyticsEvents {
   // ========== 이벤트명 ==========
   static const String couponRedeemed = 'coupon_redeemed';
   /// 쿠폰 발급 (전환율 계산용: restaurant_id, coupon_issue_source)
+  ///
+  /// **사용자의 행동이 아니다.** 지갑 목록을 이전과 비교해 새로 보인 쿠폰에 찍는다
+  /// (coupon_service.dart `_logNewCouponsFromDiff`). 자동 지급 쿠폰이 화면에
+  /// 처음 보이기만 해도 찍히므로, 전환율의 **분모로 쓰면 안 된다** —
+  /// 9월 발급 780건 중 489건이 추천코드 자동 지급이었고 그중 쓰인 건 1장이다.
+  /// 「받았다」는 아래 [couponClaim] 이 맡는다. 이 이벤트는 「보였다」로 남긴다
+  /// (바꾸면 과거 데이터와 뜻이 달라져 비교가 끊긴다).
   static const String couponIssued = 'coupon_issued';
+  /// 사용자가 「받기」를 눌러 **발급이 성공한 순간**. 화면에 보인 것은 찍지 않는다.
+  ///
+  /// [couponIssued] 와 달리 분모·분자로 쓸 수 있다. 심은 곳은 네 군데 —
+  /// 한정쿠폰 시트 · 추천코드 시트 · 환영 미션 보상 · 스탬프 리워드.
+  /// 서버 응답이 성공일 때만 찍어, 실패한 시도가 수령으로 섞이지 않게 한다.
+  static const String couponClaim = 'coupon_claim';
   static const String backButtonClick = 'back_button_click';
   static const String appSessionStart = 'app_session_start';
   static const String appRevisit = 'app_revisit';
@@ -204,8 +217,19 @@ class AnalyticsEvents {
   static const String paramBannerType = 'banner_type';
   static const String paramBannerId = 'banner_id';
   static const String paramBannerIndex = 'banner_index';
+  // 노출과 클릭을 붙여서 CTR을 내려면 **이름과 값이 같아야** 한다.
+  // 예전에는 home_banner_click 쪽에서 문자열로 직접 써서, 오타가 나도
+  // 컴파일이 통과하고 데이터만 조용히 사라졌다.
+  static const String paramBannerTitle = 'banner_title';
+  static const String paramBannerUrl = 'banner_url';
+  static const String paramBannerSource = 'banner_source';
   static const String paramListIndex = 'list_index';
   static const String paramListType = 'list_type';
+  /// 어느 목록인지 (affiliate · affiliate_general · home · search)
+  static const String paramListName = 'list_name';
+  /// 목록에서 몇 번째 자리인지 (0부터)
+  static const String paramPosition = 'position';
+  static const String paramZone = 'zone';
   static const String paramCategory = 'category';
   static const String paramKeyword = 'keyword';
   static const String paramResultCount = 'result_count';

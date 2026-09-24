@@ -12,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:uuid/uuid.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
+import 'package:new1/utils/impression_tracker.dart';
 
 import 'models/coupon_benefits_summary.dart';
 import 'services/demo_wallet.dart';
@@ -1122,6 +1123,35 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
     });
   }
 
+  /// 매장 카드가 목록에서 절반 이상 1초 넘게 보인 순간. 목록 CTR 의 분모다.
+  ///
+  /// 분자(affiliate_restaurant_click)는 4주간 360건이 있었지만 **몇 개가
+  /// 보였는지를 몰라** 목록→상세 전환율을 낼 수 없었다 — 이벤트 이름만
+  /// 선언돼 있고 부르는 곳이 없었다.
+  ///
+  /// 한 화면에 여러 장이 한꺼번에 보이지만 묶어 보내지 않는다. 「한 세션·같은
+  /// 매장·같은 목록은 한 번」으로 잠그면 건수가 매장 수만큼으로 묶여서(수십 건)
+  /// 묶음 전송이 필요할 만큼 늘지 않고, 낱개로 보내야 BigQuery 에서
+  /// restaurant_id 로 클릭과 바로 붙는다.
+  void _logRestaurantImpression({
+    required int restaurantId,
+    required String category,
+    required String zone,
+    required int position,
+    required String listName,
+  }) {
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.restaurantListImpression,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: restaurantId,
+        AnalyticsEvents.paramListName: listName,
+        AnalyticsEvents.paramPosition: position,
+        AnalyticsEvents.paramCategory: category,
+        AnalyticsEvents.paramZone: zone,
+      },
+    );
+  }
+
   Future<void> _openRestaurantDetail(
       AffiliateRestaurantSummary restaurant) async {
     if (_isOpeningDetail) return;
@@ -1388,9 +1418,19 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       if (!_isLoading && affiliates.isNotEmpty)
         SliverList.builder(
           itemCount: affiliates.length,
-          itemBuilder: (context, i) => Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: _buildAffiliateRestaurantCard(affiliates[i]),
+          itemBuilder: (context, i) => ImpressionDetector(
+            dedupKey: 'list:affiliate:${affiliates[i].id}',
+            onImpression: () => _logRestaurantImpression(
+              restaurantId: affiliates[i].id,
+              category: affiliates[i].category,
+              zone: affiliates[i].zone,
+              position: i,
+              listName: 'affiliate',
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: _buildAffiliateRestaurantCard(affiliates[i]),
+            ),
           ),
         ),
       if (!_isLoading && generals.isNotEmpty) ...[
@@ -1400,8 +1440,19 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         // 예전 둥근 카드 묶음을 유지하되, 테두리를 항목마다 그려 지연 빌드가 되게 한다.
         SliverList.builder(
           itemCount: generals.length,
-          itemBuilder: (context, i) =>
-              _buildGeneralGroupItem(generals[i], i, generals.length),
+          // 혜택 있는 곳과 그 외 근처 식당은 클릭률이 크게 다르다. 한 이름으로
+          // 묶으면 평균이 뭉개지므로 list_name 을 나눠 둔다.
+          itemBuilder: (context, i) => ImpressionDetector(
+            dedupKey: 'list:affiliate_general:${generals[i].id}',
+            onImpression: () => _logRestaurantImpression(
+              restaurantId: generals[i].id,
+              category: generals[i].category,
+              zone: generals[i].zone,
+              position: i,
+              listName: 'affiliate_general',
+            ),
+            child: _buildGeneralGroupItem(generals[i], i, generals.length),
+          ),
         ),
       ],
       if (_isAppending)
@@ -3033,6 +3084,15 @@ class _AffiliateRestaurantDetailSheetState
       rewardCodesSet.add(reward);
     }
     final rewardCodes = rewardCodesSet.toList();
+    // 서버 응답이 두 형식이다 — 신형 reward_coupons 와 구형 reward_coupon_code(s).
+    // rewardCodes 는 구형 쪽만 모으므로, 신형만 내려오면 비어 있다.
+    // coupon_claim 은 둘을 합쳐서 세, 형식 때문에 「받았다」가 빠지지 않게 한다.
+    final claimedCodes = <String>{
+      ...rewardCodes,
+      ...result.rewardCoupons
+          .map((r) => r.couponCode)
+          .where((code) => code.isNotEmpty),
+    };
 
     // reward_coupons 기반 coupon_issued 로깅 (백엔드 형식)
     if (result.rewardCoupons.isNotEmpty) {
@@ -3065,6 +3125,20 @@ class _AffiliateRestaurantDetailSheetState
         );
       }
       await CouponService.markCouponsAsSeen(rewardCodes);
+    }
+
+    // 스탬프를 다 모아 「리워드 받기」를 눌러 쿠폰이 나온 순간 — 사용자의
+    // 행동이라 전환율에 쓸 수 있다. coupon_issued 는 같은 자리에서 위에도
+    // 찍지만 「지갑에 보였다」는 뜻이라 분모로 쓸 수 없다.
+    for (final code in claimedCodes) {
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.couponClaim,
+        parameters: {
+          AnalyticsEvents.paramCouponCode: code,
+          AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+          AnalyticsEvents.paramSource: 'stamp_reward',
+        },
+      );
     }
 
     if (rewardCodes.isNotEmpty) {
