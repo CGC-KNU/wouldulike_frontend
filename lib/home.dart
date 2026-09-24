@@ -11,6 +11,7 @@ import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
+import 'package:new1/utils/impression_tracker.dart';
 import 'affiliate_benefits_screen.dart';
 import 'coupon_list_screen.dart';
 import 'featured/featured_campaign_screen.dart';
@@ -883,22 +884,42 @@ class _HomeContentState extends State<HomeContent> {
     }
   }
 
-  void _handleTrendTap(TrendItem item, int index) {
-    final String url = item.blogLink ?? '';
+  /// 배너 하나를 가리키는 파라미터 묶음.
+  ///
+  /// **노출과 클릭이 같은 함수를 쓴다.** 두 이벤트의 키나 값이 조금이라도
+  /// 어긋나면 붙여서 CTR 을 낼 수 없다. 예전에는 클릭 쪽에서 문자열로 직접
+  /// 써서, 오타가 나도 컴파일은 통과하고 데이터만 조용히 사라졌다.
+  Map<String, Object?> _bannerParams(TrendItem item, int index) {
     final String title = (item.title != null && item.title!.trim().isNotEmpty)
         ? item.title!.trim()
         : _defaultPromotionTitle;
+    return {
+      // 미션·기획전·프로모 배너가 한 이벤트로 뭉쳐 있어 종류별 CTR을
+      // 나눌 수 없었다. banner_type으로 분해한다.
+      AnalyticsEvents.paramBannerType: 'promo',
+      AnalyticsEvents.paramBannerIndex: index,
+      AnalyticsEvents.paramBannerTitle: title,
+      AnalyticsEvents.paramBannerUrl: item.blogLink ?? '',
+      AnalyticsEvents.paramBannerSource: 'remote',
+    };
+  }
+
+  /// 배너가 절반 이상 1초 넘게 보인 순간. CTR 의 분모다.
+  ///
+  /// 분자(home_banner_click)는 있는데 이 분모가 없어서 4주간 클릭 24건을
+  /// 아무것과도 나눌 수 없었다 — 선언만 있고 부르는 곳이 없었다.
+  void _logBannerImpression(TrendItem item, int index) {
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.homeBannerImpression,
+      parameters: _bannerParams(item, index),
+    );
+  }
+
+  void _handleTrendTap(TrendItem item, int index) {
+    final String url = item.blogLink ?? '';
     AnalyticsLogger.logEvent(
       AnalyticsEvents.homeBannerClick,
-      parameters: {
-        // 미션·기획전·프로모 배너가 한 이벤트로 뭉쳐 있어 종류별 CTR을
-        // 나눌 수 없었다. banner_type으로 분해한다.
-        AnalyticsEvents.paramBannerType: 'promo',
-        AnalyticsEvents.paramBannerIndex: index,
-        'banner_title': title,
-        'banner_url': url,
-        'banner_source': 'remote',
-      },
+      parameters: _bannerParams(item, index),
     );
     final trimmed = url.trim();
     if (trimmed.isEmpty) return;
@@ -1116,13 +1137,25 @@ class _HomeContentState extends State<HomeContent> {
   Widget _buildPromotionSlide(TrendItem item, int index) {
     final bool hasLink = item.hasBlogLink;
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(15),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: hasLink ? () => _handleTrendTap(item, index) : null,
-          child: _buildTrendImage(item.imageUrl),
+    // 캐러셀은 3초마다 저절로 넘어간다. 그래서 「그 장이 절반 이상 1초 넘게
+    // 보였을 때 · 한 세션에 한 번」으로 잠근다 — 홈에 오래 있어도 배너 수만큼만
+    // 쌓인다. 구분 키는 배너의 링크·이미지다. 순서(index)는 서버에서 바뀌므로
+    // 키에 쓰면 같은 배너가 자리만 옮겨도 다시 노출로 센다.
+    final String link = item.blogLink?.trim() ?? '';
+    final String image = item.imageUrl.trim();
+    final String key = 'banner:${link.isNotEmpty ? link : image}';
+
+    return ImpressionDetector(
+      dedupKey: key,
+      onImpression: () => _logBannerImpression(item, index),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(15),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: hasLink ? () => _handleTrendTap(item, index) : null,
+            child: _buildTrendImage(item.imageUrl),
+          ),
         ),
       ),
     );
@@ -1510,7 +1543,7 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   void _openMissionScreen(String stage, int remaining) {
-    AnalyticsLogger.logEvent('mission_banner_tap', parameters: {
+    AnalyticsLogger.logEvent(AnalyticsEvents.missionBannerTap, parameters: {
       'stage': stage,
       'remaining': remaining,
     });
@@ -1535,7 +1568,7 @@ class _HomeContentState extends State<HomeContent> {
       onTap: link == null
           ? null
           : () {
-              AnalyticsLogger.logEvent('promo_block_tap', parameters: {
+              AnalyticsLogger.logEvent(AnalyticsEvents.promoBlockTap, parameters: {
                 'title': block.title,
               });
               UrlLauncherUtil.launchURL(link.toString());
@@ -1564,13 +1597,13 @@ class _HomeContentState extends State<HomeContent> {
     if (_inviteBannerDismissed) return const SizedBox.shrink();
     return InviteFriendBanner(
       onTap: () {
-        AnalyticsLogger.logEvent('invite_banner_tap');
+        AnalyticsLogger.logEvent(AnalyticsEvents.inviteBannerTap);
         Navigator.of(context).push(
           MaterialPageRoute<void>(builder: (_) => const InviteFriendScreen()),
         );
       },
       onDismiss: () {
-        AnalyticsLogger.logEvent('invite_banner_dismiss');
+        AnalyticsLogger.logEvent(AnalyticsEvents.inviteBannerDismiss);
         setState(() => _inviteBannerDismissed = true);
         prefs.setBool(_kInviteBannerDismissedKey, true);
       },

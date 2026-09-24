@@ -159,6 +159,18 @@ class _MissionTrackScreenState extends State<MissionTrackScreen> {
       _showClaimError();
       return;
     }
+    // 「받았다」를 행동으로 남긴다. mission_reward_claim 은 눌렀다는 기록이고
+    // (실패도 result:'error' 로 남는다), 이건 **쿠폰이 실제로 나온** 경우다.
+    // 서버가 reward_coupon_code 로 내려준다 — 없으면 코드 없이 건수만 남긴다.
+    final rewardCode = result['reward_coupon_code']?.toString().trim() ?? '';
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.couponClaim,
+      parameters: {
+        if (rewardCode.isNotEmpty) AnalyticsEvents.paramCouponCode: rewardCode,
+        AnalyticsEvents.paramSource: 'welcome_mission_reward',
+        AnalyticsEvents.paramMissionId: code,
+      },
+    );
     await _load();
     if (!mounted) return;
     await showCouponIssuedDialog(

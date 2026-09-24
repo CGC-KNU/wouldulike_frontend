@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import 'package:new1/config/analytics_events.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/widgets/coupon_issued_dialog.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 /// 친구 초대·학생회·기획 이벤트 코드를 한 칸에서 받는 바텀시트.
 /// 종류 판단은 앱이 하지 않고 서버 code_kind / event_kind를 따른다.
@@ -115,6 +117,22 @@ class ReferralCodeSheetState extends State<ReferralCodeSheet> {
         );
       } catch (_) {
         // 목록 동기화 실패는 성공 팝업을 막지 않는다.
+      }
+      // 사용자가 코드를 넣고 「쿠폰 받기」를 눌러 **성공한** 순간.
+      // 9월 발급 780건 중 489건이 이 경로의 자동 지급이었고 그중 쓰인 건 1장이다.
+      // coupon_issued(지갑에 보였다)로는 그 둘을 못 가리므로 여기서 따로 찍는다.
+      for (final code in accepted.issuedCouponCodes) {
+        if (code.trim().isEmpty) continue;
+        AnalyticsLogger.logEvent(
+          AnalyticsEvents.couponClaim,
+          parameters: {
+            AnalyticsEvents.paramCouponCode: code,
+            // 추천코드 쿠폰은 식당이 정해져 있지 않을 수 있다 — 없으면 뺀다.
+            if (coupon?.restaurantId != null)
+              AnalyticsEvents.paramRestaurantId: coupon!.restaurantId,
+            AnalyticsEvents.paramSource: 'referral_code_sheet',
+          },
+        );
       }
       if (!mounted) return;
       closed = true;

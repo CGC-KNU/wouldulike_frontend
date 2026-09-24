@@ -1,110 +1,159 @@
+/// 이벤트 **이름**. 문자열이 아니라 전용 타입이다.
+///
+/// 왜 문자열이 아닌가 — 예전에는 `logEvent('mission_banner_tap', …)` 처럼
+/// 문자열을 직접 넘길 수 있었다. 그러면 오타가 나도 컴파일이 통과하고
+/// **데이터만 조용히 사라진다.** 그리고 아래 목록이 「이 앱이 찍는 것의 목록」
+/// 구실을 못 하게 된다 — 2026-09 수집 점검 때 이 목록만 보고 판정했다가
+/// 「안 부르는 이벤트 5개」를 잘못 세었다(문자열로 찍던 6개를 놓쳤다).
+///
+/// 생성자가 비공개라 **이 파일 밖에서는 새로 만들 수 없다.** 새 이벤트는
+/// 반드시 아래에 한 줄로 선언해야 하고, 그러면 목록이 다시 사실이 된다.
+class AnalyticsEvent {
+  const AnalyticsEvent._(this.name);
+
+  /// Firebase 에 보내는 실제 이름.
+  final String name;
+
+  @override
+  String toString() => name;
+}
+
 /// Firebase Analytics 이벤트명 및 파라미터 키 상수
 class AnalyticsEvents {
   AnalyticsEvents._();
 
   // ========== 이벤트명 ==========
-  static const String couponRedeemed = 'coupon_redeemed';
+  static const AnalyticsEvent couponRedeemed = AnalyticsEvent._('coupon_redeemed');
   /// 쿠폰 발급 (전환율 계산용: restaurant_id, coupon_issue_source)
-  static const String couponIssued = 'coupon_issued';
-  static const String backButtonClick = 'back_button_click';
-  static const String appSessionStart = 'app_session_start';
-  static const String appRevisit = 'app_revisit';
-  static const String stampIssued = 'stamp_issued';
-  static const String stampRewardCouponIssued = 'stamp_reward_coupon_issued';
-  static const String restaurantFavoriteToggle = 'restaurant_favorite_toggle';
-  static const String restaurantDetailScroll = 'restaurant_detail_scroll';
-  static const String restaurantDetailOpen = 'restaurant_detail_open';
-  static const String restaurantDetailClose = 'restaurant_detail_close';
-  static const String restaurantDetailCtaClick = 'restaurant_detail_cta_click';
-  static const String userSignupCompleted = 'user_signup_completed';
+  ///
+  /// **사용자의 행동이 아니다.** 지갑 목록을 이전과 비교해 새로 보인 쿠폰에 찍는다
+  /// (coupon_service.dart `_logNewCouponsFromDiff`). 자동 지급 쿠폰이 화면에
+  /// 처음 보이기만 해도 찍히므로, 전환율의 **분모로 쓰면 안 된다** —
+  /// 9월 발급 780건 중 489건이 추천코드 자동 지급이었고 그중 쓰인 건 1장이다.
+  /// 「받았다」는 아래 [couponClaim] 이 맡는다. 이 이벤트는 「보였다」로 남긴다
+  /// (바꾸면 과거 데이터와 뜻이 달라져 비교가 끊긴다).
+  static const AnalyticsEvent couponIssued = AnalyticsEvent._('coupon_issued');
+  /// 사용자가 「받기」를 눌러 **발급이 성공한 순간**. 화면에 보인 것은 찍지 않는다.
+  ///
+  /// [couponIssued] 와 달리 분모·분자로 쓸 수 있다. 심은 곳은 네 군데 —
+  /// 한정쿠폰 시트 · 추천코드 시트 · 환영 미션 보상 · 스탬프 리워드.
+  /// 서버 응답이 성공일 때만 찍어, 실패한 시도가 수령으로 섞이지 않게 한다.
+  static const AnalyticsEvent couponClaim = AnalyticsEvent._('coupon_claim');
+  static const AnalyticsEvent backButtonClick = AnalyticsEvent._('back_button_click');
+  static const AnalyticsEvent appSessionStart = AnalyticsEvent._('app_session_start');
+  static const AnalyticsEvent appRevisit = AnalyticsEvent._('app_revisit');
+  static const AnalyticsEvent stampIssued = AnalyticsEvent._('stamp_issued');
+  static const AnalyticsEvent stampRewardCouponIssued = AnalyticsEvent._('stamp_reward_coupon_issued');
+  static const AnalyticsEvent restaurantFavoriteToggle = AnalyticsEvent._('restaurant_favorite_toggle');
+  static const AnalyticsEvent restaurantDetailScroll = AnalyticsEvent._('restaurant_detail_scroll');
+  static const AnalyticsEvent restaurantDetailOpen = AnalyticsEvent._('restaurant_detail_open');
+  static const AnalyticsEvent restaurantDetailClose = AnalyticsEvent._('restaurant_detail_close');
+  static const AnalyticsEvent restaurantDetailCtaClick = AnalyticsEvent._('restaurant_detail_cta_click');
+  static const AnalyticsEvent userSignupCompleted = AnalyticsEvent._('user_signup_completed');
   /// 쿠폰 발급 경로별 보유량 (issue_key 기반)
-  static const String couponIssueBreakdown = 'coupon_issue_breakdown';
+  static const AnalyticsEvent couponIssueBreakdown = AnalyticsEvent._('coupon_issue_breakdown');
 
   // ===== 온보딩(튜토리얼) =====
   /// 로그인 전 인삿말 컷 노출 (step: 1부터)
-  static const String onboardingIntroView = 'onboarding_intro_view';
-  static const String onboardingIntroComplete = 'onboarding_intro_complete';
+  static const AnalyticsEvent onboardingIntroView = AnalyticsEvent._('onboarding_intro_view');
+  static const AnalyticsEvent onboardingIntroComplete = AnalyticsEvent._('onboarding_intro_complete');
   /// 보상 플로우에서 식당 선택
-  static const String onboardingRestaurantPick = 'onboarding_restaurant_pick';
+  static const AnalyticsEvent onboardingRestaurantPick = AnalyticsEvent._('onboarding_restaurant_pick');
   /// 룰렛 연출 후 쿠폰 공개 (coupon_count: 0이면 조회 실패/미발급)
-  static const String onboardingCouponReveal = 'onboarding_coupon_reveal';
-  static const String onboardingGuideView = 'onboarding_guide_view';
-  static const String onboardingComplete = 'onboarding_complete';
+  static const AnalyticsEvent onboardingCouponReveal = AnalyticsEvent._('onboarding_coupon_reveal');
+  static const AnalyticsEvent onboardingGuideView = AnalyticsEvent._('onboarding_guide_view');
+  static const AnalyticsEvent onboardingComplete = AnalyticsEvent._('onboarding_complete');
 
   // ===== 기존 발화부 상수화 =====
   // 아래 둘은 코드에 문자열 리터럴로 박혀 있던 것을 상수로 끌어올린 것이다.
   // 이벤트명은 그대로라 기존 데이터와 이어진다.
-  static const String homeBannerClick = 'home_banner_click';
+  static const AnalyticsEvent homeBannerClick = AnalyticsEvent._('home_banner_click');
   /// 푸시 알림 탭. 'notification_open'은 Firebase 예약 이벤트명이라 logEvent가
   /// ArgumentError로 거부해 한 건도 쌓이지 않았다 — 같은 이름으로 되돌리지 말 것.
-  static const String pushOpen = 'push_open';
-  static const String tabView = 'tab_view';
-  static const String couponPageView = 'coupon_page_view';
-  static const String affiliateCategoryClick = 'affiliate_category_click';
-  static const String affiliateRestaurantClick = 'affiliate_restaurant_click';
-  static const String referralCodeInputClick = 'referral_code_input_click';
-  static const String kakaoInviteClick = 'kakao_invite_click';
+  static const AnalyticsEvent pushOpen = AnalyticsEvent._('push_open');
+  static const AnalyticsEvent tabView = AnalyticsEvent._('tab_view');
+  static const AnalyticsEvent couponPageView = AnalyticsEvent._('coupon_page_view');
+  static const AnalyticsEvent affiliateCategoryClick = AnalyticsEvent._('affiliate_category_click');
+  static const AnalyticsEvent affiliateRestaurantClick = AnalyticsEvent._('affiliate_restaurant_click');
+  static const AnalyticsEvent referralCodeInputClick = AnalyticsEvent._('referral_code_input_click');
+  static const AnalyticsEvent kakaoInviteClick = AnalyticsEvent._('kakao_invite_click');
 
   // ===== 첫 쿠폰 보강 (룰렛·로그인) =====
   /// 룰렛 회전 시작 (연출 시작 시점, attempt_no: 1부터)
-  static const String rouletteSpin = 'roulette_spin';
+  static const AnalyticsEvent rouletteSpin = AnalyticsEvent._('roulette_spin');
   /// 로그인 전 당첨 화면에서 "로그인하고 쿠폰 받기" 탭
-  static const String rouletteClaimClick = 'roulette_claim_click';
+  static const AnalyticsEvent rouletteClaimClick = AnalyticsEvent._('roulette_claim_click');
   /// 카카오 인증 시작
-  static const String loginStart = 'login_start';
+  static const AnalyticsEvent loginStart = AnalyticsEvent._('login_start');
   /// 인증 종료 — 성공·취소·오류를 result로 구분한다
-  static const String loginCompleted = 'login_completed';
+  static const AnalyticsEvent loginCompleted = AnalyticsEvent._('login_completed');
 
   // ===== 마일리지 · 식사권 응모 =====
   // 적립 건수·금액의 정본은 서버 원장(MileageEvent)이다. 앱 로그는 누락될 수
   // 있어 계약 수치로 쓰지 않는다. 그래서 'mileage_earn' 같은 적립 합계 이벤트는
   // 두지 않고, 앱에서만 보이는 흐름(링크 진입 → 적립 시도 결과)만 남긴다.
   /// OS 밖에서 들어온 딥링크 처리 (source: link_stream · initial_link · push_tap)
-  static const String deepLinkOpen = 'deep_link_open';
+  static const AnalyticsEvent deepLinkOpen = AnalyticsEvent._('deep_link_open');
   /// QR 방문 적립 시도 결과. 적립 실패·한도 초과·비로그인까지 result로 남긴다.
   /// 푸시 탭은 적립을 요청하지 않으므로 남지 않는다.
-  static const String qrVisitCredit = 'qr_visit_credit';
+  static const AnalyticsEvent qrVisitCredit = AnalyticsEvent._('qr_visit_credit');
   /// 마일리지 상점(응모 목록) 진입
-  static const String ticketPurchaseView = 'ticket_purchase_view';
+  static const AnalyticsEvent ticketPurchaseView = AnalyticsEvent._('ticket_purchase_view');
   /// 식사권 응모 확정 (마일리지 차감 성공)
-  static const String ticketPurchase = 'ticket_purchase';
+  static const AnalyticsEvent ticketPurchase = AnalyticsEvent._('ticket_purchase');
   /// 응모 실패 — fail_reason으로 사유를 구분한다
-  static const String ticketPurchaseFailed = 'ticket_purchase_failed';
+  static const AnalyticsEvent ticketPurchaseFailed = AnalyticsEvent._('ticket_purchase_failed');
   /// 추첨 결과 확인
-  static const String drawResultView = 'draw_result_view';
+  static const AnalyticsEvent drawResultView = AnalyticsEvent._('draw_result_view');
   /// 매장에서 식사권 사용 승인 요청
-  static const String voucherRedeemAttempt = 'voucher_redeem_attempt';
+  static const AnalyticsEvent voucherRedeemAttempt = AnalyticsEvent._('voucher_redeem_attempt');
   /// 식사권 승인 처리 종료 (성공·실패 모두)
-  static const String voucherRedeemResult = 'voucher_redeem_result';
+  static const AnalyticsEvent voucherRedeemResult = AnalyticsEvent._('voucher_redeem_result');
 
   // ===== 미션 트랙 =====
-  static const String missionTrackView = 'mission_track_view';
+  static const AnalyticsEvent missionTrackView = AnalyticsEvent._('mission_track_view');
   /// 개별 미션 달성 (서버 응답 기준)
-  static const String missionCompleted = 'mission_completed';
+  static const AnalyticsEvent missionCompleted = AnalyticsEvent._('mission_completed');
   /// "리워드 받기" 요청 결과 (result: success · error) — 달성과 반드시 분리해 집계한다.
   /// 수령 수는 result=success 로 거른다.
-  static const String missionRewardClaim = 'mission_reward_claim';
+  static const AnalyticsEvent missionRewardClaim = AnalyticsEvent._('mission_reward_claim');
 
   // ===== 쿠폰 사용 =====
-  static const String couponUseScreenView = 'coupon_use_screen_view';
+  static const AnalyticsEvent couponUseScreenView = AnalyticsEvent._('coupon_use_screen_view');
   /// PIN 확인 요청 시점 (성공·실패 이전)
-  static const String couponRedeemAttempt = 'coupon_redeem_attempt';
+  static const AnalyticsEvent couponRedeemAttempt = AnalyticsEvent._('coupon_redeem_attempt');
   /// 차감 실패 — fail_reason으로 사유를 구분한다
-  static const String couponRedeemFailed = 'coupon_redeem_failed';
+  static const AnalyticsEvent couponRedeemFailed = AnalyticsEvent._('coupon_redeem_failed');
 
   // ===== 노출 · 탐색 =====
   /// 홈 배너 노출 (뷰포트 50% · 1초 · 인상당 1회)
-  static const String homeBannerImpression = 'home_banner_impression';
+  static const AnalyticsEvent homeBannerImpression = AnalyticsEvent._('home_banner_impression');
   /// 매장 카드 노출 (동일 규칙)
-  static const String restaurantListImpression = 'restaurant_list_impression';
+  static const AnalyticsEvent restaurantListImpression = AnalyticsEvent._('restaurant_list_impression');
   /// 검색어 확정 (엔터·디바운스 종료)
-  static const String restaurantSearchSubmit = 'restaurant_search_submit';
+  static const AnalyticsEvent restaurantSearchSubmit = AnalyticsEvent._('restaurant_search_submit');
+  /// 매장 목록 필터 선택 (카테고리·혜택 칩)
+  static const AnalyticsEvent affiliateFilterClick = AnalyticsEvent._('affiliate_filter_click');
+  /// 매장 목록 정렬 변경
+  static const AnalyticsEvent affiliateSortClick = AnalyticsEvent._('affiliate_sort_click');
+
+  // ===== 홈 배너 · 블록 =====
+  // 아래 넷은 2026-09 까지 **문자열로만** 찍혀 상수 목록에 없었다. 그래서 이
+  // 파일을 「찍는 것의 목록」으로 믿을 수 없었다(수집 점검 0924).
+  /// 홈 미션 배너 탭
+  static const AnalyticsEvent missionBannerTap = AnalyticsEvent._('mission_banner_tap');
+  /// 홈 기획전 블록 탭
+  static const AnalyticsEvent promoBlockTap = AnalyticsEvent._('promo_block_tap');
+  /// 친구 초대 배너 탭
+  static const AnalyticsEvent inviteBannerTap = AnalyticsEvent._('invite_banner_tap');
+  /// 친구 초대 배너 닫기
+  static const AnalyticsEvent inviteBannerDismiss = AnalyticsEvent._('invite_banner_dismiss');
 
   // ===== 실패 · 설정 =====
   /// 스탬프 적립 실패
-  static const String stampAddFailed = 'stamp_add_failed';
+  static const AnalyticsEvent stampAddFailed = AnalyticsEvent._('stamp_add_failed');
   /// 이벤트/프로모션 알림 on·off
-  static const String notificationSettingToggle = 'notification_setting_toggle';
+  static const AnalyticsEvent notificationSettingToggle = AnalyticsEvent._('notification_setting_toggle');
 
   // ========== 파라미터 키 ==========
   static const String paramCouponCode = 'coupon_code';
@@ -204,8 +253,19 @@ class AnalyticsEvents {
   static const String paramBannerType = 'banner_type';
   static const String paramBannerId = 'banner_id';
   static const String paramBannerIndex = 'banner_index';
+  // 노출과 클릭을 붙여서 CTR을 내려면 **이름과 값이 같아야** 한다.
+  // 예전에는 home_banner_click 쪽에서 문자열로 직접 써서, 오타가 나도
+  // 컴파일이 통과하고 데이터만 조용히 사라졌다.
+  static const String paramBannerTitle = 'banner_title';
+  static const String paramBannerUrl = 'banner_url';
+  static const String paramBannerSource = 'banner_source';
   static const String paramListIndex = 'list_index';
   static const String paramListType = 'list_type';
+  /// 어느 목록인지 (affiliate · affiliate_general · home · search)
+  static const String paramListName = 'list_name';
+  /// 목록에서 몇 번째 자리인지 (0부터)
+  static const String paramPosition = 'position';
+  static const String paramZone = 'zone';
   static const String paramCategory = 'category';
   static const String paramKeyword = 'keyword';
   static const String paramResultCount = 'result_count';

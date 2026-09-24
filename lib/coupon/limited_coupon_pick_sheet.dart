@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
+import 'package:new1/config/analytics_events.dart';
 import 'package:new1/onboarding/onboarding_style.dart';
 import 'package:new1/onboarding/widgets/restaurant_pick_list.dart';
 import 'package:new1/services/affiliate_service.dart';
 import 'package:new1/services/coupon_service.dart';
+import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/widgets/category_strip.dart';
 
 class LimitedCouponPickResult {
@@ -133,6 +135,20 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
         result.couponCode!.isNotEmpty &&
         !codes.contains(result.couponCode)) {
       codes.insert(0, result.couponCode!);
+    }
+    // 사용자가 「받기」를 눌러 **성공한** 순간. coupon_issued(보였다)와 달리
+    // 이건 행동이라 전환율의 분자로 쓸 수 있다. 실패는 위에서 이미 돌아갔다.
+    // 쿠폰이 여럿이면 장마다 찍어 coupon_code 로 사용과 이을 수 있게 둔다.
+    for (final code in codes) {
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.couponClaim,
+        parameters: {
+          AnalyticsEvents.paramCouponCode: code,
+          AnalyticsEvents.paramRestaurantId: restaurantId,
+          AnalyticsEvents.paramCouponTypeCode: offer.couponTypeCode,
+          AnalyticsEvents.paramSource: 'limited_coupon_sheet',
+        },
+      );
     }
     Navigator.of(context).pop(
       LimitedCouponPickResult(
