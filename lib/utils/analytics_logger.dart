@@ -1,5 +1,6 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
+import 'package:new1/config/analytics_events.dart';
 
 class AnalyticsLogger {
   AnalyticsLogger._();
@@ -55,19 +56,25 @@ class AnalyticsLogger {
     return sanitized.isEmpty ? null : sanitized;
   }
 
+  /// 이벤트를 보낸다.
+  ///
+  /// [event] 가 [String] 이 아니라 [AnalyticsEvent] 인 것이 핵심이다.
+  /// 문자열을 받게 두면 오타가 나도 컴파일이 통과하고 데이터만 조용히
+  /// 사라지며, `analytics_events.dart` 가 「이 앱이 찍는 것의 목록」 구실을
+  /// 못 하게 된다. 새 이벤트는 그 파일에 한 줄 선언해야 쓸 수 있다.
   static Future<void> logEvent(
-    String name, {
+    AnalyticsEvent event, {
     Map<String, Object?>? parameters,
   }) async {
     try {
       await FirebaseAnalytics.instance.logEvent(
-        name: name,
+        name: event.name,
         parameters: _sanitizeParameters(parameters),
       );
     } catch (e) {
       // Analytics failures shouldn't block user flows.
       // 다만 예약어 충돌처럼 조용히 전부 버려지는 실패는 개발 중에 보여야 한다.
-      if (kDebugMode) debugPrint('[Analytics] $name 전송 실패: $e');
+      if (kDebugMode) debugPrint('[Analytics] ${event.name} 전송 실패: $e');
     }
   }
 
