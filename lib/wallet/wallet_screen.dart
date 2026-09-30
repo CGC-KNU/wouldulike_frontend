@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:new1/coupon_list_screen.dart';
 import 'package:new1/mileage/mileage_shop_screen.dart';
 import 'package:new1/services/deep_link_service.dart';
+import 'package:new1/services/master_content.dart';
 import 'package:new1/services/mileage_service.dart';
 import 'package:new1/wallet/mileage_tab.dart';
 import 'package:new1/wallet/stamp_tab.dart';
@@ -22,8 +24,12 @@ class WalletScreen extends StatefulWidget {
 class _WalletScreenState extends State<WalletScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabController;
+  static const _scheduleCollapsedKey = 'wallet_raffle_schedule_collapsed';
+
   MileageSummary? _summary;
   WalletOverview? _overview;
+  bool _scheduleCollapsed = true;
+  int _historyVersion = 0;
 
   @override
   void initState() {
@@ -44,6 +50,23 @@ class _WalletScreenState extends State<WalletScreen>
     );
     DeepLinkService.instance.pendingWalletTab.addListener(_onPendingWalletTab);
     _loadSummary();
+    _loadRaffleSchedule();
+  }
+
+  Future<void> _loadRaffleSchedule() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() => _scheduleCollapsed =
+          prefs.getBool(_scheduleCollapsedKey) ?? true);
+    }
+    await MasterContent.loadRaffleSchedule();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _toggleSchedule() async {
+    setState(() => _scheduleCollapsed = !_scheduleCollapsed);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_scheduleCollapsedKey, _scheduleCollapsed);
   }
 
   void _onPendingWalletTab() {
@@ -70,14 +93,14 @@ class _WalletScreenState extends State<WalletScreen>
     }
   }
 
-  Future<void> _openShop() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => MileageShopScreen(initialSummary: _summary),
-      ),
-    );
-    // 응모로 잔액이 줄었을 수 있으므로 복귀 시 갱신
-    await _loadSummary();
+  /// 내역 섹션은 키를 바꿔 다시 만들면 처음부터 다시 불러온다.
+  void _reloadHistory() {
+    if (mounted) setState(() => _historyVersion++);
+  }
+
+  Future<void> _refreshMileageTab() async {
+    _reloadHistory();
+    await Future.wait([_loadSummary(), _loadRaffleSchedule()]);
   }
 
   @override
@@ -136,16 +159,21 @@ class _WalletScreenState extends State<WalletScreen>
                   onGoToAffiliate: _goToAffiliateTab,
                 ),
                 StampTab(onGoToAffiliate: _goToAffiliateTab),
-                // 마일리지 히어로는 마일리지 탭에서만 보여준다.
-                // (쿠폰·스탬프 탭에서는 화면 위쪽을 잔액이 차지할 이유가 없다)
-                Column(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-                      child: _buildMileageHero(),
-                    ),
-                    const Expanded(child: MileageTab()),
-                  ],
+                // 마일리지 탭 = 응모 일정 → 상점(잔액·식사권 응모) → 내 응모 현황 → 최근 내역.
+                MileageShopScreen(
+                  embedded: true,
+                  initialSummary: _summary,
+                  header: MasterContent.raffleSchedule.enabled
+                      ? _buildRaffleSchedule(MasterContent.raffleSchedule)
+                      : null,
+                  footer: MileageHistorySection(
+                    key: ValueKey(_historyVersion),
+                  ),
+                  onRefresh: _refreshMileageTab,
+                  onEntered: () {
+                    _reloadHistory();
+                    _loadSummary();
+                  },
                 ),
               ],
             ),
@@ -185,106 +213,125 @@ class _WalletScreenState extends State<WalletScreen>
     );
   }
 
-  /// 마일리지 히어로 카드. 잔액 + 마일리지 상점 진입 (스펙 7.1·7.2).
-  Widget _buildMileageHero() {
-    final summary = _summary;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF4B47C4), Color(0xFF6A5AE6), Color(0xFF7C64EE)],
-          stops: [0.0, 0.55, 1.0],
-        ),
-      ),
-      child: Row(
+  /// 응모 시작·마감·발표 안내. 문구는 운영진이 raffle_schedule 콘텐츠로 바꾼다.
+  Widget _buildRaffleSchedule(RaffleSchedule schedule) {
+    const ink = Color(0xFF191F28);
+    const muted = Color(0xFF4E5968);
+    const faint = Color(0xFF8B95A1);
+    const primary = Color(0xFF312E81);
+    final body = Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '보유 마일리지',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xD1FFFFFF),
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: _comma(summary?.balance ?? 0),
-                        style: const TextStyle(
-                          fontSize: 26,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: -0.78,
-                          color: Colors.white,
-                          height: 1,
-                        ),
+          for (final item in schedule.items)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: 64,
+                    child: Text(
+                      item.label,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: primary,
                       ),
-                      const TextSpan(
-                        text: ' M',
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      item.text,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: muted,
                       ),
-                    ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '이번 달 +${_comma(summary?.monthEarned ?? 0)} M 적립 · 전 매장 사용',
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontFamily: 'Pretendard',
-                    fontWeight: FontWeight.w500,
-                    color: Color(0xCCFFFFFF),
+                ],
+              ),
+            ),
+          if (schedule.note.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              schedule.note,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 11.5,
+                fontWeight: FontWeight.w500,
+                color: faint,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: Color(0xFFE5E7F0)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: _toggleSchedule,
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                  16, 14, 12, _scheduleCollapsed ? 14 : 10),
+              child: Row(
+                children: [
+                  const Icon(Icons.event_note_rounded,
+                      size: 18, color: primary),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      schedule.title,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: ink,
+                      ),
+                    ),
                   ),
-                ),
-              ],
+                  Text(
+                    _scheduleCollapsed ? '펼치기' : '접기',
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: faint,
+                    ),
+                  ),
+                  AnimatedRotation(
+                    turns: _scheduleCollapsed ? 0 : 0.5,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.keyboard_arrow_down_rounded,
+                        size: 20, color: faint),
+                  ),
+                ],
+              ),
             ),
           ),
-          ElevatedButton(
-            onPressed: _openShop,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF312E81),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              textStyle: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 12.5,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-            child: const Text('마일리지 상점'),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: _scheduleCollapsed
+                ? const SizedBox(width: double.infinity)
+                : body,
           ),
         ],
       ),
     );
   }
-}
-
-String _comma(int value) {
-  final digits = value.abs().toString();
-  final buffer = StringBuffer(value < 0 ? '-' : '');
-  for (var i = 0; i < digits.length; i++) {
-    if (i > 0 && (digits.length - i) % 3 == 0) buffer.write(',');
-    buffer.write(digits[i]);
-  }
-  return buffer.toString();
 }

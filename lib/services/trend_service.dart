@@ -42,8 +42,13 @@ class TrendItem {
 }
 
 class TrendService {
-  static Future<List<TrendItem>> fetchTrends() async {
-    final response = await ApiClient.get('/trends/trend_list/', authenticated: false);
+  static Future<List<TrendItem>> fetchTrends({String? campus}) async {
+    final response = await ApiClient.get(
+      '/trends/trend_list/',
+      authenticated: false,
+      queryParameters:
+          (campus == null || campus.isEmpty) ? null : {'campus': campus},
+    );
     final body = utf8.decode(response.bodyBytes);
     final trimmed = body.trimLeft();
     if (trimmed.isEmpty || trimmed.startsWith('<')) {

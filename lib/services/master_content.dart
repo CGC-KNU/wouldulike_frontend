@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 
-import '../data/knu_profile_options.dart';
 import '../question_list.dart';
 import 'api_client.dart';
 
@@ -27,6 +26,28 @@ class RaffleTermsSection {
 
   final String title;
   final List<String> items;
+}
+
+class RaffleScheduleItem {
+  const RaffleScheduleItem({required this.label, required this.text});
+
+  final String label;
+  final String text;
+}
+
+/// 지갑 > 마일리지 탭 맨 위 응모 일정 카드 (GET /api/config/content/raffle_schedule/).
+class RaffleSchedule {
+  const RaffleSchedule({
+    required this.enabled,
+    required this.title,
+    required this.items,
+    this.note = '',
+  });
+
+  final bool enabled;
+  final String title;
+  final List<RaffleScheduleItem> items;
+  final String note;
 }
 
 /// GET /api/config/categories/, /api/config/content/{quiz_questions|raffle_terms}/
@@ -115,13 +136,46 @@ class MasterContent {
   static List<CategoryItem> _categories = const [];
   static List<Map<String, dynamic>> _questions = const [];
   static List<RaffleTermsSection> _raffleSections = const [];
+  static RaffleSchedule? _raffleSchedule;
 
   static Future<void> prefetch() async {
     await Future.wait([
       _loadCategories(),
       _loadQuizQuestions(),
       _loadRaffleTerms(),
+      loadRaffleSchedule(),
     ]);
+  }
+
+  /// 지갑을 열 때와 상점에서 돌아올 때 다시 불러, 운영진 수정이 앱 재실행 없이 보이게 한다.
+  static Future<void> loadRaffleSchedule() async {
+    try {
+      final decoded = await _getJson('/api/config/content/raffle_schedule/');
+      if (decoded.isEmpty) return;
+      final payload = _unwrap(decoded);
+      final items = <RaffleScheduleItem>[];
+      final raw = payload['items'];
+      if (raw is List) {
+        for (final item in raw) {
+          if (item is! Map) continue;
+          final label = (item['label'] ?? '').toString().trim();
+          final text = (item['text'] ?? '').toString().trim();
+          if (label.isEmpty && text.isEmpty) continue;
+          items.add(RaffleScheduleItem(label: label, text: text));
+        }
+      }
+      final enabled = payload['enabled'] != false;
+      if (enabled && items.isEmpty) return;
+      final title = (payload['title'] ?? '').toString().trim();
+      _raffleSchedule = RaffleSchedule(
+        enabled: enabled,
+        title: title.isEmpty ? kFallbackRaffleSchedule.title : title,
+        items: items,
+        note: (payload['note'] ?? '').toString().trim(),
+      );
+    } catch (e) {
+      debugPrint('[MasterContent] raffle schedule fetch failed: $e');
+    }
   }
 
   static Future<void> _loadCategories() async {
@@ -317,16 +371,11 @@ class MasterContent {
   static List<Map<String, dynamic>> get quizQuestions =>
       _questions.isNotEmpty ? _questions : kFallbackQuestionList;
 
-  // 학과 콘텐츠 API(/api/config/content/majors/)는 백엔드에 아직 구성되지 않아
-  // 제거했다. 학교/단과대/학과는 로컬 원본(경북대 고정 목록)만 쓴다.
-  static List<SchoolOption> get schools => knuSchools;
-
-  static List<CollegeOption> get colleges => knuColleges;
-
-  static List<DepartmentOption> get departments => knuDepartments;
-
   static List<RaffleTermsSection> get raffleSections =>
       _raffleSections.isNotEmpty ? _raffleSections : kFallbackRaffleSections;
+
+  static RaffleSchedule get raffleSchedule =>
+      _raffleSchedule ?? kFallbackRaffleSchedule;
 
   static List<CategoryItem> get categories {
     if (_categories.isNotEmpty) return _categories;
@@ -410,6 +459,18 @@ class MasterContent {
     return 'assets/icons/category/all.svg';
   }
 }
+
+/// 서버 기본값(appconfig DEFAULT_RAFFLE_SCHEDULE)과 같은 문구. 응답을 못 받았을 때만 쓴다.
+const kFallbackRaffleSchedule = RaffleSchedule(
+  enabled: true,
+  title: '마일리지 응모 일정',
+  items: [
+    RaffleScheduleItem(label: '응모 시작', text: '추첨일 하루 전 오전 11시부터'),
+    RaffleScheduleItem(label: '응모 마감', text: '추첨일 오전 11시'),
+    RaffleScheduleItem(label: '당첨 발표', text: '마감 직후 추첨, 내 응모·당첨자 발표에서 확인'),
+  ],
+  note: '당첨되면 식사권 쿠폰이 쿠폰함으로 바로 들어가요.',
+);
 
 const kFallbackRaffleSections = <RaffleTermsSection>[
   RaffleTermsSection(title: '응모 방법', items: [

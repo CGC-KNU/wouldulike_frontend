@@ -722,6 +722,7 @@ class LimitedCouponRestaurant {
     required this.name,
     this.category,
     this.zone,
+    this.campus,
     this.imageUrl,
     this.title,
     this.subtitle,
@@ -748,6 +749,7 @@ class LimitedCouponRestaurant {
       name: json['name']?.toString() ?? '',
       category: _normalizeString(json['category']),
       zone: _normalizeString(json['zone']),
+      campus: _normalizeString(json['campus']),
       imageUrl: firstImage(json['image_url']) ?? firstImage(json['s3_image_urls']),
       title: _normalizeString(json['title']),
       subtitle: _normalizeString(json['subtitle']),
@@ -759,6 +761,7 @@ class LimitedCouponRestaurant {
   final String name;
   final String? category;
   final String? zone;
+  final String? campus;
   final String? imageUrl;
   final String? title;
   final String? subtitle;
@@ -783,12 +786,21 @@ class LimitedCouponOffer {
     required this.couponTypeCode,
     this.couponTypeTitle,
     this.validDays,
+    this.validHours,
+    this.period,
     this.startAt,
     this.endAt,
+    this.claimEndsAt,
     required this.claimed,
     required this.redeemBonus,
+    this.source,
+    this.eventKind,
+    this.pickCount = 1,
+    this.remainingCount = 1,
     this.restaurants = const [],
     this.issuedCoupons = const [],
+    this.userCampus,
+    this.campusRequired = false,
   });
 
   factory LimitedCouponOffer.fromJson(Map<String, dynamic> json) {
@@ -833,27 +845,86 @@ class LimitedCouponOffer {
       couponTypeCode: _normalizeString(json['coupon_type_code']) ?? '',
       couponTypeTitle: _normalizeString(json['coupon_type_title']),
       validDays: _parseOptionalInt(json['valid_days']),
+      validHours: _parseOptionalInt(json['valid_hours']),
+      period: _normalizeString(json['period']),
       startAt: _parseDate(json['start_at']),
       endAt: _parseDate(json['end_at']),
+      claimEndsAt: _parseDate(json['claim_ends_at']),
       claimed: json['claimed'] == true,
       redeemBonus: json['redeem_bonus'] == true,
+      source: _normalizeString(json['source']),
+      eventKind: _normalizeString(json['event_kind']),
+      pickCount: _parseOptionalInt(json['pick_count']) ?? 1,
+      remainingCount: _parseOptionalInt(json['remaining_count']) ?? 1,
       restaurants: parseRestaurants(),
       issuedCoupons: parseIssued(),
+      userCampus: _normalizeString(json['user_campus']),
+      campusRequired: json['campus_required'] == true,
     );
   }
 
   final String couponTypeCode;
   final String? couponTypeTitle;
   final int? validDays;
+
+  /// 받은 뒤 유효 시간(시간 단위). 화·목 골라받기처럼 하루 안에 만료되는
+  /// 쿠폰에 쓰인다. validDays와 동시에 내려오면 validHours를 우선한다.
+  final int? validHours;
+
+  /// "ONCE" = 기간 내 1회. "DAILY" = 하루 1장, 다음날 다시 받을 수 있음.
+  final String? period;
   final DateTime? startAt;
   final DateTime? endAt;
+
+  /// 오늘 받을 수 있는 마감 시각 (period == DAILY일 때 오늘 23:59:59 KST).
+  final DateTime? claimEndsAt;
   final bool claimed;
   final bool redeemBonus;
+
+  /// "CODE" = 학생회·이벤트 코드를 입력해 받은 선택권. 없으면 앱 접속 기획전.
+  final String? source;
+
+  /// source == CODE 일 때 "student_council" | "special"
+  final String? eventKind;
+
+  /// 이 오퍼로 고를 수 있는 식당 수 전체 / 아직 남은 수. 앱 접속 기획전은 1.
+  final int pickCount;
+  final int remainingCount;
   final List<LimitedCouponRestaurant> restaurants;
   final List<IssuedCouponInfo> issuedCoupons;
 
+  /// 유저의 등록된 대학가. 미등록이면 null.
+  final String? userCampus;
+
+  /// true면 restaurants가 비어 있고, 대학가를 먼저 등록해야 받을 수 있다.
+  final bool campusRequired;
+
+  bool get isStudentCouncil => eventKind?.toLowerCase() == 'student_council';
+
+  bool get isTueThuGeneralSelect => couponTypeCode == 'TUE_THU_GENERAL_SELECT';
+
+  /// 이번 화면에서 골라야 하는 식당 수. 후보가 모자라면 후보 수까지만.
+  int get picksNeeded {
+    final remaining = remainingCount < 1 ? 1 : remainingCount;
+    return restaurants.length < remaining ? restaurants.length : remaining;
+  }
+
+  bool get isMultiPick => picksNeeded > 1;
+
+  /// 발급 팝업·선택 화면 태그.
+  String get tagLabel {
+    if (isTueThuGeneralSelect) return '화·목 골라받기 쿠폰';
+    if (isStudentCouncil) return '학생회 쿠폰';
+    if (source?.toUpperCase() == 'CODE') return '이벤트 쿠폰';
+    return '한정쿠폰';
+  }
+
   bool get needsSelection =>
       !claimed && couponTypeCode.isNotEmpty && restaurants.isNotEmpty;
+
+  /// 아직 안 받았는데 대학가 미등록이라 후보 식당이 비어 있는 상태.
+  /// 이땐 피커 대신 대학가 등록 안내를 보여준다.
+  bool get needsCampusRegistration => !claimed && campusRequired;
 }
 
 class LimitedCouponClaimResult {
@@ -891,6 +962,10 @@ String limitedClaimErrorMessage(String? code, String? detail) {
       return '쿠폰 정보가 없어요. 다시 시도해 주세요.';
     case 'restaurant_required':
       return '식당을 선택해 주세요.';
+    case 'campus_required':
+      return '대학가를 먼저 등록하면 쿠폰을 받을 수 있어요.';
+    case 'in_progress':
+      return '쿠폰을 받는 중이에요. 잠시 후 다시 시도해 주세요.';
     case 'invalid_restaurant':
       return '이 식당은 한정쿠폰 대상이 아니에요.';
     case 'not_in_window':
@@ -902,6 +977,12 @@ String limitedClaimErrorMessage(String? code, String? detail) {
       return '아직 준비되지 않은 기획전이에요.';
     case 'not_found':
       return '쿠폰 정보를 찾지 못했어요.';
+    case 'not_entitled':
+      return '코드를 먼저 입력해 주세요.';
+    case 'already_claimed':
+      return '이미 쿠폰을 모두 받았어요.';
+    case 'too_many':
+      return '고를 수 있는 식당 수를 넘었어요.';
     default:
       return '쿠폰을 받지 못했어요. 잠시 후 다시 시도해 주세요.';
   }
@@ -975,9 +1056,11 @@ class ReferralAcceptResponse {
     this.codeKind,
     this.eventKind,
     this.issuedCoupons = const [],
+    this.selectOffer,
   });
 
   factory ReferralAcceptResponse.fromJson(Map<String, dynamic> json) {
+    final rawOffer = json['select_offer'];
     List<IssuedCouponInfo> parseIssuedCoupons() {
       final value = json['issued_coupons'];
       if (value is! List) return const [];
@@ -1002,6 +1085,9 @@ class ReferralAcceptResponse {
       codeKind: _normalizeString(json['code_kind']),
       eventKind: _normalizeString(json['event_kind']),
       issuedCoupons: parseIssuedCoupons(),
+      selectOffer: rawOffer is Map
+          ? LimitedCouponOffer.fromJson(Map<String, dynamic>.from(rawOffer))
+          : null,
     );
   }
 
@@ -1017,6 +1103,9 @@ class ReferralAcceptResponse {
 
   /// 이번 입력으로 나간 쿠폰 요약. 매장명·혜택 제목은 부족할 수 있음.
   final List<IssuedCouponInfo> issuedCoupons;
+
+  /// 바로 발급하지 않고 식당을 골라 받는 코드(학생회 코드 등)일 때만 온다.
+  final LimitedCouponOffer? selectOffer;
 
   bool get isEvent => codeKind?.toLowerCase() == 'event';
   bool get isReferral => codeKind?.toLowerCase() == 'referral';
@@ -1641,9 +1730,11 @@ class CouponService {
   }
 
   /// POST /api/coupons/limited/claim/
+  /// 여러 곳을 고르는 오퍼(학생회 코드 등)는 [restaurantIds]를 한 번에 보낸다.
   static Future<LimitedCouponClaimResult> claimLimitedCoupon({
     required String couponTypeCode,
     required int restaurantId,
+    List<int>? restaurantIds,
   }) async {
     try {
       final response = await ApiClient.postWithoutThrow(
@@ -1651,6 +1742,8 @@ class CouponService {
         body: {
           'coupon_type_code': couponTypeCode,
           'restaurant_id': restaurantId,
+          if (restaurantIds != null && restaurantIds.isNotEmpty)
+            'restaurant_ids': restaurantIds,
         },
       );
       if (response.statusCode >= 400) {

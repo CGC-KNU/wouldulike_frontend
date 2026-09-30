@@ -29,6 +29,7 @@ import 'services/mission_service.dart';
 import 'services/popup_service.dart';
 import 'services/promotion_service.dart';
 import 'services/trend_service.dart';
+import 'services/user_service.dart';
 import 'services/deep_link_service.dart';
 
 bool _isValidHttpImageUrl(String? value) {
@@ -132,6 +133,15 @@ class _HomeContentState extends State<HomeContent> {
   int _featuredBannerIndex = 0;
   final PageController _featuredBannerController = PageController();
 
+  /// 배너류(프로모션/기획전/팝업)가 각자 대학가 필터링에 쓸 사용자 campus.
+  /// 여러 곳에서 동시에 필요해 한 번만 조회해 공유한다.
+  Future<String?>? _userCampusFuture;
+
+  Future<String?> _resolveUserCampus() {
+    return _userCampusFuture ??= UserService.fetchCurrentUserProfile()
+        .then((profile) => profile?['campus']?.toString());
+  }
+
   @override
   void initState() {
     super.initState();
@@ -163,7 +173,11 @@ class _HomeContentState extends State<HomeContent> {
 
   Future<void> _loadFeaturedCampaign() async {
     try {
-      final campaigns = await PromotionService.fetchCurrentFeatured();
+      final campus = await _resolveUserCampus();
+      if (!mounted) return;
+      final campaigns = await PromotionService.fetchCurrentFeatured(
+        campus: campus,
+      );
       if (!mounted) return;
       setState(() {
         _featuredCampaigns = campaigns;
@@ -238,7 +252,9 @@ class _HomeContentState extends State<HomeContent> {
   Future<void> _checkAndShowHomePopup() async {
     if (!mounted || _popupDialogVisible) return;
     try {
-      final popups = await PopupService.fetchVisiblePopups();
+      final campus = await _resolveUserCampus();
+      if (!mounted || _popupDialogVisible) return;
+      final popups = await PopupService.fetchVisiblePopups(campus: campus);
       if (!mounted || popups.isEmpty) return;
       final candidates = popups
           .where((item) => !_isPopupDismissedToday(item.id))
@@ -361,7 +377,11 @@ class _HomeContentState extends State<HomeContent> {
       _isTrendLoading = true;
     });
     try {
-      final items = await TrendService.fetchTrends();
+      // 로그인 상태면 사용자의 대학가를 실어 보낸다 — 이 API는 비로그인도
+      // 열려 있어 서버가 request.user로 대학가를 알 수 없다.
+      final campus = await _resolveUserCampus();
+      if (!mounted) return;
+      final items = await TrendService.fetchTrends(campus: campus);
       if (!mounted) return;
       setState(() {
         _trends = items;

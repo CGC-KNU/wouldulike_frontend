@@ -3,9 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../data/knu_profile_options.dart';
 import 'api_client.dart';
-import 'master_content.dart';
 
 class NicknameAvailabilityResult {
   const NicknameAvailabilityResult({
@@ -15,18 +13,6 @@ class NicknameAvailabilityResult {
 
   final bool available;
   final String? code;
-}
-
-class ProfileSetupOptions {
-  const ProfileSetupOptions({
-    required this.schools,
-    required this.colleges,
-    required this.departments,
-  });
-
-  final List<SchoolOption> schools;
-  final List<CollegeOption> colleges;
-  final List<DepartmentOption> departments;
 }
 
 class UserService {
@@ -59,29 +45,16 @@ class UserService {
 
   static bool isRequiredProfileIncomplete(Map<String, dynamic>? profile) {
     if (profile == null) return false;
-    final hasSchool = !_isBlank(profile['school_code']) || !_isBlank(profile['school']);
-    final hasCollege = !_isBlank(profile['college_code']);
-    final hasDepartment =
-        !_isBlank(profile['department_code']) || !_isBlank(profile['department']);
-    return _isBlank(profile['nickname']) || !hasSchool || !hasCollege || !hasDepartment;
+    return _isBlank(profile['nickname']) || _isBlank(profile['campus']);
   }
 
   static Future<Map<String, dynamic>> updateCurrentUserProfile({
     required String nickname,
-    required String schoolCode,
-    required String collegeCode,
-    required String departmentCode,
-    required String schoolName,
-    required String departmentName,
+    required String campus,
   }) async {
     final payload = <String, dynamic>{
       'nickname': nickname,
-      'school_code': schoolCode,
-      'college_code': collegeCode,
-      'department_code': departmentCode,
-      // 구버전 백엔드 호환을 위해 이름 필드도 함께 전송
-      'school': schoolName,
-      'department': departmentName,
+      'campus': campus,
     };
     final response = await ApiClient.patch('/api/users/me/', body: payload);
 
@@ -142,20 +115,6 @@ class UserService {
     }
   }
 
-  static ProfileSetupOptions resolveProfileSetupOptions(
-    Map<String, dynamic>? profile,
-  ) {
-    final schools = _parseSchools(profile?['schools']);
-    final colleges = _parseColleges(profile?['colleges']);
-    final departments = _parseDepartments(profile?['departments']);
-    return ProfileSetupOptions(
-      schools: schools.isNotEmpty ? schools : MasterContent.schools,
-      colleges: colleges.isNotEmpty ? colleges : MasterContent.colleges,
-      departments:
-          departments.isNotEmpty ? departments : MasterContent.departments,
-    );
-  }
-
   static String? parseErrorCode(String body) {
     if (body.trim().isEmpty) return null;
     try {
@@ -179,43 +138,4 @@ class UserService {
     return false;
   }
 
-  static List<SchoolOption> _parseSchools(dynamic raw) {
-    if (raw is! List) return const <SchoolOption>[];
-    return raw
-        .whereType<Map>()
-        .map((Map item) => SchoolOption(
-              code: item['code']?.toString() ?? '',
-              name: item['name']?.toString() ?? '',
-            ))
-        .where((SchoolOption e) => e.code.isNotEmpty && e.name.isNotEmpty)
-        .toList();
-  }
-
-  static List<CollegeOption> _parseColleges(dynamic raw) {
-    if (raw is! List) return const <CollegeOption>[];
-    return raw
-        .whereType<Map>()
-        .map((Map item) => CollegeOption(
-              code: item['code']?.toString() ?? '',
-              name: item['name']?.toString() ?? '',
-            ))
-        .where((CollegeOption e) => e.code.isNotEmpty && e.name.isNotEmpty)
-        .toList();
-  }
-
-  static List<DepartmentOption> _parseDepartments(dynamic raw) {
-    if (raw is! List) return const <DepartmentOption>[];
-    return raw
-        .whereType<Map>()
-        .map((Map item) => DepartmentOption(
-              code: item['code']?.toString() ?? '',
-              collegeCode: item['collegeCode']?.toString() ??
-                  item['college_code']?.toString() ??
-                  '',
-              name: item['name']?.toString() ?? '',
-            ))
-        .where((DepartmentOption e) =>
-            e.code.isNotEmpty && e.collegeCode.isNotEmpty && e.name.isNotEmpty)
-        .toList();
-  }
 }

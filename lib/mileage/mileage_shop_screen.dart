@@ -10,11 +10,32 @@ import '../utils/analytics_logger.dart';
 import '../widgets/ticket_shell.dart';
 
 /// 마일리지 상점 (프로토타입 화면 11, 스펙 7.2).
-/// 지갑 마일리지 히어로에서만 진입한다. 하단 탭에 노출하지 않는다.
+/// 지갑 마일리지 탭에 [embedded]로 들어가고, 딥링크(type=shop)는 단독 화면으로 연다.
 class MileageShopScreen extends StatefulWidget {
-  const MileageShopScreen({super.key, this.initialSummary});
+  const MileageShopScreen({
+    super.key,
+    this.initialSummary,
+    this.embedded = false,
+    this.header,
+    this.footer,
+    this.onRefresh,
+    this.onEntered,
+  });
 
   final MileageSummary? initialSummary;
+
+  /// 지갑 탭 안에 넣을 때. 앱바 없이 그리고, 앱바의 '내 응모'는 본문 버튼으로 옮긴다.
+  final bool embedded;
+
+  /// 목록 맨 위·맨 아래에 붙는 위젯. 상점과 한 스크롤로 움직인다.
+  final Widget? header;
+  final Widget? footer;
+
+  /// 당겨서 새로고침할 때 상점과 함께 다시 불러올 것 (지갑 내역 등).
+  final Future<void> Function()? onRefresh;
+
+  /// 응모가 새로 처리됐을 때. 차감 내역을 바로 보여주려고 쓴다.
+  final VoidCallback? onEntered;
 
   @override
   State<MileageShopScreen> createState() => _MileageShopScreenState();
@@ -108,8 +129,8 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   int _quantityFor(Raffle raffle) => _quantities[raffle.id] ?? 1;
 
   void _changeQuantity(Raffle raffle, int delta) {
-    final next = (_quantityFor(raffle) + delta)
-        .clamp(1, _maxQuantityPerPurchase);
+    final next =
+        (_quantityFor(raffle) + delta).clamp(1, _maxQuantityPerPurchase);
     if (next == _quantityFor(raffle)) return;
     setState(() => _quantities[raffle.id] = next);
     // 수량을 바꾸면 이전 시도와 다른 새 구매이므로, 남아있던 재시도용 키를 버려
@@ -212,6 +233,7 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
       // 타임아웃 뒤 같은 키 재시도는 서버가 첫 성공 응답을 그대로 주므로 ok 로 잡힌다.
       if (result.ok) {
         final drawRound = drawRoundFromClosesAt(raffle.closesAt);
+        widget.onEntered?.call();
         AnalyticsLogger.logEvent(
           AnalyticsEvents.ticketPurchase,
           parameters: {
@@ -286,8 +308,23 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _refresh() async {
+    await Future.wait([
+      _load(),
+      if (widget.onRefresh != null) widget.onRefresh!(),
+    ]);
+  }
+
+  void _openMyEntries() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const MyRaffleEntriesScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final body = _buildBody();
+    if (widget.embedded) return ColoredBox(color: _bg, child: body);
     return Scaffold(
       backgroundColor: _bg,
       appBar: AppBar(
@@ -309,9 +346,7 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
         iconTheme: const IconThemeData(color: _ink),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const MyRaffleEntriesScreen()),
-            ),
+            onPressed: _openMyEntries,
             child: const Text(
               '내 응모',
               style: TextStyle(
@@ -324,85 +359,138 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator(color: _primary))
-          : RefreshIndicator(
-              color: _primary,
-              backgroundColor: Colors.white,
-              strokeWidth: 2,
-              onRefresh: _load,
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(18, 16, 18, 40),
+      body: body,
+    );
+  }
+
+  Widget _buildBody() {
+    if (_isLoading && widget.header == null) {
+      return const Center(child: CircularProgressIndicator(color: _primary));
+    }
+    return RefreshIndicator(
+      color: _primary,
+      backgroundColor: Colors.white,
+      strokeWidth: 2,
+      onRefresh: _refresh,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        // 지갑 탭은 하단 글래스 탭바에 가리지 않게 여백을 더 둔다.
+        padding: EdgeInsets.fromLTRB(18, 16, 18, widget.embedded ? 140 : 40),
+        children: [
+          if (widget.header != null) ...[
+            widget.header!,
+            const SizedBox(height: 16),
+          ],
+          if (_isLoading)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 48),
+              child: Center(
+                child: CircularProgressIndicator(color: _primary),
+              ),
+            )
+          else ...[
+            FadeSlideIn(delayMs: 0, child: _buildHero()),
+            const SizedBox(height: 26),
+            FadeSlideIn(
+              delayMs: 60,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  FadeSlideIn(delayMs: 0, child: _buildHero()),
-                  const SizedBox(height: 26),
-                  FadeSlideIn(
-                    delayMs: 60,
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          '식사권 응모',
-                          style: TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 19,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -0.6,
-                            color: _ink,
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 11, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: _line),
-                          ),
-                          child: const Text(
-                            '매주 추첨',
-                            style: TextStyle(
-                              fontFamily: 'Pretendard',
-                              fontSize: 11.5,
-                              fontWeight: FontWeight.w700,
-                              color: _sub,
-                            ),
-                          ),
-                        ),
-                      ],
+                  const Text(
+                    '식사권 응모',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 19,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.6,
+                      color: _ink,
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  if (_raffles.isEmpty)
-                    _buildEmpty()
-                  else
-                    for (var i = 0; i < _raffles.length; i += 2)
-                      FadeSlideIn(
-                        delayMs: 120 + (i ~/ 2) * 70,
-                        child: Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: IntrinsicHeight(
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Expanded(child: _buildRaffleCard(_raffles[i])),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: i + 1 < _raffles.length
-                                      ? _buildRaffleCard(_raffles[i + 1])
-                                      : const SizedBox.shrink(),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
+                  Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: _line),
+                    ),
+                    child: const Text(
+                      '매주 추첨',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700,
+                        color: _sub,
                       ),
-                  const SizedBox(height: 6),
-                  FadeSlideIn(delayMs: 240, child: _buildLinks()),
+                    ),
+                  ),
                 ],
               ),
             ),
+            const SizedBox(height: 14),
+            if (_raffles.isEmpty)
+              _buildEmpty()
+            else
+              for (var i = 0; i < _raffles.length; i += 2)
+                FadeSlideIn(
+                  delayMs: 120 + (i ~/ 2) * 70,
+                  child: Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: IntrinsicHeight(
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Expanded(child: _buildRaffleCard(_raffles[i])),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: i + 1 < _raffles.length
+                                ? _buildRaffleCard(_raffles[i + 1])
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+            const SizedBox(height: 6),
+            FadeSlideIn(delayMs: 240, child: _buildLinks()),
+            if (widget.embedded) ...[
+              const SizedBox(height: 12),
+              FadeSlideIn(delayMs: 280, child: _buildMyEntriesButton()),
+            ],
+          ],
+          if (widget.footer != null) ...[
+            const SizedBox(height: 28),
+            widget.footer!,
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMyEntriesButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: OutlinedButton.icon(
+        onPressed: _openMyEntries,
+        icon: const Icon(Icons.confirmation_num_rounded, size: 18),
+        label: const Text('내 응모 현황'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: _primary,
+          backgroundColor: Colors.white,
+          side: const BorderSide(color: _line),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          textStyle: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 14.5,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
+      ),
     );
   }
 

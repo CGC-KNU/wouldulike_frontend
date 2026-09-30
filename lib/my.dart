@@ -1022,7 +1022,7 @@ class _MyScreenState extends State<MyScreen> {
             indent: _kItemIndent,
           ),
           _buildMenuRow(
-            leading: const Text('식당 사장님 대시보드', style: _kItemTitleStyle),
+            leading: const Text('우주라이크 파트너 대시보드', style: _kItemTitleStyle),
             trailing: _buildChevron(),
             onTap: _openOwnerDashboard,
             indent: _kItemIndent,

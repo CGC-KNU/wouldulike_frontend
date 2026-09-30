@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../data/campus_options.dart';
 import '../services/affiliate_service.dart';
+import '../services/user_service.dart';
 
 /// 전 매장 쿠폰(마일리지 식사권 등)을 쓸 매장을 고르는 드롭다운.
 ///
@@ -88,13 +90,15 @@ class StoreSelectField extends StatelessWidget {
   }
 }
 
-/// 제휴 매장 목록 시트(이름 검색 포함). 고르면 그 매장을 돌려준다.
+/// 제휴 매장 목록 시트(대학가·이름 검색 포함). 고르면 그 매장을 돌려준다.
 ///
 /// 매장이 20개를 넘어가면 스크롤만으로는 찾기 힘들어 검색칸을 같이 둔다.
+/// 대학가는 프로필 값으로 시작하고, 식사권은 어느 대학가에서나 쓸 수 있으니 바꿀 수 있게 둔다.
 Future<AffiliateRestaurantSummary?> pickAffiliateStore(
   BuildContext context,
 ) async {
   final future = _storesFuture ??= AffiliateService.fetchRestaurants();
+  final initialCampus = await _profileCampus();
   if (!context.mounted) return null;
   return showModalBottomSheet<AffiliateRestaurantSummary>(
     context: context,
@@ -105,6 +109,7 @@ Future<AffiliateRestaurantSummary?> pickAffiliateStore(
     ),
     builder: (sheetContext) {
       var keyword = '';
+      var campus = initialCampus;
       return StatefulBuilder(
         builder: (context, setSheetState) => Padding(
           // 검색 키보드가 올라와도 목록이 가려지지 않게 한다.
@@ -144,7 +149,7 @@ Future<AffiliateRestaurantSummary?> pickAffiliateStore(
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
-                      '이 쿠폰은 제휴 매장 어디서나 쓸 수 있어요.',
+                      '이 쿠폰은 어느 대학가의 제휴 매장에서나 쓸 수 있어요.',
                       style: TextStyle(
                         fontFamily: 'Pretendard',
                         fontSize: 13,
@@ -152,6 +157,14 @@ Future<AffiliateRestaurantSummary?> pickAffiliateStore(
                         color: Color(0xFF4E5968),
                       ),
                     ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
+                  child: CampusChips(
+                    selected: campus,
+                    onSelected: (value) =>
+                        setSheetState(() => campus = value),
                   ),
                 ),
                 Padding(
@@ -192,14 +205,19 @@ Future<AffiliateRestaurantSummary?> pickAffiliateStore(
                           ),
                         );
                       }
-                      final items = keyword.isEmpty
-                          ? all
-                          : all.where((r) => r.name.contains(keyword)).toList();
+                      final items = filterStoresForPick(
+                        all,
+                        campus: campus,
+                        keyword: keyword,
+                      );
                       if (items.isEmpty) {
-                        return const Center(
+                        return Center(
                           child: Text(
-                            '검색 결과가 없어요.',
-                            style: TextStyle(
+                            keyword.isEmpty && campus != kCampusFilterAll
+                                ? '$campus에 등록된 매장이 아직 없어요.\n다른 대학가를 골라 보세요.'
+                                : '검색 결과가 없어요.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
                               fontFamily: 'Pretendard',
                               fontSize: 14,
                               color: Color(0xFF4E5968),
@@ -212,6 +230,10 @@ Future<AffiliateRestaurantSummary?> pickAffiliateStore(
                         separatorBuilder: (_, __) => const Divider(height: 1),
                         itemBuilder: (context, index) {
                           final item = items[index];
+                          final meta = [
+                            item.category,
+                            if (campus == kCampusFilterAll) item.campus ?? '',
+                          ].where((s) => s.isNotEmpty).join(' · ');
                           return ListTile(
                             title: Text(
                               item.name,
@@ -222,10 +244,10 @@ Future<AffiliateRestaurantSummary?> pickAffiliateStore(
                                 color: Color(0xFF191F28),
                               ),
                             ),
-                            subtitle: item.category.isEmpty
+                            subtitle: meta.isEmpty
                                 ? null
                                 : Text(
-                                    item.category,
+                                    meta,
                                     style: const TextStyle(
                                       fontFamily: 'Pretendard',
                                       fontSize: 12,
@@ -248,6 +270,83 @@ Future<AffiliateRestaurantSummary?> pickAffiliateStore(
       );
     },
   );
+}
+
+/// 대학가를 고르면 그 대학가로 명시된 매장만, '전체'면 모두. 대학가 미지정 매장은 '전체'에서만 보인다.
+List<AffiliateRestaurantSummary> filterStoresForPick(
+  List<AffiliateRestaurantSummary> stores, {
+  required String campus,
+  String keyword = '',
+}) {
+  return stores.where((r) {
+    if (campus != kCampusFilterAll && r.campus != campus) return false;
+    return keyword.isEmpty || r.name.contains(keyword);
+  }).toList();
+}
+
+Future<String> _profileCampus() async {
+  try {
+    final profile = await UserService.fetchCurrentUserProfile()
+        .timeout(const Duration(seconds: 3));
+    final campus = profile?['campus']?.toString();
+    if (isKnownCampus(campus)) return campus!;
+  } catch (_) {
+    // 프로필을 못 읽어도 매장은 고를 수 있어야 한다.
+  }
+  return kCampusFilterAll;
+}
+
+/// 매장 선택 시트 상단의 대학가 칩 (전체 · 경북대 · 영남대 · 계명대).
+class CampusChips extends StatelessWidget {
+  const CampusChips({
+    super.key,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    const options = [kCampusFilterAll, ...kCampusOptions];
+    return Wrap(
+      spacing: 8,
+      children: [
+        for (final value in options)
+          InkWell(
+            onTap: () => onSelected(value),
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+              decoration: BoxDecoration(
+                color: value == selected
+                    ? const Color(0xFF192132)
+                    : Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: value == selected
+                      ? const Color(0xFF192132)
+                      : const Color(0xFFE5E7EB),
+                ),
+              ),
+              child: Text(
+                value == kCampusFilterAll ? '전체' : value,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'Pretendard',
+                  fontWeight:
+                      value == selected ? FontWeight.w700 : FontWeight.w500,
+                  color: value == selected
+                      ? Colors.white
+                      : const Color(0xFF797979),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 /// 드롭다운을 다시 열 때마다 매장 목록을 새로 받지 않도록 앱 실행 동안 캐시한다.

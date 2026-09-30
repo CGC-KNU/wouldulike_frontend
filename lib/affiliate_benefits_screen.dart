@@ -14,6 +14,7 @@ import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/utils/impression_tracker.dart';
 
+import 'data/campus_options.dart';
 import 'models/coupon_benefits_summary.dart';
 import 'services/demo_wallet.dart';
 import 'services/affiliate_service.dart';
@@ -21,6 +22,7 @@ import 'services/api_client.dart';
 import 'services/app_config_service.dart';
 import 'services/coupon_service.dart';
 import 'services/favorites_service.dart';
+import 'services/user_service.dart';
 import 'widgets/network_thumb.dart';
 import 'coupon/redeem_pin_dialog.dart';
 import 'coupon/limited_coupon_offer_flow.dart';
@@ -174,6 +176,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   static const String _kFavoriteGeneralRestaurantItemsKey =
       'general_favorite_restaurant_items';
   static const int _kGeneralRestaurantPageSize = 20;
+  /// 사용자가 드롭다운에서 직접 고른 대학가. 한 번 고르면 다음 접속 때도
+  /// 이 값이 우선 적용된다(기기별 저장, 프로필의 campus와는 별개).
+  static const String _kSelectedCampusKey = 'affiliate_selected_campus_override';
 
   List<AffiliateRestaurantSummary> _affiliateRestaurants = [];
   List<GeneralRestaurantSummary> _generalRestaurants = [];
@@ -188,6 +193,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   String? _error;
   bool _requiresLogin = false;
   String _selectedCategory = 'ALL';
+  /// 대학가(상권) 필터. 로그인 사용자는 저장된 campus로 기본 선택된다.
+  String _selectedCampus = kCampusFilterAll;
   // 필터/정렬: 거리·영업시간 데이터가 API에 없어 쿠폰·스탬프 보유 여부로만 거른다.
   bool _couponOnly = false;
   bool _stampOnly = false;
@@ -224,7 +231,43 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         .addListener(_handleDeepLinkRestaurant);
     DeepLinkService.instance.pendingQrVisitCoupon
         .addListener(_handleQrVisitCoupon);
-    _load();
+    _initializeCampusThenLoad();
+  }
+
+  /// 대학가 기본 선택값을 정하고(직접 고른 적 있으면 그 값, 없으면 프로필의
+  /// campus) 목록을 불러온다. (그래야 '전체'로 한 번 그렸다가 다시 바뀌는
+  /// 깜빡임이 없다.)
+  Future<void> _initializeCampusThenLoad() async {
+    setState(() => _isLoading = true);
+    final savedCampus = await _loadSavedCampusOverride();
+    if (!mounted) return;
+    if (savedCampus != null) {
+      // 사용자가 드롭다운에서 이미 한 번 고른 적이 있으면 그 선택을 그대로 우선한다.
+      _selectedCampus = savedCampus;
+    } else {
+      final profile = await UserService.fetchCurrentUserProfile();
+      if (!mounted) return;
+      final campus = profile?['campus']?.toString();
+      if (isKnownCampus(campus)) {
+        _selectedCampus = campus!;
+      }
+    }
+    await _load();
+  }
+
+  /// 드롭다운에서 직접 고른 적 있는 대학가('전체' 포함)를 기기에서 읽는다.
+  /// 고른 적 없으면 null.
+  Future<String?> _loadSavedCampusOverride() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString(_kSelectedCampusKey);
+    if (saved == null) return null;
+    if (saved == kCampusFilterAll || isKnownCampus(saved)) return saved;
+    return null;
+  }
+
+  Future<void> _persistSelectedCampus(String value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kSelectedCampusKey, value);
   }
 
   @override
@@ -302,6 +345,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         limit: _kGeneralRestaurantPageSize,
         offset: 0,
         includeAffiliates: true,
+        campus: _selectedCampus,
       );
       final affiliateRestaurants = response.affiliateRestaurants;
       final generalRestaurants = response.generalRestaurants;
@@ -526,6 +570,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         'zone': restaurant.zone,
         'phone_number': restaurant.phoneNumber,
         'url': restaurant.url,
+        'campus': restaurant.campus,
       };
     } else {
       snapshots.remove(key);
@@ -723,6 +768,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       imageUrls: restaurant.imageUrls,
       stampCurrent: status.current,
       stampTarget: status.target,
+      campus: restaurant.campus,
       couponBenefitsSummary: restaurant.couponBenefitsSummary,
       promotionText: restaurant.promotionText,
     );
@@ -931,6 +977,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         limit: _kGeneralRestaurantPageSize,
         offset: nextOffset,
         includeAffiliates: false,
+        campus: _selectedCampus,
       );
       if (!mounted) return;
 
@@ -1415,15 +1462,16 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             _buildCategoryFilter(),
             const SizedBox(height: 12),
             _buildFilterChips(),
+            // 대학가 드롭다운은 '내 혜택이 있는 곳' 줄 오른쪽 끝에 항상 둔다.
+            // 로딩/결과 0건 상태에서도 여기서 대학가를 바로 바꿀 수 있어야 하므로
+            // isLoading·isEmpty 분기 밖(항상 렌더링되는 자리)에 둔다.
+            _buildAffiliateSectionHeaderRow(affiliates),
             if (_isLoading)
               _buildSkeletonList()
             else if (isEmpty)
               _buildEmptyState()
-            else ...[
-              if (_requiresLogin) _buildLoginBanner(),
-              if (affiliates.isNotEmpty)
-                _buildSectionHeader('내 혜택이 있는 곳', affiliates.length),
-            ],
+            else if (_requiresLogin)
+              _buildLoginBanner(),
           ]),
         ),
       ),
@@ -1500,6 +1548,66 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         ),
       ),
       child: _buildGeneralRestaurantCard(restaurant),
+    );
+  }
+
+  String _campusFilterLabel(String value) =>
+      value == kCampusFilterAll ? '전체' : value;
+
+  /// '내 혜택이 있는 곳' 줄 오른쪽 끝에 놓이는 대학가(상권) 드롭다운.
+  /// 로그인 사용자는 저장된 campus가 기본 선택된다.
+  Widget _buildCampusFilter() {
+    const options = <String>[kCampusFilterAll, ...kCampusOptions];
+    return PopupMenuButton<String>(
+      offset: const Offset(0, 36),
+      color: Colors.white,
+      elevation: 3,
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onSelected: (value) {
+        if (value == _selectedCampus) return;
+        AnalyticsLogger.logEvent(
+          'affiliate_campus_filter_click',
+          parameters: {'campus': value},
+        );
+        setState(() => _selectedCampus = value);
+        _persistSelectedCampus(value);
+        _load();
+      },
+      itemBuilder: (context) => [
+        for (final value in options)
+          PopupMenuItem<String>(
+            value: value,
+            height: 42,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _campusFilterLabel(value),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: value == _selectedCampus
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: value == _selectedCampus
+                          ? const Color(0xFF4F46E5)
+                          : const Color(0xFF111827),
+                    ),
+                  ),
+                ),
+                if (value == _selectedCampus)
+                  const Icon(Icons.check_rounded,
+                      size: 18, color: Color(0xFF4F46E5)),
+              ],
+            ),
+          ),
+      ],
+      child: _buildFilterChip(
+        label: _campusFilterLabel(_selectedCampus),
+        selected: _selectedCampus != kCampusFilterAll,
+        trailingIcon: Icons.keyboard_arrow_down_rounded,
+        onTap: null,
+      ),
     );
   }
 
@@ -1748,6 +1856,51 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
               color: Color(0xFF4F46E5),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  /// '내 혜택이 있는 곳' 타이틀과 대학가 드롭다운을 한 줄에 놓는다 — 드롭다운은
+  /// 로딩/결과 0건일 때도(제목이 안 보여도) 항상 오른쪽 끝에 남아 있어야
+  /// 사용자가 그 상태에서도 바로 대학가를 바꿀 수 있다.
+  Widget _buildAffiliateSectionHeaderRow(
+    List<AffiliateRestaurantSummary> affiliates,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          if (affiliates.isNotEmpty)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                const Text(
+                  '내 혜택이 있는 곳',
+                  style: TextStyle(
+                    fontSize: 16.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.3,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+                const SizedBox(width: 7),
+                Text(
+                  '${affiliates.length}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF4F46E5),
+                  ),
+                ),
+              ],
+            )
+          else
+            const SizedBox.shrink(),
+          _buildCampusFilter(),
         ],
       ),
     );
@@ -3887,6 +4040,8 @@ class _AffiliateRestaurantDetailSheetState
       ],
       if (restaurant.category.isNotEmpty) ['분류', restaurant.category],
       if (restaurant.zone.isNotEmpty) ['위치', restaurant.zone],
+      if (restaurant.campus != null && restaurant.campus!.isNotEmpty)
+        ['대학가', restaurant.campus!],
     ];
 
     return Container(

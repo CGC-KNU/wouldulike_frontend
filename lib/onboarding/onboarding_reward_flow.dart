@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../config/analytics_events.dart';
+import '../data/campus_options.dart';
 import '../services/affiliate_service.dart';
 import '../services/coupon_service.dart';
+import '../services/user_service.dart';
 import '../utils/analytics_logger.dart';
 import '../widgets/category_strip.dart';
 import 'onboarding_prefs.dart';
@@ -64,6 +66,13 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   /// 필터링된 목록(_visibleRestaurants) 기준 인덱스. 필터가 바뀌면 초기화한다.
   int? _selectedIndex;
   String _categoryKey = 'ALL';
+  /// 대학가 필터. 로그인 상태면 프로필의 campus로 기본 선택된다.
+  String _selectedCampus = kCampusFilterAll;
+  /// 대학가를 골랐는지(프로필에서 이미 알고 있어도 포함). 이게 true가 되기
+  /// 전에는 식당 목록 자체를 보여주지 않는다 — '전체'를 명시적으로 고른 것과
+  /// '아직 고르지 않음'을 구분해야 해서 _selectedCampus 하나만으로는 안 된다.
+  bool _campusChosen = false;
+  bool _restaurantsRequested = false;
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
 
@@ -98,6 +107,33 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   }
 
   Future<void> _bootstrap() async {
+    if (!widget.preLogin) {
+      // 프로필에 이미 campus가 있으면 바로 그 대학가로 넘어간다(식당 탭과 동일한
+      // 기본값 결정 방식) — 이미 아는 사용자에게 또 고르라고 하지 않는다.
+      // preLogin(로그인 전 미리보기)에는 조회할 사용자가 없어 아래 '고르지 않음'
+      // 상태 그대로 둔다.
+      final profile = await UserService.fetchCurrentUserProfile();
+      if (!mounted) return;
+      final campus = profile?['campus']?.toString();
+      if (isKnownCampus(campus)) {
+        setState(() {
+          _selectedCampus = campus!;
+          _campusChosen = true;
+        });
+      }
+    }
+    if (_campusChosen) {
+      await _requestRestaurantsIfNeeded();
+    } else {
+      // 대학가를 아직 모르면 식당을 미리 불러오지 않는다 — 드롭다운에서 고르면
+      // 그때 불러온다.
+      setState(() => _isLoadingRestaurants = false);
+    }
+  }
+
+  Future<void> _requestRestaurantsIfNeeded() async {
+    if (_restaurantsRequested) return;
+    _restaurantsRequested = true;
     await _loadRestaurants();
   }
 
@@ -108,10 +144,13 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     super.dispose();
   }
 
-  /// 카테고리·검색어로 걸러낸 목록. 선택 인덱스는 이 목록 기준이다.
+  /// 대학가·카테고리·검색어로 걸러낸 목록. 선택 인덱스는 이 목록 기준이다.
   List<AffiliateRestaurantSummary> get _visibleRestaurants {
     final query = _searchQuery.trim().toLowerCase();
     return _restaurants.where((r) {
+      if (_selectedCampus != kCampusFilterAll && r.campus != _selectedCampus) {
+        return false;
+      }
       if (_categoryKey != 'ALL' &&
           normalizeCategoryKey(r.category) != _categoryKey) {
         return false;
@@ -131,8 +170,10 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
     List<AffiliateRestaurantSummary> restaurants = const [];
     try {
       // 웰컴 보상 쿠폰이 설정된 식당만 걸러진 전용 목록을 우선 쓴다 — 여기서
-      // 고르면 이후 웰컴 미션 보상이 확실히 나간다.
-      restaurants = await AffiliateService.fetchSignupRestaurants();
+      // 고르면 이후 웰컴 미션 보상이 확실히 나간다. 대학가 드롭다운은 클라이언트
+      // 사이드로 거르므로(카테고리·검색어와 동일한 패턴) 항상 전체를 받아온다.
+      restaurants =
+          await AffiliateService.fetchSignupRestaurants(campus: kCampusFilterAll);
     } catch (_) {
       // 신규 엔드포인트 실패 시 기존 목록으로 폴백
     }
@@ -387,27 +428,40 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
         children: [
           const Text('어디서 쓸까요?', style: OnboardingStyle.title),
           const SizedBox(height: 8),
-          const Text('원하는 식당을 선택해 주세요.', style: OnboardingStyle.subtitle),
-          const SizedBox(height: 16),
-          _buildSearchBar(),
-          const SizedBox(height: 4),
-          // 식당 탭과 같은 카테고리 아이콘 줄 (widgets/category_strip.dart 공용)
-          CategoryStrip(
-            selected: _categoryKey,
-            onSelect: (key) => setState(() {
-              _categoryKey = key;
-              _selectedIndex = null; // 목록이 바뀌면 인덱스가 어긋난다
-            }),
+          Text(
+            _campusChosen ? '원하는 식당을 선택해 주세요.' : '먼저 대학가를 선택해주세요.',
+            style: OnboardingStyle.subtitle,
           ),
-          const SizedBox(height: 8),
-          Expanded(child: _buildRestaurantList()),
           const SizedBox(height: 12),
-          ElevatedButton(
-            style:
-                OnboardingStyle.primaryButton(enabled: _selectedIndex != null),
-            onPressed: _selectedIndex == null ? null : _startSpin,
-            child: const Text('이 식당으로 뽑기'),
-          ),
+          _campusChosen
+              ? Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildCampusFilter(),
+                )
+              : _buildCampusFilter(prominent: true),
+          if (_campusChosen) ...[
+            const SizedBox(height: 8),
+            _buildSearchBar(),
+            const SizedBox(height: 4),
+            // 식당 탭과 같은 카테고리 아이콘 줄 (widgets/category_strip.dart 공용)
+            CategoryStrip(
+              selected: _categoryKey,
+              onSelect: (key) => setState(() {
+                _categoryKey = key;
+                _selectedIndex = null; // 목록이 바뀌면 인덱스가 어긋난다
+              }),
+            ),
+            const SizedBox(height: 8),
+            Expanded(child: _buildRestaurantList()),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              style: OnboardingStyle.primaryButton(
+                  enabled: _selectedIndex != null),
+              onPressed: _selectedIndex == null ? null : _startSpin,
+              child: const Text('이 식당으로 뽑기'),
+            ),
+          ] else
+            const Spacer(),
           Center(
             child: TextButton(
               onPressed: () => _finish(skipped: true),
@@ -424,6 +478,126 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
           ),
         ],
       ),
+    );
+  }
+
+  String _campusFilterLabel(String value) =>
+      value == kCampusFilterAll ? '전체' : value;
+
+  /// 대학가 드롭다운. 여기서 고른 대학가의 식당을 골라 쿠폰을 받으면, 그 대학가가
+  /// 사용자의 대학가로 저장된다(서버 issue_signup_coupon에서 동기화).
+  /// [prominent]=true면 아직 대학가를 고르지 않은 첫 화면에 쓰는 큰 버튼 형태.
+  Widget _buildCampusFilter({bool prominent = false}) {
+    const options = <String>[kCampusFilterAll, ...kCampusOptions];
+    final isFiltered = _campusChosen && _selectedCampus != kCampusFilterAll;
+    return PopupMenuButton<String>(
+      offset: const Offset(0, 8),
+      color: Colors.white,
+      elevation: 3,
+      position: PopupMenuPosition.under,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onSelected: (value) {
+        if (_campusChosen && value == _selectedCampus) return;
+        setState(() {
+          _selectedCampus = value;
+          _campusChosen = true;
+          _selectedIndex = null; // 목록이 바뀌면 인덱스가 어긋난다
+        });
+        _requestRestaurantsIfNeeded();
+      },
+      itemBuilder: (context) => [
+        for (final value in options)
+          PopupMenuItem<String>(
+            value: value,
+            height: 42,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _campusFilterLabel(value),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: value == _selectedCampus
+                          ? FontWeight.w700
+                          : FontWeight.w500,
+                      color: value == _selectedCampus
+                          ? OnboardingStyle.primary
+                          : OnboardingStyle.ink,
+                    ),
+                  ),
+                ),
+                if (_campusChosen && value == _selectedCampus)
+                  const Icon(Icons.check_rounded,
+                      size: 18, color: OnboardingStyle.primary),
+              ],
+            ),
+          ),
+      ],
+      child: prominent
+          ? Container(
+              width: double.infinity,
+              height: 54,
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: OnboardingStyle.accent, width: 1.5),
+              ),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    '대학가를 선택해 주세요',
+                    style: TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: OnboardingStyle.ink,
+                    ),
+                  ),
+                  Icon(Icons.keyboard_arrow_down_rounded,
+                      color: OnboardingStyle.accent),
+                ],
+              ),
+            )
+          : Container(
+              height: 31,
+              padding: const EdgeInsets.symmetric(horizontal: 11),
+              decoration: ShapeDecoration(
+                color: isFiltered ? OnboardingStyle.accentSoft : Colors.white,
+                shape: RoundedRectangleBorder(
+                  side: BorderSide(
+                    width: 1,
+                    color: isFiltered
+                        ? OnboardingStyle.accent
+                        : OnboardingStyle.line,
+                  ),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _campusFilterLabel(_selectedCampus),
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w600,
+                      color: isFiltered
+                          ? OnboardingStyle.primary
+                          : OnboardingStyle.body,
+                    ),
+                  ),
+                  Icon(
+                    Icons.keyboard_arrow_down_rounded,
+                    size: 16,
+                    color: isFiltered
+                        ? OnboardingStyle.primary
+                        : OnboardingStyle.body,
+                  ),
+                ],
+              ),
+            ),
     );
   }
 
@@ -500,6 +674,9 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
       selectedIndex: _selectedIndex,
       onSelect: (i) => setState(() => _selectedIndex = i),
       onRetry: _loadRestaurants,
+      // '전체'를 볼 때만 각 식당이 어느 대학가인지 표기한다. 특정 대학가를
+      // 골랐을 때는 어차피 다 같은 대학가라 표기가 불필요하다.
+      showCampusLabel: _selectedCampus == kCampusFilterAll,
     );
   }
 
