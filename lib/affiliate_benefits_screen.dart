@@ -3037,12 +3037,12 @@ class _AffiliateRestaurantDetailSheetState
       if (!mounted) return;
       setState(() {
         _stampError =
-            _extractDetailMessage(e.body) ?? 'HTTP ${e.statusCode}: ${e.body}';
+            _extractDetailMessage(e.body) ?? '스탬프 정보를 처리하지 못했어요. ${e.friendlyMessage}';
       });
     } on ApiNetworkException catch (e) {
       if (!mounted) return;
       setState(() {
-        _stampError = '네트워크 오류: ${e.cause}';
+        _stampError = '네트워크 연결을 확인해 주세요.';
       });
     } catch (e) {
       if (!mounted) return;
