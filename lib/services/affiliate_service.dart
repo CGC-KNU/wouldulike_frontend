@@ -17,6 +17,7 @@ class AffiliateRestaurantSummary {
     required this.imageUrls,
     required this.stampCurrent,
     required this.stampTarget,
+    this.campus,
     this.couponBenefitsSummary,
     this.promotionText,
   });
@@ -88,6 +89,9 @@ class AffiliateRestaurantSummary {
       imageUrls: parseImages(json['s3_image_urls']),
       stampCurrent: parseStampCurrent(),
       stampTarget: parseStampTarget(),
+      campus: (json['campus']?.toString().trim().isEmpty ?? true)
+          ? null
+          : json['campus'].toString().trim(),
       couponBenefitsSummary: parseCouponBenefitsSummary(),
       promotionText: parsePromotionText(),
     );
@@ -104,6 +108,9 @@ class AffiliateRestaurantSummary {
   final List<String> imageUrls;
   final int stampCurrent;
   final int stampTarget;
+
+  /// 대학가(상권) 구분. 값이 없으면(미지정) null.
+  final String? campus;
   final CouponBenefitsSummary? couponBenefitsSummary;
 
   /// 상세 단건 API(`affiliate-restaurants/detail/`)에만 있다. 목록 응답에는 없다고 본다.

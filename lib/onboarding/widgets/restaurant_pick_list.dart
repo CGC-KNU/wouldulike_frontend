@@ -16,6 +16,7 @@ class RestaurantPickList extends StatelessWidget {
     required this.onSelect,
     required this.onRetry,
     this.detailOf,
+    this.isSelected,
   });
 
   final bool loading;
@@ -27,6 +28,9 @@ class RestaurantPickList extends StatelessWidget {
 
   /// 이름·카테고리 아래에 붙는 부가 문구 (한정쿠폰 혜택 등). 없으면 튜토리얼과 동일.
   final String? Function(AffiliateRestaurantSummary restaurant)? detailOf;
+
+  /// 여러 곳을 고르는 화면용. 주면 [selectedIndex] 대신 이것으로 선택 표시를 한다.
+  final bool Function(AffiliateRestaurantSummary restaurant)? isSelected;
 
   @override
   Widget build(BuildContext context) {
@@ -53,7 +57,8 @@ class RestaurantPickList extends StatelessWidget {
       separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final restaurant = restaurants[index];
-        final selected = selectedIndex == index;
+        final selected =
+            isSelected?.call(restaurant) ?? selectedIndex == index;
         final meta = [restaurant.category, restaurant.zone]
             .where((s) => s.isNotEmpty)
             .join(' · ');

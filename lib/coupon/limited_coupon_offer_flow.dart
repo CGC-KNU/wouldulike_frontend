@@ -5,7 +5,7 @@ import 'package:new1/services/api_client.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/widgets/coupon_issued_dialog.dart';
 
-/// 기간 한정 기획전 선택형 한정쿠폰.
+/// 기간 한정 기획전 선택형 한정쿠폰 + 학생회·이벤트 코드로 받은 식당 선택권.
 /// 앱 접속 시 자동 발급하지 않고, offers에서 아직 안 받은 항목만 식당 선택 UI를 띄운다.
 class LimitedCouponOfferFlow {
   LimitedCouponOfferFlow._();
@@ -38,10 +38,10 @@ class LimitedCouponOfferFlow {
         // 미션 완주와 같은 선물상자 팝업. 선택 화면을 닫은 뒤에만 띄운다.
         await showCouponIssuedDialog(
           context,
-          tag: '한정쿠폰',
+          tag: offer.tagLabel,
           title: (result!.title != null && result.title!.isNotEmpty)
               ? result.title!
-              : '한정쿠폰을 받았어요',
+              : '${offer.tagLabel}을 받았어요',
           issuedCodes: result.issuedCodes,
         );
       }

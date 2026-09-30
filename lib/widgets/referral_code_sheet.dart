@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
+import 'package:new1/coupon/limited_coupon_pick_sheet.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/widgets/coupon_issued_dialog.dart';
@@ -18,6 +19,7 @@ class ReferralSheetResult {
     this.tag = '쿠폰 발급',
     this.title = '쿠폰이 발급되었어요',
     this.message,
+    this.selectOffer,
   });
 
   final ReferralSheetStatus status;
@@ -26,6 +28,9 @@ class ReferralSheetResult {
   final String tag;
   final String title;
   final String? message;
+
+  /// 식당을 골라 받는 코드(학생회 코드 등). 있으면 발급 팝업 대신 선택 화면을 띄운다.
+  final LimitedCouponOffer? selectOffer;
 }
 
 Future<ReferralSheetResult?> presentReferralCodeSheet(
@@ -56,6 +61,30 @@ Future<ReferralSheetResult?> presentReferralCodeSheet(
       ..showSnackBar(
         SnackBar(content: Text(result.message ?? '이미 받은 쿠폰이에요')),
       );
+    return result;
+  }
+
+  final selectOffer = result.selectOffer;
+  if (result.status == ReferralSheetStatus.success && selectOffer != null) {
+    final picked =
+        await showLimitedCouponPickSheet(context, offer: selectOffer);
+    if (!context.mounted) return result;
+    if (picked?.claimed == true) {
+      await showCouponIssuedDialog(
+        context,
+        tag: selectOffer.tagLabel,
+        title: (picked!.title != null && picked.title!.isNotEmpty)
+            ? picked.title!
+            : result.title,
+        issuedCodes: picked.issuedCodes,
+      );
+    } else {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(content: Text('앱에 다시 들어오면 이어서 고를 수 있어요.')),
+        );
+    }
     return result;
   }
 
@@ -108,6 +137,20 @@ class ReferralCodeSheetState extends State<ReferralCodeSheet> {
     try {
       final accepted = await CouponService.acceptReferralCode(refCode: code);
       final copy = referralIssuedCopy(accepted);
+      final selectOffer = accepted.selectOffer;
+      if (selectOffer != null && selectOffer.needsSelection) {
+        if (!mounted) return;
+        closed = true;
+        Navigator.of(context).pop(
+          ReferralSheetResult(
+            status: ReferralSheetStatus.success,
+            tag: copy.tag,
+            title: copy.title,
+            selectOffer: selectOffer,
+          ),
+        );
+        return;
+      }
       UserCoupon? coupon;
       try {
         coupon = await CouponService.fetchIssuedCouponCard(
@@ -192,6 +235,9 @@ class ReferralCodeSheetState extends State<ReferralCodeSheet> {
     if (parsed != null && _looksLikeInvalidCode(parsed)) {
       return '없는 코드예요';
     }
+    if (parsed != null && _looksLikeEmptyPool(parsed)) {
+      return '내 대학가에서 이 코드로 받을 수 있는 식당이 아직 없어요.';
+    }
     if (parsed != null && parsed.trim().isNotEmpty) {
       return parsed;
     }
@@ -206,6 +252,13 @@ class ReferralCodeSheetState extends State<ReferralCodeSheet> {
     return lower.contains('invalid referral') ||
         lower.contains('invalid code') ||
         lower.contains('not found');
+  }
+
+  /// 서버는 대학가 필터로 후보 식당이 비면 영어 문구로 답한다.
+  bool _looksLikeEmptyPool(String message) {
+    final lower = message.toLowerCase();
+    return lower.contains('no restaurants available') ||
+        lower.contains('no benefits available');
   }
 
   bool _looksLikeMachineError(String message) {

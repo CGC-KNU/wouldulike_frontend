@@ -41,7 +41,8 @@ class LimitedCouponPickSheet extends StatefulWidget {
 }
 
 class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
-  int? _selectedIndex;
+  /// 고른 식당 id. 여러 곳을 고르는 오퍼는 검색·카테고리를 바꿔도 선택을 유지한다.
+  final List<int> _selectedIds = [];
   String _categoryKey = 'ALL';
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
@@ -49,6 +50,33 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
   String? _error;
 
   LimitedCouponOffer get offer => widget.offer;
+
+  int get _picksNeeded => offer.picksNeeded < 1 ? 1 : offer.picksNeeded;
+
+  bool get _selectionComplete => _selectedIds.length == _picksNeeded;
+
+  void _toggle(int restaurantId) {
+    setState(() {
+      _error = null;
+      if (!offer.isMultiPick) {
+        _selectedIds
+          ..clear()
+          ..add(restaurantId);
+        return;
+      }
+      if (_selectedIds.remove(restaurantId)) return;
+      if (_selectedIds.length >= _picksNeeded) {
+        _error = '$_picksNeeded곳까지 고를 수 있어요. 바꾸려면 먼저 하나를 빼 주세요.';
+        return;
+      }
+      _selectedIds.add(restaurantId);
+    });
+  }
+
+  /// 단일 선택은 목록이 바뀌면 보이지 않는 식당이 선택된 채 남지 않게 비운다.
+  void _resetSingleSelection() {
+    if (!offer.isMultiPick) _selectedIds.clear();
+  }
 
   late final List<AffiliateRestaurantSummary> _restaurants = [
     for (final r in offer.restaurants)
@@ -97,14 +125,15 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
   }
 
   Future<void> _claim() async {
-    final visible = _visibleRestaurants;
-    if (_selectedIndex == null || _selectedIndex! >= visible.length) {
-      setState(() => _error = '식당을 선택해 주세요.');
+    if (!_selectionComplete) {
+      setState(() => _error = offer.isMultiPick
+          ? '식당 $_picksNeeded곳을 골라 주세요.'
+          : '식당을 선택해 주세요.');
       return;
     }
-    final restaurantId = visible[_selectedIndex!].id;
-    final allowed =
-        offer.restaurants.any((r) => r.restaurantId == restaurantId);
+    final ids = List<int>.of(_selectedIds);
+    final allowed = ids.every(
+        (id) => offer.restaurants.any((r) => r.restaurantId == id));
     if (!allowed) {
       setState(() => _error = '이 식당은 한정쿠폰 대상이 아니에요.');
       return;
@@ -115,7 +144,8 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
     });
     final result = await CouponService.claimLimitedCoupon(
       couponTypeCode: offer.couponTypeCode,
-      restaurantId: restaurantId,
+      restaurantId: ids.first,
+      restaurantIds: offer.isMultiPick ? ids : null,
     );
     if (!mounted) return;
     if (!result.isSuccess) {
@@ -143,6 +173,13 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
     );
   }
 
+  String get _buttonLabel {
+    if (_submitting) return '받는 중…';
+    if (!offer.isMultiPick) return '이 식당 쿠폰 받기';
+    if (_selectionComplete) return '$_picksNeeded곳 쿠폰 받기';
+    return '식당 고르기 (${_selectedIds.length}/$_picksNeeded)';
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = offer.couponTypeTitle?.trim();
@@ -160,10 +197,20 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
                 style: OnboardingStyle.title,
               ),
               const SizedBox(height: 8),
-              const Text(
-                '원하는 식당을 선택해 주세요.',
+              Text(
+                offer.isMultiPick
+                    ? '쿠폰을 받을 식당 $_picksNeeded곳을 골라 주세요.'
+                    : '원하는 식당을 선택해 주세요.',
                 style: OnboardingStyle.subtitle,
               ),
+              if (offer.pickCount > offer.remainingCount &&
+                  offer.remainingCount > 0) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '${offer.pickCount}곳 중 ${offer.pickCount - offer.remainingCount}곳은 이미 받았어요.',
+                  style: OnboardingStyle.caption,
+                ),
+              ],
               if (offer.validDays != null && offer.validDays! > 0) ...[
                 const SizedBox(height: 6),
                 Text(
@@ -191,7 +238,7 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
                 selected: _categoryKey,
                 onSelect: (key) => setState(() {
                   _categoryKey = key;
-                  _selectedIndex = null;
+                  _resetSingleSelection();
                   _error = null;
                 }),
               ),
@@ -212,10 +259,10 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
               const SizedBox(height: 12),
               ElevatedButton(
                 style: OnboardingStyle.primaryButton(
-                  enabled: !_submitting && _selectedIndex != null,
+                  enabled: !_submitting && _selectionComplete,
                 ),
-                onPressed: _submitting || _selectedIndex == null ? null : _claim,
-                child: Text(_submitting ? '받는 중…' : '이 식당 쿠폰 받기'),
+                onPressed: _submitting || !_selectionComplete ? null : _claim,
+                child: Text(_buttonLabel),
               ),
               Center(
                 child: TextButton(
@@ -264,7 +311,7 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
         ),
         onChanged: (value) => setState(() {
           _searchQuery = value;
-          _selectedIndex = null;
+          _resetSingleSelection();
           _error = null;
         }),
         decoration: InputDecoration(
@@ -290,7 +337,7 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
                     _searchController.clear();
                     setState(() {
                       _searchQuery = '';
-                      _selectedIndex = null;
+                      _resetSingleSelection();
                     });
                   },
                 ),
@@ -309,13 +356,9 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
       loading: false,
       failed: visible.isEmpty,
       restaurants: visible,
-      selectedIndex: _selectedIndex,
-      onSelect: _submitting
-          ? (_) {}
-          : (i) => setState(() {
-                _selectedIndex = i;
-                _error = null;
-              }),
+      selectedIndex: null,
+      isSelected: (r) => _selectedIds.contains(r.id),
+      onSelect: _submitting ? (_) {} : (i) => _toggle(visible[i].id),
       onRetry: () {},
       detailOf: (summary) {
         final source = _offerRestaurant(summary.id);

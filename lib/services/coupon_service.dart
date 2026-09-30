@@ -787,6 +787,10 @@ class LimitedCouponOffer {
     this.endAt,
     required this.claimed,
     required this.redeemBonus,
+    this.source,
+    this.eventKind,
+    this.pickCount = 1,
+    this.remainingCount = 1,
     this.restaurants = const [],
     this.issuedCoupons = const [],
   });
@@ -837,6 +841,10 @@ class LimitedCouponOffer {
       endAt: _parseDate(json['end_at']),
       claimed: json['claimed'] == true,
       redeemBonus: json['redeem_bonus'] == true,
+      source: _normalizeString(json['source']),
+      eventKind: _normalizeString(json['event_kind']),
+      pickCount: _parseOptionalInt(json['pick_count']) ?? 1,
+      remainingCount: _parseOptionalInt(json['remaining_count']) ?? 1,
       restaurants: parseRestaurants(),
       issuedCoupons: parseIssued(),
     );
@@ -849,8 +857,35 @@ class LimitedCouponOffer {
   final DateTime? endAt;
   final bool claimed;
   final bool redeemBonus;
+
+  /// "CODE" = 학생회·이벤트 코드를 입력해 받은 선택권. 없으면 앱 접속 기획전.
+  final String? source;
+
+  /// source == CODE 일 때 "student_council" | "special"
+  final String? eventKind;
+
+  /// 이 오퍼로 고를 수 있는 식당 수 전체 / 아직 남은 수. 앱 접속 기획전은 1.
+  final int pickCount;
+  final int remainingCount;
   final List<LimitedCouponRestaurant> restaurants;
   final List<IssuedCouponInfo> issuedCoupons;
+
+  bool get isStudentCouncil => eventKind?.toLowerCase() == 'student_council';
+
+  /// 이번 화면에서 골라야 하는 식당 수. 후보가 모자라면 후보 수까지만.
+  int get picksNeeded {
+    final remaining = remainingCount < 1 ? 1 : remainingCount;
+    return restaurants.length < remaining ? restaurants.length : remaining;
+  }
+
+  bool get isMultiPick => picksNeeded > 1;
+
+  /// 발급 팝업·선택 화면 태그.
+  String get tagLabel {
+    if (isStudentCouncil) return '학생회 쿠폰';
+    if (source?.toUpperCase() == 'CODE') return '이벤트 쿠폰';
+    return '한정쿠폰';
+  }
 
   bool get needsSelection =>
       !claimed && couponTypeCode.isNotEmpty && restaurants.isNotEmpty;
@@ -902,6 +937,12 @@ String limitedClaimErrorMessage(String? code, String? detail) {
       return '아직 준비되지 않은 기획전이에요.';
     case 'not_found':
       return '쿠폰 정보를 찾지 못했어요.';
+    case 'not_entitled':
+      return '코드를 먼저 입력해 주세요.';
+    case 'already_claimed':
+      return '이미 쿠폰을 모두 받았어요.';
+    case 'too_many':
+      return '고를 수 있는 식당 수를 넘었어요.';
     default:
       return '쿠폰을 받지 못했어요. 잠시 후 다시 시도해 주세요.';
   }
@@ -975,9 +1016,11 @@ class ReferralAcceptResponse {
     this.codeKind,
     this.eventKind,
     this.issuedCoupons = const [],
+    this.selectOffer,
   });
 
   factory ReferralAcceptResponse.fromJson(Map<String, dynamic> json) {
+    final rawOffer = json['select_offer'];
     List<IssuedCouponInfo> parseIssuedCoupons() {
       final value = json['issued_coupons'];
       if (value is! List) return const [];
@@ -1002,6 +1045,9 @@ class ReferralAcceptResponse {
       codeKind: _normalizeString(json['code_kind']),
       eventKind: _normalizeString(json['event_kind']),
       issuedCoupons: parseIssuedCoupons(),
+      selectOffer: rawOffer is Map
+          ? LimitedCouponOffer.fromJson(Map<String, dynamic>.from(rawOffer))
+          : null,
     );
   }
 
@@ -1017,6 +1063,9 @@ class ReferralAcceptResponse {
 
   /// 이번 입력으로 나간 쿠폰 요약. 매장명·혜택 제목은 부족할 수 있음.
   final List<IssuedCouponInfo> issuedCoupons;
+
+  /// 바로 발급하지 않고 식당을 골라 받는 코드(학생회 코드 등)일 때만 온다.
+  final LimitedCouponOffer? selectOffer;
 
   bool get isEvent => codeKind?.toLowerCase() == 'event';
   bool get isReferral => codeKind?.toLowerCase() == 'referral';
@@ -1641,9 +1690,11 @@ class CouponService {
   }
 
   /// POST /api/coupons/limited/claim/
+  /// 여러 곳을 고르는 오퍼(학생회 코드 등)는 [restaurantIds]를 한 번에 보낸다.
   static Future<LimitedCouponClaimResult> claimLimitedCoupon({
     required String couponTypeCode,
     required int restaurantId,
+    List<int>? restaurantIds,
   }) async {
     try {
       final response = await ApiClient.postWithoutThrow(
@@ -1651,6 +1702,8 @@ class CouponService {
         body: {
           'coupon_type_code': couponTypeCode,
           'restaurant_id': restaurantId,
+          if (restaurantIds != null && restaurantIds.isNotEmpty)
+            'restaurant_ids': restaurantIds,
         },
       );
       if (response.statusCode >= 400) {

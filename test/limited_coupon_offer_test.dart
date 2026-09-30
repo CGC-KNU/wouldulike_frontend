@@ -91,6 +91,76 @@ void main() {
     expect(result.bonusCoupon, isNull);
   });
 
+  test('app-open offer without pick fields stays single pick', () {
+    final offer = LimitedCouponOffer.fromJson({
+      'coupon_type_code': 'SPECIAL_APRIL',
+      'claimed': false,
+      'restaurants': [
+        {'restaurant_id': 1, 'name': 'A'},
+        {'restaurant_id': 2, 'name': 'B'},
+      ],
+    });
+    expect(offer.picksNeeded, 1);
+    expect(offer.isMultiPick, isFalse);
+    expect(offer.tagLabel, '한정쿠폰');
+  });
+
+  test('student council code offer asks for remaining picks', () {
+    final offer = LimitedCouponOffer.fromJson({
+      'coupon_type_code': 'KNUSCSEPT',
+      'coupon_type_title': '[학생회 전용 쿠폰 ✨]',
+      'claimed': false,
+      'source': 'CODE',
+      'event_kind': 'student_council',
+      'pick_count': 3,
+      'remaining_count': 2,
+      'restaurants': [
+        {'restaurant_id': 1, 'name': 'A'},
+        {'restaurant_id': 2, 'name': 'B'},
+        {'restaurant_id': 3, 'name': 'C'},
+      ],
+    });
+    expect(offer.needsSelection, isTrue);
+    expect(offer.picksNeeded, 2);
+    expect(offer.isMultiPick, isTrue);
+    expect(offer.tagLabel, '학생회 쿠폰');
+  });
+
+  test('picks are capped by available restaurants', () {
+    final offer = LimitedCouponOffer.fromJson({
+      'coupon_type_code': 'KNUSCSEPT',
+      'claimed': false,
+      'source': 'CODE',
+      'pick_count': 3,
+      'remaining_count': 3,
+      'restaurants': [
+        {'restaurant_id': 1, 'name': 'A'},
+      ],
+    });
+    expect(offer.picksNeeded, 1);
+    expect(offer.isMultiPick, isFalse);
+  });
+
+  test('referral accept parses select_offer', () {
+    final res = ReferralAcceptResponse.fromJson({
+      'ok': true,
+      'code_kind': 'event',
+      'event_kind': 'student_council',
+      'select_offer': {
+        'coupon_type_code': 'KNUSCSEPT',
+        'claimed': false,
+        'pick_count': 3,
+        'remaining_count': 3,
+        'restaurants': [
+          {'restaurant_id': 1, 'name': 'A'},
+        ],
+      },
+    });
+    expect(res.issuedCouponCodes, isEmpty);
+    expect(res.selectOffer?.couponTypeCode, 'KNUSCSEPT');
+    expect(res.selectOffer?.pickCount, 3);
+  });
+
   test('limitedClaimErrorMessage prefers detail', () {
     expect(
       limitedClaimErrorMessage('invalid_restaurant', '목록에 없는 식당이에요'),
