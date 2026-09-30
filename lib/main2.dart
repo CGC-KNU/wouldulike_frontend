@@ -86,8 +86,13 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     if (!mounted) return;
     _popToThisRoute();
     setState(() => _selectedIndex = target.tabIndex);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _openDeepLink(target);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      await _openDeepLink(target);
+      // 앱이 이미 포그라운드인 채로 딥링크(푸시 탭 등)를 받은 경우.
+      // 화·목 골라받기처럼 쿠폰 탭 진입 시 바로 보여야 하는 오퍼를 놓치지 않게
+      // 콜드 스타트·앱 재개 때와 같이 여기서도 다시 확인한다.
+      if (mounted) LimitedCouponOfferFlow.maybePresent(context);
     });
   }
 

@@ -865,10 +865,10 @@ class _CouponListScreenState extends State<CouponListScreen> {
     if (_coupons.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.only(bottom: 140),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(32, 56, 32, 40),
+            padding: const EdgeInsets.fromLTRB(16, 44, 16, 40),
             child: Column(
               children: [
                 Container(
@@ -899,7 +899,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  '식당에서 혜택을 받으면\n이곳에 쿠폰이 모여요',
+                  '받은 쿠폰 번호를 입력하거나\n식당에서 혜택을 받으면 이곳에 모여요',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -907,8 +907,10 @@ class _CouponListScreenState extends State<CouponListScreen> {
                     color: Color(0xFF6B7280),
                   ),
                 ),
+                const SizedBox(height: 18),
+                _buildCouponCodeButton(),
                 if (widget.onGoToAffiliate != null) ...[
-                  const SizedBox(height: 18),
+                  const SizedBox(height: 12),
                   SizedBox(
                     height: 44,
                     child: ElevatedButton(
@@ -949,10 +951,14 @@ class _CouponListScreenState extends State<CouponListScreen> {
       ),
       children: [
         _buildCategoryFilter(),
-        if (widget.embedded) ...[
-          const SizedBox(height: 12),
-          _buildStatusFilter(),
-        ],
+        const SizedBox(height: 12),
+        if (widget.embedded)
+          _buildStatusFilter()
+        else
+          Align(
+            alignment: Alignment.centerRight,
+            child: _buildCouponCodeButton(),
+          ),
         const SizedBox(height: 12),
         if (filtered.isEmpty)
           SizedBox(

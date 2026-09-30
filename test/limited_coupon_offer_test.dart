@@ -168,4 +168,73 @@ void main() {
     );
     expect(limitedClaimErrorMessage('not_in_window', null), '기획전 기간이 아니에요.');
   });
+
+  test('limitedClaimErrorMessage covers campus_required and in_progress', () {
+    expect(
+      limitedClaimErrorMessage('campus_required', null),
+      '대학가를 먼저 등록하면 쿠폰을 받을 수 있어요.',
+    );
+    expect(
+      limitedClaimErrorMessage('in_progress', null),
+      '쿠폰을 받는 중이에요. 잠시 후 다시 시도해 주세요.',
+    );
+  });
+
+  test('TUE_THU_GENERAL_SELECT offer parses daily-only fields and tag', () {
+    final offer = LimitedCouponOffer.fromJson({
+      'coupon_type_code': 'TUE_THU_GENERAL_SELECT',
+      'coupon_type_title': '화·목 골라받기 쿠폰',
+      'valid_days': 1,
+      'valid_hours': 24,
+      'period': 'DAILY',
+      'restaurant_kind': 'GENERAL',
+      'claim_ends_at': '2026-10-06T23:59:59+09:00',
+      'claimed': false,
+      'redeem_bonus': false,
+      'user_campus': '경북대',
+      'campus_required': false,
+      'restaurants': [
+        {'restaurant_id': 12, 'name': '식당이름', 'title': '3,000원 할인'},
+      ],
+      'issued_coupons': [],
+    });
+    expect(offer.isTueThuGeneralSelect, isTrue);
+    expect(offer.tagLabel, '화·목 골라받기 쿠폰');
+    expect(offer.validHours, 24);
+    expect(offer.period, 'DAILY');
+    expect(offer.userCampus, '경북대');
+    expect(offer.campusRequired, isFalse);
+    expect(offer.claimEndsAt, isNotNull);
+    expect(offer.needsSelection, isTrue);
+    expect(offer.needsCampusRegistration, isFalse);
+  });
+
+  test('campus_required offer with empty restaurants skips picker but needs campus prompt', () {
+    final offer = LimitedCouponOffer.fromJson({
+      'coupon_type_code': 'TUE_THU_GENERAL_SELECT',
+      'claimed': false,
+      'user_campus': null,
+      'campus_required': true,
+      'restaurants': [],
+    });
+    expect(offer.needsSelection, isFalse);
+    expect(offer.needsCampusRegistration, isTrue);
+  });
+
+  test('claimed TUE_THU offer never needs campus prompt or selection again', () {
+    final offer = LimitedCouponOffer.fromJson({
+      'coupon_type_code': 'TUE_THU_GENERAL_SELECT',
+      'claimed': true,
+      'campus_required': false,
+      'restaurants': [
+        {'restaurant_id': 12, 'name': '식당이름'},
+      ],
+      'issued_coupons': [
+        {'code': 'ABC', 'restaurant_id': 12, 'coupon_type_code': 'TUE_THU_GENERAL_SELECT'},
+      ],
+    });
+    expect(offer.needsSelection, isFalse);
+    expect(offer.needsCampusRegistration, isFalse);
+    expect(offer.issuedCoupons.single.restaurantId, 12);
+  });
 }

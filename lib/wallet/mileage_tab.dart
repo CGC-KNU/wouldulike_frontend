@@ -2,157 +2,143 @@ import 'package:flutter/material.dart';
 
 import 'package:new1/services/mileage_service.dart';
 
-/// 지갑 마일리지 탭: 최근 내역 목록 (스펙 7.1).
-/// 적립은 양수 표기와 강조색, 사용은 음수 표기와 기본색. 커서 20건씩 로드.
-class MileageTab extends StatefulWidget {
-  const MileageTab({super.key});
+/// 지갑 마일리지 탭 맨 아래 최근 마일리지 내역 (스펙 7.1).
+/// 상점과 한 스크롤 안에 들어가므로 따로 스크롤하지 않고 최근 [maxItems]건만 보여준다.
+/// 적립은 양수 표기와 강조색, 사용은 음수 표기와 기본색.
+class MileageHistorySection extends StatefulWidget {
+  const MileageHistorySection({super.key, this.maxItems = 15});
+
+  final int maxItems;
 
   @override
-  State<MileageTab> createState() => _MileageTabState();
+  State<MileageHistorySection> createState() => _MileageHistorySectionState();
 }
 
-class _MileageTabState extends State<MileageTab> {
+class _MileageHistorySectionState extends State<MileageHistorySection> {
   static const _ink = Color(0xFF191F28);
   static const _muted = Color(0xFF4E5968);
   static const _faint = Color(0xFF8B95A1);
   static const _primary = Color(0xFF312E81);
+  static const _line = Color(0xFFE7E9EF);
 
-  final List<MileageEvent> _events = [];
-  final ScrollController _scrollController = ScrollController();
-  String? _nextCursor;
+  List<MileageEvent> _events = const [];
   bool _isLoading = true;
-  bool _isLoadingMore = false;
-  bool _hasMore = false;
 
   @override
   void initState() {
     super.initState();
-    _scrollController.addListener(_onScroll);
     _load();
   }
 
-  @override
-  void dispose() {
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _onScroll() {
-    if (!_hasMore || _isLoadingMore) return;
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 200) {
-      _loadMore();
-    }
-  }
-
   Future<void> _load() async {
-    setState(() => _isLoading = true);
     final page = await MileageService.fetchHistory();
     if (!mounted) return;
     setState(() {
-      _events
-        ..clear()
-        ..addAll(page.events);
-      _nextCursor = page.nextCursor;
-      _hasMore = page.hasMore;
+      _events = page.events.take(widget.maxItems).toList();
       _isLoading = false;
-    });
-  }
-
-  Future<void> _loadMore() async {
-    if (_nextCursor == null) return;
-    setState(() => _isLoadingMore = true);
-    final page = await MileageService.fetchHistory(cursor: _nextCursor);
-    if (!mounted) return;
-    setState(() {
-      _events.addAll(page.events);
-      _nextCursor = page.nextCursor;
-      _hasMore = page.hasMore;
-      _isLoadingMore = false;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator(color: _primary));
-    }
-
-    return RefreshIndicator(
-      color: const Color(0xFF6366F1),
-      backgroundColor: Colors.white,
-      strokeWidth: 2,
-      onRefresh: _load,
-      child: _events.isEmpty ? _buildEmpty() : _buildList(),
-    );
-  }
-
-  Widget _buildEmpty() {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.only(bottom: 140),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        SizedBox(
-          height: MediaQuery.of(context).size.height * 0.35,
-          child: const Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.savings_outlined, size: 48, color: _primary),
-                SizedBox(height: 12),
-                Text(
-                  '아직 마일리지 내역이 없어요.',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                    color: _ink,
-                  ),
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              const Text(
+                '마일리지 내역',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 19,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.6,
+                  color: _ink,
                 ),
-                SizedBox(height: 6),
-                Text(
-                  '제휴 매장에 방문하면 마일리지가 쌓여요.',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: _muted,
-                  ),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                '최근 ${widget.maxItems}건까지',
+                style: const TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: _faint,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+        ),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: _line),
+          ),
+          child: _buildContent(),
         ),
       ],
     );
   }
 
-  Widget _buildList() {
-    return ListView.separated(
-      controller: _scrollController,
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
-      itemCount: _events.length + (_isLoadingMore ? 1 : 0),
-      separatorBuilder: (_, __) => const Divider(
-        height: 1,
-        thickness: 1,
-        color: Color(0xFFF1F2F7),
-      ),
-      itemBuilder: (context, index) {
-        if (index >= _events.length) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Center(
-              child: SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
+  Widget _buildContent() {
+    if (_isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2, color: _primary),
+          ),
+        ),
+      );
+    }
+    if (_events.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 28),
+        child: Center(
+          child: Column(
+            children: [
+              Icon(Icons.savings_outlined, size: 36, color: _primary),
+              SizedBox(height: 10),
+              Text(
+                '아직 마일리지 내역이 없어요.',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: _ink,
+                ),
               ),
-            ),
-          );
-        }
-        return _buildRow(_events[index]);
-      },
+              SizedBox(height: 4),
+              Text(
+                '제휴 매장에 방문하면 마일리지가 쌓여요.',
+                style: TextStyle(
+                  fontFamily: 'Pretendard',
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w500,
+                  color: _muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return Column(
+      children: [
+        for (var i = 0; i < _events.length; i++) ...[
+          if (i > 0)
+            const Divider(height: 1, thickness: 1, color: Color(0xFFF1F2F7)),
+          _buildRow(_events[i]),
+        ],
+      ],
     );
   }
 

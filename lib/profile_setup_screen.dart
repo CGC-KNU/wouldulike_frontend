@@ -32,6 +32,11 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
 
   String? _selectedCampus;
 
+  /// 화면 진입 시 서버에서 받아온 기존 닉네임. 이 값 그대로면 이미 이
+  /// 유저 본인 걸로 검증된 상태라 중복 확인을 다시 요구하지 않는다.
+  /// (그렇지 않으면 대학가만 바꾸러 들어와도 저장 버튼이 계속 막힌다.)
+  String _initialNickname = '';
+
   int _nicknameRequestId = 0;
   String _lastCheckedNickname = '';
   bool _isCheckingNickname = false;
@@ -47,9 +52,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     super.initState();
     final profile = widget.initialProfile;
 
-    _nicknameController = TextEditingController(
-      text: profile?['nickname']?.toString() ?? '',
-    );
+    _initialNickname = profile?['nickname']?.toString().trim() ?? '';
+    _nicknameController = TextEditingController(text: _initialNickname);
     _nicknameFocusNode = FocusNode();
 
     final campusFromServer = profile?['campus']?.toString();
@@ -529,18 +533,27 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
+  /// 닉네임 입력값이 처음 들어올 때부터 이 유저 본인 것으로 저장돼 있던
+  /// 값 그대로인지. 이땐 서버가 이미 검증을 마친 셈이라 다시 확인시키지
+  /// 않는다 — 그렇지 않으면 대학가만 바꾸러 들어와도 저장이 막힌다.
+  bool get _nicknameUnchangedFromInitial {
+    final nickname = _nicknameController.text.trim();
+    return _initialNickname.isNotEmpty && nickname == _initialNickname;
+  }
+
   bool get _isFormSubmittable {
     final nickname = _nicknameController.text.trim();
-    final isNicknameChecked =
-        nickname.isNotEmpty &&
-        _lastCheckedNickname == nickname &&
-        !_isCheckingNickname &&
-        (_isNicknameAvailable || _isNicknameCheckSoftFailed);
+    final isNicknameChecked = _nicknameUnchangedFromInitial ||
+        (nickname.isNotEmpty &&
+            _lastCheckedNickname == nickname &&
+            !_isCheckingNickname &&
+            (_isNicknameAvailable || _isNicknameCheckSoftFailed));
     final hasCampus = _selectedCampus != null;
     return !_isSaving && isNicknameChecked && hasCampus;
   }
 
   bool get _isNicknameValidatedForCurrentInput {
+    if (_nicknameUnchangedFromInitial) return true;
     final nickname = _nicknameController.text.trim();
     return nickname.isNotEmpty &&
         _lastCheckedNickname == nickname &&
