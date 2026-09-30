@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 
 import 'config/analytics_events.dart';
-import 'data/knu_profile_options.dart';
+import 'data/campus_options.dart';
 import 'onboarding/onboarding_prefs.dart';
 import 'services/api_client.dart';
 import 'services/app_config_service.dart';
@@ -30,13 +30,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   late final TextEditingController _nicknameController;
   late final FocusNode _nicknameFocusNode;
 
-  late final List<SchoolOption> _schools;
-  late final List<CollegeOption> _colleges;
-  late final List<DepartmentOption> _departments;
-
-  String? _selectedSchoolCode;
-  String? _selectedCollegeCode;
-  String? _selectedDepartmentCode;
+  String? _selectedCampus;
 
   int _nicknameRequestId = 0;
   String _lastCheckedNickname = '';
@@ -52,17 +46,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   void initState() {
     super.initState();
     final profile = widget.initialProfile;
-    final options = UserService.resolveProfileSetupOptions(profile);
-    _schools = options.schools;
-    _colleges = options.colleges;
-    _departments = options.departments;
 
     _nicknameController = TextEditingController(
       text: profile?['nickname']?.toString() ?? '',
     );
     _nicknameFocusNode = FocusNode();
 
-    _initializeSelections(profile);
+    final campusFromServer = profile?['campus']?.toString();
+    _selectedCampus = isKnownCampus(campusFromServer) ? campusFromServer : null;
   }
 
   @override
@@ -75,16 +66,14 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   Future<void> _saveProfile() async {
     if (_isSaving) return;
     if (!_isFormSubmittable) {
-      _showMessage('닉네임, 학교, 단과대, 학과를 모두 올바르게 입력해 주세요.');
+      _showMessage('닉네임과 학교를 모두 올바르게 입력해 주세요.');
       return;
     }
 
     final nickname = _nicknameController.text.trim();
-    final school = _selectedSchool;
-    final college = _selectedCollege;
-    final department = _selectedDepartment;
-    if (school == null || college == null || department == null) {
-      _showMessage('학교, 단과대, 학과를 모두 선택해 주세요.');
+    final campus = _selectedCampus;
+    if (campus == null) {
+      _showMessage('학교를 선택해 주세요.');
       return;
     }
 
@@ -106,11 +95,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     try {
       await UserService.updateCurrentUserProfile(
         nickname: nickname,
-        schoolCode: school.code,
-        collegeCode: college.code,
-        departmentCode: department.code,
-        schoolName: school.name,
-        departmentName: department.name,
+        campus: campus,
       );
       if (!mounted) return;
       // 쿠폰 발급은 항상 보상 온보딩(튜토리얼)의 식당 선택 단계에서만 일어난다
@@ -125,15 +110,10 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
       AnalyticsLogger.logEvent(
         AnalyticsEvents.userSignupCompleted,
         parameters: {
-          AnalyticsEvents.paramSchoolCode: school.code,
-          AnalyticsEvents.paramCollegeCode: college.code,
-          AnalyticsEvents.paramDepartmentCode: department.code,
+          AnalyticsEvents.paramCampus: campus,
         },
       );
-      AnalyticsLogger.setUserPropertiesFromProfile({
-        'college_code': college.code,
-        'department_code': department.code,
-      });
+      AnalyticsLogger.setUserPropertiesFromProfile({'campus': campus});
       widget.onCompleted?.call();
       if (!widget.isRequiredFlow && Navigator.of(context).canPop()) {
         Navigator.of(context).pop(true);
@@ -306,94 +286,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         }
       });
     });
-  }
-
-  void _initializeSelections(Map<String, dynamic>? profile) {
-    final schoolCodeFromServer = profile?['school_code']?.toString();
-    final schoolNameFromServer = profile?['school']?.toString();
-    _selectedSchoolCode = _resolveSchoolCode(
-      schoolCode: schoolCodeFromServer,
-      schoolName: schoolNameFromServer,
-    );
-
-    final collegeCodeFromServer = profile?['college_code']?.toString();
-    final departmentCodeFromServer = profile?['department_code']?.toString();
-    final departmentNameFromServer = profile?['department']?.toString();
-
-    _selectedCollegeCode = _resolveCollegeCode(
-      collegeCode: collegeCodeFromServer,
-      departmentCode: departmentCodeFromServer,
-      departmentName: departmentNameFromServer,
-    );
-
-    _selectedDepartmentCode = _resolveDepartmentCode(
-      departmentCode: departmentCodeFromServer,
-      departmentName: departmentNameFromServer,
-      collegeCode: _selectedCollegeCode,
-    );
-  }
-
-  String? _resolveSchoolCode({
-    required String? schoolCode,
-    required String? schoolName,
-  }) {
-    if (schoolCode != null &&
-        _schools.any((SchoolOption e) => e.code == schoolCode)) {
-      return schoolCode;
-    }
-    if (schoolName != null) {
-      final match = _schools.where((e) => e.name == schoolName).toList();
-      if (match.isNotEmpty) return match.first.code;
-    }
-    if (_schools.length == 1) return _schools.first.code;
-    return null;
-  }
-
-  String? _resolveCollegeCode({
-    required String? collegeCode,
-    required String? departmentCode,
-    required String? departmentName,
-  }) {
-    if (collegeCode != null &&
-        _colleges.any((CollegeOption e) => e.code == collegeCode)) {
-      return collegeCode;
-    }
-    if (departmentCode != null) {
-      final byDepartmentCode = _departments
-          .where((DepartmentOption e) => e.code == departmentCode)
-          .toList();
-      if (byDepartmentCode.isNotEmpty) return byDepartmentCode.first.collegeCode;
-    }
-    if (departmentName != null) {
-      final byDepartmentName = _departments
-          .where((DepartmentOption e) => e.name == departmentName)
-          .toList();
-      if (byDepartmentName.isNotEmpty) return byDepartmentName.first.collegeCode;
-    }
-    return null;
-  }
-
-  String? _resolveDepartmentCode({
-    required String? departmentCode,
-    required String? departmentName,
-    required String? collegeCode,
-  }) {
-    if (departmentCode != null &&
-        _departments.any((DepartmentOption e) => e.code == departmentCode)) {
-      if (collegeCode == null) return departmentCode;
-      final sameCollege = _departments.any((DepartmentOption e) =>
-          e.code == departmentCode && e.collegeCode == collegeCode);
-      if (sameCollege) return departmentCode;
-    }
-
-    if (departmentName != null) {
-      final fromName = _departments.where((DepartmentOption e) {
-        final collegeMatched = collegeCode == null || e.collegeCode == collegeCode;
-        return collegeMatched && e.name == departmentName;
-      }).toList();
-      if (fromName.isNotEmpty) return fromName.first.code;
-    }
-    return null;
   }
 
   String? _parseApiError(String body) {
@@ -600,47 +492,16 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                     const SizedBox(height: 10),
                     _ProfileSelectRow(
                       label: '학교',
-                      selectedCode: _selectedSchoolCode,
-                      options: _schools
-                          .map((SchoolOption e) =>
-                              _SelectOption(code: e.code, name: e.name))
+                      selectedCode: _selectedCampus,
+                      options: kCampusOptions
+                          .map((name) => _SelectOption(code: name, name: name))
                           .toList(),
                       hintText: '학교 선택',
                       enabled: !_isSaving,
                       onChanged: (String? code) {
                         if (code == null) return;
                         setState(() {
-                          _selectedSchoolCode = code;
-                        });
-                      },
-                    ),
-                    _ProfileSelectRow(
-                      label: '단과대',
-                      selectedCode: _selectedCollegeCode,
-                      options: _colleges
-                          .map((CollegeOption e) =>
-                              _SelectOption(code: e.code, name: e.name))
-                          .toList(),
-                      hintText: '단과대 선택',
-                      enabled: !_isSaving,
-                      onChanged: (String? code) {
-                        setState(() {
-                          _selectedCollegeCode = code;
-                          _selectedDepartmentCode = null;
-                        });
-                      },
-                    ),
-                    _ProfileSelectRow(
-                      label: '학과',
-                      selectedCode: _selectedDepartmentCode,
-                      options: _availableDepartmentOptions,
-                      hintText: _selectedCollegeCode == null
-                          ? '단과대를 먼저 선택해 주세요'
-                          : '학과 선택',
-                      enabled: !_isSaving && _selectedCollegeCode != null,
-                      onChanged: (String? code) {
-                        setState(() {
-                          _selectedDepartmentCode = code;
+                          _selectedCampus = code;
                         });
                       },
                     ),
@@ -649,7 +510,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: Text(
-                          '닉네임, 학교, 단과대, 학과를 모두 설정해야 서비스를 이용할 수 있어요.',
+                          '닉네임과 학교를 모두 설정해야 서비스를 이용할 수 있어요.',
                           style: TextStyle(
                             color: Color(0xFF9CA3AF),
                             fontSize: 10.8,
@@ -668,31 +529,6 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
     );
   }
 
-  SchoolOption? get _selectedSchool {
-    final matched = _schools.where((SchoolOption e) => e.code == _selectedSchoolCode);
-    return matched.isEmpty ? null : matched.first;
-  }
-
-  CollegeOption? get _selectedCollege {
-    final matched =
-        _colleges.where((CollegeOption e) => e.code == _selectedCollegeCode);
-    return matched.isEmpty ? null : matched.first;
-  }
-
-  DepartmentOption? get _selectedDepartment {
-    final matched = _departments
-        .where((DepartmentOption e) => e.code == _selectedDepartmentCode);
-    return matched.isEmpty ? null : matched.first;
-  }
-
-  List<_SelectOption> get _availableDepartmentOptions {
-    if (_selectedCollegeCode == null) return const <_SelectOption>[];
-    return _departments
-        .where((DepartmentOption e) => e.collegeCode == _selectedCollegeCode)
-        .map((DepartmentOption e) => _SelectOption(code: e.code, name: e.name))
-        .toList();
-  }
-
   bool get _isFormSubmittable {
     final nickname = _nicknameController.text.trim();
     final isNicknameChecked =
@@ -700,10 +536,8 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
         _lastCheckedNickname == nickname &&
         !_isCheckingNickname &&
         (_isNicknameAvailable || _isNicknameCheckSoftFailed);
-    final hasSchool = _selectedSchool != null;
-    final hasCollege = _selectedCollege != null;
-    final hasDepartment = _selectedDepartment != null;
-    return !_isSaving && isNicknameChecked && hasSchool && hasCollege && hasDepartment;
+    final hasCampus = _selectedCampus != null;
+    return !_isSaving && isNicknameChecked && hasCampus;
   }
 
   bool get _isNicknameValidatedForCurrentInput {

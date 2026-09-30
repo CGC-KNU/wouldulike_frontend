@@ -143,12 +143,16 @@ class FeaturedCampaign {
 class PromotionService {
   static Future<List<FeaturedCampaign>> fetchCurrentFeatured({
     String? zone,
+    String? campus,
   }) async {
     try {
       final response = await ApiClient.getWithoutThrow(
         '/api/promotions/featured/current/',
         authenticated: false,
-        queryParameters: {if (zone != null && zone.isNotEmpty) 'zone': zone},
+        queryParameters: {
+          if (zone != null && zone.isNotEmpty) 'zone': zone,
+          if (campus != null && campus.isNotEmpty) 'campus': campus,
+        },
       );
       if (response.statusCode >= 400) return const [];
       final body = utf8.decode(response.bodyBytes).trim();

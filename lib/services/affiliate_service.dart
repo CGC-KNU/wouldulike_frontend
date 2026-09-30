@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:new1/data/campus_options.dart';
 import 'package:new1/models/coupon_benefits_summary.dart';
 
 import 'api_client.dart';
@@ -127,6 +128,7 @@ class GeneralRestaurantSummary {
     required this.zone,
     required this.phoneNumber,
     required this.url,
+    this.campus,
   });
 
   factory GeneralRestaurantSummary.fromJson(Map<String, dynamic> json) {
@@ -156,6 +158,9 @@ class GeneralRestaurantSummary {
       zone: firstNonEmpty([json['zone']]),
       phoneNumber: firstNonEmpty([json['phone_number']]),
       url: firstNonEmpty([json['url'], json['link_url'], json['external_url']]),
+      campus: firstNonEmpty([json['campus']]).isEmpty
+          ? null
+          : firstNonEmpty([json['campus']]),
     );
   }
 
@@ -167,6 +172,9 @@ class GeneralRestaurantSummary {
   final String zone;
   final String phoneNumber;
   final String url;
+
+  /// 대학가(상권) 구분. 값이 없으면(미지정) null.
+  final String? campus;
 }
 
 class GeneralPagination {
@@ -235,13 +243,18 @@ class AffiliateService {
   /// 일반쿠폰+스탬프 혜택이 둘 다 등록된 식당으로만 서버가 필터링해 내려준다.
   /// 로그인 전(preLogin 온보딩 픽 단계)에는 토큰이 없어 인증 엔드포인트를 호출할
   /// 수 없으므로, 같은 필터를 쓰는 비인증 미리보기 엔드포인트로 대신 호출한다.
-  static Future<List<AffiliateRestaurantSummary>> fetchSignupRestaurants() async {
+  static Future<List<AffiliateRestaurantSummary>> fetchSignupRestaurants({
+    String? campus,
+  }) async {
     final hasToken = await ApiClient.hasAccessToken();
     final path = hasToken
         ? '/api/coupons/signup/restaurants/'
         : '/api/coupons/signup/restaurants/preview/';
-    final response =
-        await ApiClient.get(path, authenticated: hasToken);
+    final response = await ApiClient.get(
+      path,
+      authenticated: hasToken,
+      queryParameters: campus == null ? null : {'campus': campus},
+    );
     final Map<String, dynamic> data =
         jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
     final List<dynamic> list =
@@ -344,14 +357,18 @@ class AffiliateService {
     int limit = 20,
     int offset = 0,
     bool includeAffiliates = true,
+    String? campus,
   }) async {
     final q = query?.trim() ?? '';
+    final trimmedCampus = campus?.trim() ?? '';
     final queryParameters = <String, dynamic>{
       if (q.isNotEmpty) 'q': q,
       'limit': limit,
       'offset': offset,
       // 백엔드 기본값이 true이므로 false일 때만 전달한다.
       if (!includeAffiliates) 'include_affiliates': false,
+      if (trimmedCampus.isNotEmpty && trimmedCampus != kCampusFilterAll)
+        'campus': trimmedCampus,
     };
     const candidatePaths = <String>[
       '/restaurants/tab-restaurants/',

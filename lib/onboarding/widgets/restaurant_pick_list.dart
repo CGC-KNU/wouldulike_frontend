@@ -17,6 +17,7 @@ class RestaurantPickList extends StatelessWidget {
     required this.onRetry,
     this.detailOf,
     this.isSelected,
+    this.showCampusLabel = false,
   });
 
   final bool loading;
@@ -31,6 +32,11 @@ class RestaurantPickList extends StatelessWidget {
 
   /// 여러 곳을 고르는 화면용. 주면 [selectedIndex] 대신 이것으로 선택 표시를 한다.
   final bool Function(AffiliateRestaurantSummary restaurant)? isSelected;
+
+  /// true면 각 식당 블록에 대학가 배지를 표기한다. 여러 대학가가 섞여 보일 때만
+  /// (예: 대학가 필터가 '전체'일 때) 켠다 — 기본 false라 이 위젯을 쓰는 다른
+  /// 화면(한정쿠폰 선택 시트 등)은 영향받지 않는다.
+  final bool showCampusLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -107,6 +113,29 @@ class RestaurantPickList extends StatelessWidget {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: OnboardingStyle.caption,
+                            ),
+                          ),
+                        if (showCampusLabel &&
+                            (restaurant.campus?.isNotEmpty ?? false))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 7,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: OnboardingStyle.accentSoft,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                restaurant.campus!,
+                                style: OnboardingStyle.caption.copyWith(
+                                  color: OnboardingStyle.primary,
+                                  fontWeight: FontWeight.w700,
+                                  height: 1.2,
+                                ),
+                              ),
                             ),
                           ),
                         if (detail != null && detail.isNotEmpty)

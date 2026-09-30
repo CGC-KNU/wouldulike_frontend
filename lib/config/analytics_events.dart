@@ -111,6 +111,7 @@ class AnalyticsEvents {
   static const String paramSchoolCode = 'school_code';
   static const String paramCollegeCode = 'college_code';
   static const String paramDepartmentCode = 'department_code';
+  static const String paramCampus = 'campus';
   static const String paramIssueSource = 'issue_source';
   static const String paramCount = 'count';
   static const String paramDetailSessionId = 'detail_session_id';

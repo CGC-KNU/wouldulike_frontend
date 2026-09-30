@@ -61,8 +61,13 @@ class PopupService {
   /// 활성 여부·노출 기간·정렬은 **서버가 이미 처리해서** 내려준다.
   /// 여기서 기기 시각으로 다시 거르면, 기기 시계가 틀어졌을 때 멀쩡한 배너가
   /// 조용히 사라진다. 순서도 그대로 쓴다 (display_order는 서버 정렬 기준).
-  static Future<List<HomePopupItem>> fetchVisiblePopups() async {
-    final response = await ApiClient.get(listEndpoint, authenticated: false);
+  static Future<List<HomePopupItem>> fetchVisiblePopups({String? campus}) async {
+    final response = await ApiClient.get(
+      listEndpoint,
+      authenticated: false,
+      queryParameters:
+          (campus == null || campus.isEmpty) ? null : {'campus': campus},
+    );
     final text = utf8.decode(response.bodyBytes).trimLeft();
     if (text.isEmpty || text.startsWith('<')) {
       return const <HomePopupItem>[];

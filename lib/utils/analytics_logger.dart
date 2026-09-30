@@ -77,8 +77,10 @@ class AnalyticsLogger {
       final analytics = FirebaseAnalytics.instance;
       final college = profile['college_code']?.toString();
       final dept = profile['department_code']?.toString();
+      final campus = profile['campus']?.toString();
       await analytics.setUserProperty(name: 'college_code', value: college);
       await analytics.setUserProperty(name: 'department_code', value: dept);
+      await analytics.setUserProperty(name: 'campus', value: campus);
     } catch (_) {}
   }
 }
