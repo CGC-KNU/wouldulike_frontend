@@ -134,6 +134,8 @@ class AnalyticsEvents {
   static const AnalyticsEvent restaurantSearchSubmit = AnalyticsEvent._('restaurant_search_submit');
   /// 매장 목록 필터 선택 (카테고리·혜택 칩)
   static const AnalyticsEvent affiliateFilterClick = AnalyticsEvent._('affiliate_filter_click');
+  /// 매장 목록 대학가 필터 선택
+  static const AnalyticsEvent affiliateCampusFilterClick = AnalyticsEvent._('affiliate_campus_filter_click');
   /// 매장 목록 정렬 변경
   static const AnalyticsEvent affiliateSortClick = AnalyticsEvent._('affiliate_sort_click');
 

@@ -1567,8 +1567,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       onSelected: (value) {
         if (value == _selectedCampus) return;
         AnalyticsLogger.logEvent(
-          'affiliate_campus_filter_click',
-          parameters: {'campus': value},
+          AnalyticsEvents.affiliateCampusFilterClick,
+          parameters: {AnalyticsEvents.paramCampus: value},
         );
         setState(() => _selectedCampus = value);
         _persistSelectedCampus(value);
