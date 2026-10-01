@@ -49,6 +49,8 @@ class AnalyticsEvents {
   static const AnalyticsEvent restaurantDetailOpen = AnalyticsEvent._('restaurant_detail_open');
   static const AnalyticsEvent restaurantDetailClose = AnalyticsEvent._('restaurant_detail_close');
   static const AnalyticsEvent restaurantDetailCtaClick = AnalyticsEvent._('restaurant_detail_cta_click');
+  /// 제휴 식당 탭의 대학가(campus) 필터 선택 (campus)
+  static const AnalyticsEvent affiliateCampusFilterClick = AnalyticsEvent._('affiliate_campus_filter_click');
   static const AnalyticsEvent userSignupCompleted = AnalyticsEvent._('user_signup_completed');
   /// 쿠폰 발급 경로별 보유량 (issue_key 기반)
   static const AnalyticsEvent couponIssueBreakdown = AnalyticsEvent._('coupon_issue_breakdown');
