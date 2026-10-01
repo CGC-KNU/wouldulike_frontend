@@ -1003,9 +1003,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         });
       });
     } on ApiNetworkException catch (e) {
-      _showSnack('일반 식당을 더 불러오지 못했어요. (${e.cause})');
+      _showSnack('일반 식당을 더 불러오지 못했어요. 네트워크 연결을 확인해 주세요.');
     } on ApiHttpException catch (e) {
-      _showSnack('일반 식당을 더 불러오지 못했어요. (HTTP ${e.statusCode})');
+      _showSnack('일반 식당을 더 불러오지 못했어요. ${e.friendlyMessage}');
     } catch (_) {
       _showSnack('일반 식당을 더 불러오지 못했어요.');
     } finally {
@@ -1567,7 +1567,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
       onSelected: (value) {
         if (value == _selectedCampus) return;
         AnalyticsLogger.logEvent(
-          'affiliate_campus_filter_click',
+          AnalyticsEvents.affiliateCampusFilterClick,
           parameters: {'campus': value},
         );
         setState(() => _selectedCampus = value);
@@ -3037,12 +3037,12 @@ class _AffiliateRestaurantDetailSheetState
       if (!mounted) return;
       setState(() {
         _stampError =
-            _extractDetailMessage(e.body) ?? 'HTTP ${e.statusCode}: ${e.body}';
+            _extractDetailMessage(e.body) ?? '스탬프 정보를 처리하지 못했어요. ${e.friendlyMessage}';
       });
     } on ApiNetworkException catch (e) {
       if (!mounted) return;
       setState(() {
-        _stampError = '네트워크 오류: ${e.cause}';
+        _stampError = '네트워크 연결을 확인해 주세요.';
       });
     } catch (e) {
       if (!mounted) return;
@@ -3147,10 +3147,10 @@ class _AffiliateRestaurantDetailSheetState
       final msg = _extractDetailMessage(e.body) ??
           (e.statusCode == 400 || e.statusCode == 401
               ? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.'
-              : '요청이 실패했어요 (HTTP ${e.statusCode})');
+              : '스탬프를 적립하지 못했어요. ${e.friendlyMessage}');
       if (mounted) setState(() => _stampError = msg);
     } on ApiNetworkException catch (e) {
-      if (mounted) setState(() => _stampError = '네트워크 오류: ${e.cause}');
+      if (mounted) setState(() => _stampError = '네트워크 연결을 확인해 주세요.');
     } catch (e) {
       if (mounted) setState(() => _stampError = e.toString());
     } finally {

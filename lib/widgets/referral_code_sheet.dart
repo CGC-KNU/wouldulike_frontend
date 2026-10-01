@@ -219,7 +219,7 @@ class ReferralCodeSheetState extends State<ReferralCodeSheet> {
     } on ApiNetworkException catch (e) {
       if (!mounted) return;
       setState(() {
-        _inputError = '네트워크 오류: $e';
+        _inputError = '네트워크 연결을 확인해 주세요.';
       });
     } catch (_) {
       if (!mounted) return;
@@ -256,13 +256,28 @@ class ReferralCodeSheetState extends State<ReferralCodeSheet> {
     if (parsed != null && _looksLikeEmptyPool(parsed)) {
       return '내 대학가에서 이 코드로 받을 수 있는 식당이 아직 없어요.';
     }
-    if (parsed != null && parsed.trim().isNotEmpty) {
+    final known = parsed == null ? null : _knownServerMessage(parsed);
+    if (known != null) return known;
+    // 서버의 영문 코드성 문구("invalid coupon code" 등)는 그대로 보여 주지 않는다 (0930)
+    if (parsed != null && parsed.trim().isNotEmpty && !_looksLikeMachineError(parsed)) {
       return parsed;
     }
     if (statusCode == 400) {
       return '없는 코드예요';
     }
     return '코드를 확인해 주세요.';
+  }
+
+  /// 서버가 돌려주는 영문 사유 → 사용자 문구. 0930 로그에서 "invalid coupon code"·"not in issue window" 가
+  /// 영문 그대로 입력칸 아래에 뜨고 있었다.
+  String? _knownServerMessage(String message) {
+    final lower = message.toLowerCase();
+    if (lower.contains('not in issue window')) return '지금은 사용할 수 없는 코드예요. 이벤트 기간을 확인해 주세요.';
+    if (lower.contains('sold out')) return '준비된 쿠폰이 모두 소진됐어요.';
+    if (lower.contains('self referral')) return '내 초대 코드는 입력할 수 없어요.';
+    if (lower.contains('referral limit')) return '이 코드는 사용 가능 횟수를 모두 채웠어요.';
+    if (lower.contains('invalid coupon') || lower.contains('invalid')) return '없는 코드예요';
+    return null;
   }
 
   bool _looksLikeInvalidCode(String message) {

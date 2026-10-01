@@ -22,6 +22,15 @@ class ApiHttpException implements Exception {
 
   @override
   String toString() => 'ApiHttpException(status: $statusCode, body: $body)';
+
+  /// 사용자에게 보여 줄 짧은 안내. 상태 코드("HTTP 404")는 화면에 내보내지 않는다 (0930 장애 후속 —
+  /// 서버가 잠시 멈췄을 때 앱이 "HTTP 404" 를 그대로 보여 줘 사용자가 앱이 고장났다고 느꼈다).
+  String get friendlyMessage {
+    if (statusCode == 401 || statusCode == 403) return '로그인이 만료됐어요. 다시 로그인해 주세요.';
+    if (statusCode == 404 || statusCode >= 500) return '서버가 잠시 불안정해요. 잠시 후 다시 시도해 주세요.';
+    if (statusCode == 429) return '요청이 많아요. 잠시 후 다시 시도해 주세요.';
+    return '잠시 후 다시 시도해 주세요.';
+  }
 }
 
 class ApiNetworkException implements Exception {

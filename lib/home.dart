@@ -456,7 +456,7 @@ class _HomeContentState extends State<HomeContent> {
       debugPrint('HTTP error while loading affiliate restaurants: $e');
       if (!mounted) return;
       setState(() {
-        _affiliateError = '제휴 식당을 불러오지 못했어요. (HTTP ${e.statusCode})';
+        _affiliateError = '제휴 식당을 불러오지 못했어요. ${e.friendlyMessage}';
       });
     } catch (e, stackTrace) {
       debugPrint('Unexpected error while loading affiliate restaurants: $e');
@@ -573,12 +573,12 @@ class _HomeContentState extends State<HomeContent> {
     } on ApiNetworkException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text('네트워크 연결을 확인해주세요. (${e.cause})')),
+        SnackBar(content: Text('네트워크 연결을 확인해주세요.')),
       );
     } on ApiHttpException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        SnackBar(content: Text('쿠폰 정보를 불러오지 못했어요. (HTTP ${e.statusCode})')),
+        SnackBar(content: Text('쿠폰 정보를 불러오지 못했어요. ${e.friendlyMessage}')),
       );
     } catch (e) {
       debugPrint('Failed to load affiliate coupons: $e');
