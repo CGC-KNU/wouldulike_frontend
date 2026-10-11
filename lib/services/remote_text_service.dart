@@ -58,22 +58,43 @@ class RemoteText {
   static FirebaseRemoteConfig? _config;
 
   /// 앱 시작 때 한 번. 실패해도 앱 시작을 막지 않는다.
+  ///
+  /// 단계마다 따로 감싼다. firebase_remote_config 4.x 는 iOS 첫 실행(아직 한 번도 가져온 적
+  /// 없음)에서 `setConfigSettings`·`fetchAndActivate` 끝의 getProperties 응답에
+  /// lastFetchTime 이 null 이라 `type 'Null' is not a subtype of type 'int'` 를 던진다.
+  /// 설정·활성화 자체는 그 앞에서 끝나 있으므로, 한 단계의 예외가 나머지를 막지 않게 하고
+  /// 값은 계속 읽는다. (예전처럼 통째로 try 로 감싸면 첫 예외에서 _config 가 비어
+  /// 원격 값이 영영 적용되지 않았다.)
   static Future<void> init() async {
+    final FirebaseRemoteConfig config;
     try {
-      final config = FirebaseRemoteConfig.instance;
-      await config.setConfigSettings(
+      config = FirebaseRemoteConfig.instance;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[RemoteText] 사용 불가, 기본값 사용: $e');
+      return;
+    }
+    _config = config;
+
+    await _step('setDefaults', () => config.setDefaults(defaults));
+    await _step(
+      'setConfigSettings',
+      () => config.setConfigSettings(
         RemoteConfigSettings(
           fetchTimeout: const Duration(seconds: 5),
           // 디버그는 바로바로, 릴리스는 1시간(콘솔 쿼터 보호)
           minimumFetchInterval:
               kDebugMode ? Duration.zero : const Duration(hours: 1),
         ),
-      );
-      await config.setDefaults(defaults);
-      _config = config;
-      await config.fetchAndActivate();
+      ),
+    );
+    await _step('fetchAndActivate', config.fetchAndActivate);
+  }
+
+  static Future<void> _step(String name, Future<Object?> Function() run) async {
+    try {
+      await run();
     } catch (e) {
-      if (kDebugMode) debugPrint('[RemoteText] init 실패, 기본값 사용: $e');
+      if (kDebugMode) debugPrint('[RemoteText] $name 건너뜀(기본값 유지): $e');
     }
   }
 
