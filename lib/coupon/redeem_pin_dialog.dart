@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'package:new1/config/analytics_events.dart';
+import 'package:new1/config/screen_ids.dart';
 import 'package:new1/coupon/store_select_field.dart';
 import 'package:new1/services/affiliate_service.dart'
     show AffiliateRestaurantSummary;
 import 'package:new1/services/app_config_service.dart';
 import 'package:new1/services/coupon_service.dart';
+import 'package:new1/services/remote_text_service.dart';
 import 'package:new1/utils/analytics_logger.dart';
 
 /// 쿠폰 사용 PIN 팝업 결과. 취소하면 null.
@@ -58,6 +60,7 @@ Future<CouponRedeemOutcome?> showCouponRedeemPinDialog({
   // 작은 팝업이 아니라 직원에게 그대로 보여주는 전체 화면으로 연다.
   return Navigator.of(context, rootNavigator: true).push<CouponRedeemOutcome>(
     MaterialPageRoute(
+      settings: const RouteSettings(name: ScreenIds.couponUse),
       fullscreenDialog: true,
       builder: (_) => _RedeemPinDialog(
         coupon: coupon,
@@ -113,13 +116,13 @@ class _RedeemPinDialog extends StatefulWidget {
 enum _RedeemPhase { input, done }
 
 class _RedeemPinDialogState extends State<_RedeemPinDialog> {
-  static const Color _primary = Color(0xFF5146E5);
+  static const Color _primary = Color(0xFF4F46E5);
   static const Color _lav = Color(0xFFEEEDFC);
   static const Color _bg = Color(0xFFF6F6FA);
-  static const Color _ink = Color(0xFF1B1D24);
-  static const Color _sub = Color(0xFF7C8090);
+  static const Color _ink = Color(0xFF191F28);
+  static const Color _sub = Color(0xFF8B95A1);
   static const Color _line = Color(0xFFECECF3);
-  static const Color _red = Color(0xFFE5484D);
+  static const Color _red = Color(0xFFE11D48);
   static const Color _redBg = Color(0xFFFDECEC);
 
   String _pin = '';
@@ -147,7 +150,9 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
   @override
   void initState() {
     super.initState();
-    _addStamp = widget.initialAddStamp;
+    // 기본값은 꺼짐(결정 7). 원격 설정으로만 바꿀 수 있고, QR 재방문 "함께 쓰기"는 항상 켠다.
+    _addStamp = widget.initialAddStamp ||
+        RemoteText.boolValue('coupon_use_with_stamp_default');
   }
 
   bool get _needsStorePick => widget.restaurantId == null;
@@ -280,6 +285,8 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
         _isLoading = false;
         _pin = '';
       });
+      // 같은 라우트 안의 단계 전환이라 자동 screen_view 가 없다. 사용 완료 화면을 직접 남긴다.
+      AnalyticsLogger.logScreen(ScreenIds.couponDone);
       return;
     }
 
@@ -651,8 +658,8 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
             onPressed:
                 _isLoading ? null : () => Navigator.of(context).maybePop(),
           ),
-          title: const Text(
-            '쿠폰 사용',
+          title: Text(
+            RemoteText.string('coupon_use_screen_title'),
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 16,
@@ -775,8 +782,8 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
           const SizedBox(height: 16),
           const _DashedDivider(),
           const SizedBox(height: 14),
-          const Text(
-            '직원에게 이 화면을 보여주세요',
+          Text(
+            RemoteText.string('coupon_use_show_staff'),
             style: TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 14,
@@ -785,9 +792,9 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
             ),
           ),
           const SizedBox(height: 2),
-          const Text(
-            '매장 PIN',
-            style: TextStyle(
+          Text(
+            RemoteText.string('coupon_use_pin_label'),
+            style: const TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 11.5,
               fontWeight: FontWeight.w700,
@@ -874,9 +881,9 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
         ],
       );
     }
-    return const Text(
-      'PIN은 계산대 안내문에 있어요',
-      style: TextStyle(
+    return Text(
+      RemoteText.string('coupon_use_pin_help'),
+      style: const TextStyle(
         fontFamily: 'Pretendard',
         fontSize: 12,
         fontWeight: FontWeight.w500,

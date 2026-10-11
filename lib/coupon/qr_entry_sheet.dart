@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:new1/config/screen_ids.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/services/mileage_service.dart';
 
@@ -32,6 +33,7 @@ Future<QrEntryAction?> showQrEntrySheet(
 }) {
   return showModalBottomSheet<QrEntryAction>(
     context: context,
+    routeSettings: const RouteSettings(name: ScreenIds.sheetCouponArrived),
     isScrollControlled: true,
     backgroundColor: Colors.transparent,
     builder: (_) => QrEntrySheet(
@@ -54,11 +56,11 @@ class QrEntrySheet extends StatelessWidget {
   final String restaurantName;
   final UserCoupon? coupon;
 
-  static const Color _primary = Color(0xFF5146E5);
+  static const Color _primary = Color(0xFF4F46E5);
   static const Color _lav = Color(0xFFEEEDFC);
-  static const Color _ink = Color(0xFF1B1D24);
-  static const Color _sub = Color(0xFF7C8090);
-  static const Color _red = Color(0xFFE5484D);
+  static const Color _ink = Color(0xFF191F28);
+  static const Color _sub = Color(0xFF8B95A1);
+  static const Color _red = Color(0xFFE11D48);
 
   bool get _isStampBranch =>
       entry.branch == QrEntryBranch.stampProgress ||
@@ -130,7 +132,7 @@ class QrEntrySheet extends StatelessWidget {
     return Container(
       decoration: const BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       padding: EdgeInsets.fromLTRB(
         22,

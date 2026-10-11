@@ -134,6 +134,53 @@ void main() {
 }
 
 void rewardNameTests() {
+  group('stampRewardBenefitText', () {
+    test('부가 문구가 있어도 혜택 이름을 보여 준다', () {
+      expect(
+        stampRewardBenefitText(const StampReward(
+          title: '치킨/통닭 랜덤 한마리',
+          subtitle: '17-19시',
+        )),
+        '치킨/통닭 랜덤 한마리',
+      );
+      expect(
+        stampRewardBenefitText(const StampReward(
+          title: '50% 할인 제공',
+          subtitle: '최대 5,000원',
+        )),
+        '50% 할인',
+      );
+      expect(
+        stampRewardBenefitText(const StampReward(
+          title: '사이드메뉴',
+          subtitle: '8개 모으면',
+        )),
+        '사이드메뉴',
+      );
+    });
+
+    test('이름이 자리표시면 부가 문구, 그것도 없으면 리워드 쿠폰', () {
+      expect(
+        stampRewardBenefitText(const StampReward(
+          title: '6',
+          subtitle: '에이드 1잔',
+        )),
+        '에이드 1잔',
+      );
+      expect(
+        stampRewardBenefitText(const StampReward(
+          title: 'ㆍ',
+          subtitle: '8개 모으면',
+        )),
+        '리워드 쿠폰',
+      );
+      expect(
+        stampRewardBenefitText(const StampReward(subtitle: '17-19시')),
+        '17-19시',
+      );
+    });
+  });
+
   group('cleanStampRewardName', () {
     test('끝의 "제공"을 떼서 화면에서 덧붙여도 중복되지 않게 한다', () {
       expect(cleanStampRewardName('에이드 1잔 제공'), '에이드 1잔');

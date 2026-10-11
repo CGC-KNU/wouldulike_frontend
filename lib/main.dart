@@ -27,6 +27,7 @@ import 'onboarding/onboarding_prefs.dart';
 import 'onboarding/onboarding_reward_flow.dart';
 import 'onboarding/signup_onboarding_gate.dart';
 import 'utils/analytics_logger.dart';
+import 'services/remote_text_service.dart';
 import 'utils/analytics_navigator_observer.dart';
 import 'services/auth_service.dart';
 import 'services/deep_link_service.dart';
@@ -153,6 +154,8 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  // 원격 설정은 시작을 막지 않게 백그라운드로 가져온다. 실패하면 코드 기본값을 쓴다.
+  unawaited(RemoteText.init());
   await MobileAds.instance.initialize();
   KakaoSdk.init(nativeAppKey: kakaoNativeAppKey, loggingEnabled: true);
   try {
@@ -365,7 +368,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       ),
       home: AppEntryScreen(isLoggedIn: widget.isLoggedIn),
       navigatorObservers: [
-        FirebaseAnalyticsObserver(analytics: _analytics),
+        // 바텀시트(store.detail · sheet.coupon_arrived)도 화면으로 남기도록 PopupRoute 를
+        // 허용한다. 이름 없는 팝업·다이얼로그는 nameExtractor 가 null 이라 기록되지 않는다.
+        FirebaseAnalyticsObserver(
+          analytics: _analytics,
+          routeFilter: (route) => route is PageRoute || route is PopupRoute,
+        ),
         AnalyticsNavigatorObserver(),
       ],
       routes: {
@@ -422,8 +430,7 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
     }
 
     // 로그인 직후에는 AuthService가 넣는다. 재실행·업데이트 후에도 이어지도록 다시 넣는다.
-    unawaited(SharedPreferences.getInstance()
-        .then((p) => AnalyticsLogger.setUserId(p.getInt('user_id'))));
+    unawaited(AnalyticsLogger.syncUserIdFromSession());
     final profile = await UserService.fetchCurrentUserProfile();
     // 이 기기에 이전 계정 등으로 남아있을 수 있는 로컬 온보딩 값을 서버
     // 진실로 동기화한다 — 로그인 화면을 거치지 않는 일반 재실행도 포함해서,

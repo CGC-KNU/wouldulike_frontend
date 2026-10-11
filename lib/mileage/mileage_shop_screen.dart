@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:new1/mileage/my_raffle_entries_screen.dart';
 import 'package:new1/mileage/raffle_terms_screen.dart';
@@ -53,6 +54,24 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   MileageSummary? _summary;
   List<Raffle> _raffles = const [];
   DateTime? _nextOpensAt;
+
+  /// "마일리지 쌓는 법" 카드. 응모 일정 카드와 같이 접고 펼 수 있고(상태 저장), 기본은 접힘.
+  static const _earnGuideCollapsedKey = 'wallet_mileage_earn_guide_collapsed';
+  bool _earnGuideCollapsed = true;
+
+  Future<void> _loadEarnGuideCollapsed() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() =>
+          _earnGuideCollapsed = prefs.getBool(_earnGuideCollapsedKey) ?? true);
+    }
+  }
+
+  Future<void> _toggleEarnGuide() async {
+    setState(() => _earnGuideCollapsed = !_earnGuideCollapsed);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_earnGuideCollapsedKey, _earnGuideCollapsed);
+  }
   bool _isLoading = true;
   int? _submittingId;
 
@@ -83,6 +102,7 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   void initState() {
     super.initState();
     _summary = widget.initialSummary;
+    _loadEarnGuideCollapsed();
     _load();
   }
 
@@ -703,62 +723,114 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
         points: AppConfigService.mileageCouponUsePoints,
       ),
     ];
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    return Material(
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _line),
+        side: const BorderSide(color: _line),
       ),
+      clipBehavior: Clip.antiAlias,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          for (var i = 0; i < rows.length; i++) ...[
-            if (i > 0)
-              const Divider(height: 1, thickness: 1, color: Color(0xFFF1F2F7)),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 11),
+          InkWell(
+            onTap: _toggleEarnGuide,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
               child: Row(
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          rows[i].title,
-                          style: const TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: _ink,
-                          ),
-                        ),
-                        const SizedBox(height: 1),
-                        Text(
-                          rows[i].sub,
-                          style: const TextStyle(
-                            fontFamily: 'Pretendard',
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: _sub,
-                          ),
-                        ),
-                      ],
+                  const Icon(Icons.savings_outlined, size: 18, color: _primary),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      '마일리지 쌓는 법',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: _ink,
+                      ),
                     ),
                   ),
                   Text(
-                    '+${_comma(rows[i].points)}M',
+                    _earnGuideCollapsed ? '펼치기' : '접기',
                     style: const TextStyle(
                       fontFamily: 'Pretendard',
-                      fontSize: 14.5,
-                      fontWeight: FontWeight.w800,
-                      color: _primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: _faint,
                     ),
+                  ),
+                  AnimatedRotation(
+                    turns: _earnGuideCollapsed ? 0 : 0.5,
+                    duration: const Duration(milliseconds: 200),
+                    child: const Icon(Icons.keyboard_arrow_down_rounded,
+                        size: 20, color: _faint),
                   ),
                 ],
               ),
             ),
-          ],
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+            alignment: Alignment.topCenter,
+            child: _earnGuideCollapsed
+                ? const SizedBox(width: double.infinity)
+                : Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      children: [
+                        for (var i = 0; i < rows.length; i++) ...[
+                          const Divider(
+                              height: 1, thickness: 1, color: Color(0xFFF1F2F7)),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 11),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        rows[i].title,
+                                        style: const TextStyle(
+                                          fontFamily: 'Pretendard',
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: _ink,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        rows[i].sub,
+                                        style: const TextStyle(
+                                          fontFamily: 'Pretendard',
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                          color: _sub,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Text(
+                                  '+${_comma(rows[i].points)}M',
+                                  style: const TextStyle(
+                                    fontFamily: 'Pretendard',
+                                    fontSize: 14.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: _primary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+          ),
         ],
       ),
     );

@@ -1,6 +1,8 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:new1/config/analytics_events.dart';
+import 'package:new1/utils/jwt_helper.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AnalyticsLogger {
   AnalyticsLogger._();
@@ -85,6 +87,29 @@ class AnalyticsLogger {
       await FirebaseAnalytics.instance.setUserId(
         id: userId != null && userId > 0 ? userId.toString() : null,
       );
+    } catch (_) {}
+  }
+
+  /// 라우트가 아닌 단계 화면(예: 쿠폰 사용 → 사용 완료)을 화면 ID로 남긴다.
+  static Future<void> logScreen(String screenId) async {
+    try {
+      await FirebaseAnalytics.instance.logScreenView(screenName: screenId);
+    } catch (_) {}
+  }
+
+  /// 앱 재실행·업데이트 뒤에도 GA4 user_id 가 붙도록 세션에서 회원 id를 다시 넣는다.
+  ///
+  /// 예전 버전으로 로그인한 기기는 SharedPreferences 에 user_id 가 없어 null 로 해제돼
+  /// 버렸다. 그 경우 access token(JWT)의 user_id 로 채우고 저장해 둔다.
+  static Future<void> syncUserIdFromSession() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      var id = prefs.getInt('user_id');
+      if (id == null || id <= 0) {
+        id = JwtHelper.getUserId(prefs.getString('jwt_access_token'));
+        if (id != null && id > 0) await prefs.setInt('user_id', id);
+      }
+      await setUserId(id);
     } catch (_) {}
   }
 

@@ -95,11 +95,11 @@ class MyBenefitSummaryCard extends StatelessWidget {
   final MyBenefitSummary summary;
   final VoidCallback? onTap;
 
-  static const Color _ink = Color(0xFF1B1D24);
-  static const Color _sub = Color(0xFF7C8090);
-  static const Color _primary = Color(0xFF5146E5);
+  static const Color _ink = Color(0xFF191F28);
+  static const Color _sub = Color(0xFF8B95A1);
+  static const Color _primary = Color(0xFF4F46E5);
   static const Color _lav = Color(0xFFEEEDFC);
-  static const Color _red = Color(0xFFE5484D);
+  static const Color _red = Color(0xFFE11D48);
   static const Color _redBg = Color(0xFFFDECEC);
 
   @override

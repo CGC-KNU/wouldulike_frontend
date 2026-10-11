@@ -10,6 +10,8 @@ import 'package:http/http.dart' as http;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'package:new1/config/analytics_events.dart';
+import 'package:new1/config/screen_ids.dart';
+import 'package:new1/services/remote_text_service.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/utils/impression_tracker.dart';
 import 'package:new1/widgets/my_benefit_summary_card.dart';
@@ -125,7 +127,9 @@ class _HomeContentState extends State<HomeContent> {
   String? _processingHomeCouponCode;
   Set<int> _favoriteRestaurantIds = <int>{};
   Timer? _bannerAutoScrollTimer;
-  static const Duration _bannerAutoScrollDuration = Duration(seconds: 5);
+  /// 자동 넘김 간격. 원격 설정 banner_autoplay_seconds (0이면 끔, 기본 5초).
+  Duration get _bannerAutoScrollDuration =>
+      Duration(seconds: RemoteText.intValue('banner_autoplay_seconds').clamp(0, 60));
   List<FeaturedCampaign> _featuredCampaigns = const [];
   MissionTrack? _missionTrack;
 
@@ -711,6 +715,7 @@ class _HomeContentState extends State<HomeContent> {
 
       await showModalBottomSheet<void>(
         context: context,
+        routeSettings: const RouteSettings(name: ScreenIds.storeDetail),
         isScrollControlled: true,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -950,6 +955,7 @@ class _HomeContentState extends State<HomeContent> {
   void _openCouponList() {
     Navigator.of(context).push(
       MaterialPageRoute(
+        settings: const RouteSettings(name: ScreenIds.walletCoupon),
         builder: (_) => const CouponListScreen(source: 'home'),
       ),
     );
@@ -1091,7 +1097,8 @@ class _HomeContentState extends State<HomeContent> {
     // 로딩 중에는 해상도 표시(placehold) 대신 빈 영역만 표시
     if (_isTrendLoading && items.isEmpty) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: 20),
+        // 위 섹션(식당 목록)과 20, 다른 섹션 간격과 같게. 위쪽 간격이 없어 붙어 보였다.
+      padding: const EdgeInsets.only(top: 20, bottom: 20),
         child: SizedBox(
           height: bannerHeight,
           child: Container(
@@ -1112,7 +1119,8 @@ class _HomeContentState extends State<HomeContent> {
     final int itemCount = items.length;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 20),
+      // 위 섹션(식당 목록)과 20, 다른 섹션 간격과 같게. 위쪽 간격이 없어 붙어 보였다.
+      padding: const EdgeInsets.only(top: 20, bottom: 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -1145,9 +1153,10 @@ class _HomeContentState extends State<HomeContent> {
           ),
           if (itemCount > 1)
             Padding(
-              // 배너 설명과 인디케이터 사이, 인디케이터와 다음 섹션 사이
-              // 간격을 동일하게 맞추기 위해 상하 대칭 패딩을 사용
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              // 인디케이터 아래 간격은 바깥 Padding(bottom: 20) 하나만 쓴다.
+              // 여기에도 아래 패딩을 두면 식당 블록과의 간격이 다른 섹션 간격(20)보다
+              // 벌어진다.
+              padding: const EdgeInsets.only(top: 6),
               child: _buildBannerIndicators(itemCount),
             ),
         ],
@@ -1306,8 +1315,9 @@ class _HomeContentState extends State<HomeContent> {
       );
     }
 
+    // 식당 목록이 비어도 내 혜택 요약은 보여준다.
     if (_affiliateRestaurants.isEmpty) {
-      return const SizedBox.shrink();
+      return _buildMyBenefitSummary();
     }
 
     return Column(
@@ -1315,6 +1325,9 @@ class _HomeContentState extends State<HomeContent> {
       children: [
         header,
         const SizedBox(height: 12),
+        // 쿠폰·스탬프 현황판. "현재 진행 중인 우주라이크 혜택" 문구 바로 아래.
+        // 받은 혜택이 있을 때만 보인다.
+        _buildMyBenefitSummary(),
         Container(
           height: 256,
           width: double.infinity,
@@ -1426,8 +1439,11 @@ class _HomeContentState extends State<HomeContent> {
 
   void _startBannerAutoScroll() {
     _bannerAutoScrollTimer?.cancel();
+    // 원격 설정이 0초면 자동 넘김을 끈다 (Duration.zero 로 돌리면 타이머가 폭주한다).
+    final interval = _bannerAutoScrollDuration;
+    if (interval <= Duration.zero) return;
 
-    _bannerAutoScrollTimer = Timer.periodic(_bannerAutoScrollDuration, (timer) {
+    _bannerAutoScrollTimer = Timer.periodic(interval, (timer) {
       if (!mounted || !_bannerController.hasClients) {
         timer.cancel();
         return;
@@ -1470,8 +1486,19 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   void _openFeaturedCampaign(FeaturedCampaign campaign) {
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.featuredView,
+      parameters: {
+        'campaign_code': campaign.code,
+        // 매장이 걸린 항목 수. 0이면 상세 화면이 비어 "선별 매장 0곳"으로 보인다.
+        'store_count': campaign.items
+            .where((item) => item.restaurantId != null)
+            .length,
+      },
+    );
     Navigator.of(context).push(
       MaterialPageRoute(
+        settings: const RouteSettings(name: ScreenIds.featuredDetail),
         builder: (_) => FeaturedCampaignScreen(campaign: campaign),
       ),
     );
@@ -1571,8 +1598,31 @@ class _HomeContentState extends State<HomeContent> {
       'remaining': remaining,
     });
     Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const MissionTrackScreen()),
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: ScreenIds.homeMission),
+        builder: (_) => const MissionTrackScreen(),
+      ),
     );
+  }
+
+  Widget _buildHomeBlock(String block, double width) {
+    switch (block) {
+      case 'promo':
+        // 프로모 블록. 운영이 켰을 때만 배너 위에 붙는다.
+        return _buildPromoBlock();
+      case 'mission':
+        // 미션 배너: 환영 미션 → (종료 후) 친구 초대
+        return _buildMissionBanner();
+      case 'featured':
+        // 기획전 세로배너. 진행 중 기획전이 있을 때만 노출한다.
+        return _buildFeaturedCarousel(width);
+      case 'restaurants':
+        return _buildAffiliateRestaurantsSection();
+      case 'banner':
+        // 일반 가로배너(트렌드). 서버 항목이 있을 때만.
+        return _buildPromotionBanner(width);
+    }
+    return const SizedBox.shrink();
   }
 
   // ===== 내 혜택 요약 (시안 10) =====
@@ -1747,17 +1797,11 @@ class _HomeContentState extends State<HomeContent> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 프로모 블록. 운영이 켰을 때만 배너 위에 붙는다.
-                _buildPromoBlock(),
-                // 미션 배너: 환영 미션 → (종료 후) 친구 초대
-                _buildMissionBanner(),
-                // 기획전 세로배너. 진행 중 기획전이 있을 때만 노출한다.
-                _buildFeaturedCarousel(screenWidth - padding * 2),
-                // 쿠폰·스탬프 현황판. 세로배너 바로 아래. 받은 혜택이 있을 때만.
-                _buildMyBenefitSummary(),
-                _buildAffiliateRestaurantsSection(),
-                // 일반 가로배너(트렌드): 홈 스크롤 맨 아래. 서버 항목이 있을 때만.
-                _buildPromotionBanner(screenWidth - padding * 2),
+                // 블록 순서는 원격 설정 home_block_order 로 바꾼다 (기본: 프로모 → 미션 →
+                // 기획전 → 식당 → 가로배너). 각 블록의 노출 조건은 그대로다.
+                for (final block in RemoteText.resolveBlockOrder(
+                    RemoteText.string('home_block_order')))
+                  _buildHomeBlock(block, screenWidth - padding * 2),
               ],
             ),
           ),
