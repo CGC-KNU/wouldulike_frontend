@@ -122,6 +122,17 @@ class DeepLinkTarget {
   }
 }
 
+/// 도착한 QR 진입 분기와 도착 시각.
+class PendingQrEntry {
+  const PendingQrEntry({required this.entry, required this.at});
+
+  final QrEntry entry;
+  final DateTime at;
+
+  /// 상세가 한참 뒤에 열렸을 때 낡은 시트가 뜨지 않게 한다.
+  bool isFresh(DateTime now) => now.difference(at) < const Duration(seconds: 45);
+}
+
 /// QR 방문으로 새로 발급된 쿠폰. 어느 식당(restaurantId) 쿠폰인지 알아야
 /// 화면단에서 그 식당의 보유 쿠폰 목록/카운트도 함께 새로고침할 수 있다.
 class QrVisitCouponIssued {
@@ -411,6 +422,9 @@ class DeepLinkService {
   /// QR 방문으로 방금 새로 발급된 쿠폰. 화면단에서 소비 후 null로 되돌린다.
   final ValueNotifier<QrVisitCouponIssued?> pendingQrVisitCoupon =
       ValueNotifier(null);
+  /// QR 진입 분기(쿠폰 도착/스탬프 안내 등). 식당 상세 시트가 소비하고 null로 되돌린다.
+  /// 상세가 열리기 전에 도착할 수 있어 시각을 함께 둔다(오래된 값은 버린다).
+  final ValueNotifier<PendingQrEntry?> pendingQrEntry = ValueNotifier(null);
   int? _pendingTabIndex;
   DeepLinkTarget? _pendingTarget;
   final _tabController = StreamController<int>.broadcast();
@@ -510,6 +524,20 @@ class DeepLinkService {
         AnalyticsEvents.paramAuthState: hasToken ? 'has_token' : 'no_token',
       },
     );
+    final entry = result.entry;
+    if (entry != null && entry.branch != QrEntryBranch.none) {
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.qrEntryShown,
+        parameters: {
+          AnalyticsEvents.paramRestaurantId: restaurantId,
+          AnalyticsEvents.paramLinkSource: linkSource,
+          'branch': entry.branch.value,
+        },
+      );
+      // 새 분기 시트가 쿠폰 안내까지 맡으므로 옛 "방문 쿠폰" 팝업은 띄우지 않는다.
+      pendingQrEntry.value = PendingQrEntry(entry: entry, at: DateTime.now());
+      return;
+    }
     if (result.couponIssued && result.issuedCoupons.isNotEmpty) {
       pendingQrVisitCoupon.value = QrVisitCouponIssued(
         restaurantId: restaurantId,

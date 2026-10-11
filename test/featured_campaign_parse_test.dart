@@ -59,6 +59,20 @@ void main() {
     expect(campaigns.single.items.single.restaurantId, 12);
   });
 
+  test('식당이 객체로 오면 id를 읽는다', () {
+    final campaigns = parseFeaturedCampaigns({
+      'code': 'M2',
+      'items': [
+        {
+          'restaurant': {'id': 77, 'name': '이배집'},
+          'benefit_title': '마일리지 2배',
+        },
+      ],
+    });
+    expect(campaigns.single.items.single.restaurantId, 77);
+    expect(campaigns.single.items.single.isStandaloneBanner, isFalse);
+  });
+
   test('items 없는 캠페인은 버린다', () {
     expect(
       parseFeaturedCampaigns({

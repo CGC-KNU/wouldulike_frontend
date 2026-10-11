@@ -97,6 +97,12 @@ class AnalyticsEvents {
   /// QR 방문 적립 시도 결과. 적립 실패·한도 초과·비로그인까지 result로 남긴다.
   /// 푸시 탭은 적립을 요청하지 않으므로 남지 않는다.
   static const AnalyticsEvent qrVisitCredit = AnalyticsEvent._('qr_visit_credit');
+  /// QR 진입 후 분기 시트가 열림 (branch: reward_ready · coupon_arrived · coupon_held · stamp_progress · stamp_done_today)
+  static const AnalyticsEvent qrEntryShown = AnalyticsEvent._('qr_entry_shown');
+  /// 분기 시트에서 고른 행동 (action: use_coupon · add_stamp · later · view_store)
+  static const AnalyticsEvent qrEntryAction = AnalyticsEvent._('qr_entry_action');
+  /// 쿠폰 사용 완료 화면의 "스탬프도 찍을까요?" 선택 (action: add_stamp · skip)
+  static const AnalyticsEvent couponDoneStampPrompt = AnalyticsEvent._('coupon_done_stamp_prompt');
   /// 마일리지 상점(응모 목록) 진입
   static const AnalyticsEvent ticketPurchaseView = AnalyticsEvent._('ticket_purchase_view');
   /// 식사권 응모 확정 (마일리지 차감 성공)
@@ -203,6 +209,8 @@ class AnalyticsEvents {
   // ===== 결과 · 실패 =====
   /// 실패 사유 (insufficient_points · network 등)
   static const String paramFailReason = 'fail_reason';
+  /// 쿠폰 사용 시 스탬프 동시 적립 선택 여부 (coupon_redeem_attempt)
+  static const String paramWithStamp = 'with_stamp';
   /// 처리 결과 (success · cancelled · error 등)
   static const String paramResult = 'result';
 

@@ -52,6 +52,7 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
 
   MileageSummary? _summary;
   List<Raffle> _raffles = const [];
+  DateTime? _nextOpensAt;
   bool _isLoading = true;
   int? _submittingId;
 
@@ -88,12 +89,14 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   Future<void> _load() async {
     final results = await Future.wait([
       MileageService.fetchSummary(),
-      MileageService.fetchRaffles(),
+      MileageService.fetchRaffleBoard(),
     ]);
     if (!mounted) return;
+    final board = results[1] as RaffleBoard;
     setState(() {
       _summary = (results[0] as MileageSummary?) ?? _summary;
-      _raffles = results[1] as List<Raffle>;
+      _raffles = board.raffles;
+      _nextOpensAt = board.nextOpensAt;
       _isLoading = false;
     });
     _logShopView();
@@ -390,6 +393,8 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
             )
           else ...[
             FadeSlideIn(delayMs: 0, child: _buildHero()),
+            const SizedBox(height: 12),
+            FadeSlideIn(delayMs: 30, child: _buildEarnGuide()),
             const SizedBox(height: 26),
             FadeSlideIn(
               delayMs: 60,
@@ -640,27 +645,125 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
   }
 
   Widget _buildEmpty() {
+    final next = _nextOpensAt;
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 48),
       alignment: Alignment.center,
-      child: const Column(
+      child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.confirmation_num_outlined, size: 44, color: _faint),
-          SizedBox(height: 12),
+          const Icon(Icons.confirmation_num_outlined, size: 44, color: _faint),
+          const SizedBox(height: 12),
+          // 열린 응모가 없어도 다음 시작 시각을 알면 막다른 화면 대신 그걸 보여준다.
           Text(
-            '진행 중인 응모가 없어요.',
-            style: TextStyle(
+            next != null
+                ? '다음 응모 ${formatRaffleOpenTime(next)} 시작'
+                : '진행 중인 응모가 없어요.',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
               fontFamily: 'Pretendard',
               fontSize: 14,
               fontWeight: FontWeight.w600,
               color: _sub,
             ),
           ),
+          if (next != null) ...[
+            const SizedBox(height: 4),
+            const Text(
+              '마일리지를 미리 모아 두세요',
+              style: TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 12.5,
+                fontWeight: FontWeight.w500,
+                color: _faint,
+              ),
+            ),
+          ],
         ],
       ),
     );
   }
+
+  /// "쌓는 법" 3줄. 값은 서버 정책(/api/config/policy/)을 따른다.
+  Widget _buildEarnGuide() {
+    final rows = [
+      (
+        title: '매장 QR 찍기',
+        sub: '하루 ${AppConfigService.mileageQrVisitDailyLimit}회까지',
+        points: AppConfigService.mileageQrVisitPoints,
+      ),
+      (
+        title: '스탬프 적립',
+        sub: '스탬프 1개마다',
+        points: AppConfigService.mileageStampVisitPoints,
+      ),
+      (
+        title: '쿠폰 사용',
+        sub: '제휴 매장 쿠폰',
+        points: AppConfigService.mileageCouponUsePoints,
+      ),
+    ];
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _line),
+      ),
+      child: Column(
+        children: [
+          for (var i = 0; i < rows.length; i++) ...[
+            if (i > 0)
+              const Divider(height: 1, thickness: 1, color: Color(0xFFF1F2F7)),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 11),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          rows[i].title,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: _ink,
+                          ),
+                        ),
+                        const SizedBox(height: 1),
+                        Text(
+                          rows[i].sub,
+                          style: const TextStyle(
+                            fontFamily: 'Pretendard',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: _sub,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '+${_comma(rows[i].points)}M',
+                    style: const TextStyle(
+                      fontFamily: 'Pretendard',
+                      fontSize: 14.5,
+                      fontWeight: FontWeight.w800,
+                      color: _primary,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
 
   /// 티켓형 응모 카드. 가운데 절취선(점선 + 좌우 노치)으로 쿠폰 느낌을 준다.
   Widget _buildRaffleCard(Raffle raffle) {
@@ -1111,4 +1214,11 @@ String _comma(int value) {
     buffer.write(digits[i]);
   }
   return buffer.toString();
+}
+
+/// "10월 6일(월) 11시". 분이 있으면 "11시 30분".
+String formatRaffleOpenTime(DateTime t) {
+  const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+  final time = t.minute == 0 ? '${t.hour}시' : '${t.hour}시 ${t.minute}분';
+  return '${t.month}월 ${t.day}일(${weekdays[t.weekday - 1]}) $time';
 }

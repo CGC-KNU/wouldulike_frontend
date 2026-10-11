@@ -19,6 +19,7 @@ StampStatus statusOf({
 }
 
 void main() {
+  rewardNameTests();
   group('StampStatusBoard', () {
     test('판 칸 수는 서버 target(cycle_target)을 그대로 쓴다', () {
       expect(
@@ -130,4 +131,20 @@ void main() {
     });
   });
 
+}
+
+void rewardNameTests() {
+  group('cleanStampRewardName', () {
+    test('끝의 "제공"을 떼서 화면에서 덧붙여도 중복되지 않게 한다', () {
+      expect(cleanStampRewardName('에이드 1잔 제공'), '에이드 1잔');
+      expect(cleanStampRewardName('에이드 1잔 제공 제공'), '에이드 1잔');
+      expect(cleanStampRewardName('에이드 1잔'), '에이드 1잔');
+    });
+
+    test('자리표시 문구는 빈 문자열', () {
+      expect(cleanStampRewardName('Stamp Reward (10)'), '');
+      expect(cleanStampRewardName('N개 모으면'), '');
+      expect(cleanStampRewardName(''), '');
+    });
+  });
 }

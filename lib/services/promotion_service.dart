@@ -31,7 +31,7 @@ class FeaturedCampaignItem {
     final image = json['image_url']?.toString();
 
     return FeaturedCampaignItem(
-      restaurantId: parseIntOrNull(json['restaurant_id']),
+      restaurantId: _restaurantIdOf(json, parseIntOrNull),
       badge: json['badge']?.toString() ?? '',
       benefitTitle: json['benefit_title']?.toString() ?? '',
       benefitSub: json['benefit_sub']?.toString() ??
@@ -57,6 +57,23 @@ class FeaturedCampaignItem {
   final int sortOrder;
 
   bool get isStandaloneBanner => restaurantId == null;
+}
+
+/// 기획전 항목의 식당 id. 평탄한 restaurant_id와, 식당 객체 안의 id를 모두 본다.
+int? _restaurantIdOf(
+  Map<String, dynamic> json,
+  int? Function(dynamic value) parseIntOrNull,
+) {
+  final direct = parseIntOrNull(json['restaurant_id']);
+  if (direct != null && direct > 0) return direct;
+  final nested = json['restaurant'];
+  if (nested is Map) {
+    final map = Map<String, dynamic>.from(nested);
+    final nestedId =
+        parseIntOrNull(map['restaurant_id']) ?? parseIntOrNull(map['id']);
+    if (nestedId != null && nestedId > 0) return nestedId;
+  }
+  return null;
 }
 
 /// https 스킴만 통과시킨다 (mission_service.dart의 PromoBlock 검증 패턴과 동일).

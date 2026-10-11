@@ -25,6 +25,8 @@ import 'services/favorites_service.dart';
 import 'services/user_service.dart';
 import 'widgets/network_thumb.dart';
 import 'coupon/redeem_pin_dialog.dart';
+import 'coupon/qr_entry_sheet.dart';
+import 'services/mileage_service.dart' show QrEntry;
 import 'coupon/limited_coupon_offer_flow.dart';
 import 'widgets/coupon_issued_dialog.dart';
 import 'services/deep_link_service.dart';
@@ -2851,29 +2853,6 @@ class _AffiliateRestaurantDetailSheetState
   /// 앞으로 받을 수 있는 가장 가까운 혜택 (서버 rewards 기준)
   StampReward? _getNextReward() => _effectiveStampStatus.nextReward;
 
-  /// 다음 혜택에 대한 헤드라인 문구 생성
-  String _formatRewardHeadline(StampReward r) {
-    final benefit = _benefitTextFor(r);
-    if (r.isVisitPattern && r.minVisit != null && r.maxVisit != null) {
-      return '스탬프 ${r.minVisit}~${r.maxVisit}개 적립 시 $benefit 제공';
-    }
-    if (r.stamps != null) {
-      return '스탬프 ${r.stamps}개 적립 시 $benefit 제공';
-    }
-    return '스탬프 적립 시 $benefit 제공';
-  }
-
-  /// 리워드가 걸린 칸 번호. 서버 rewards만 사용하고, 없으면 빈 목록.
-  List<int> _stampThresholds() {
-    final status = _effectiveStampStatus;
-    final list = <int>{
-      for (final r in status.thresholdRewards) r.stamps!,
-      for (final r in status.visitRewards) r.minVisit!,
-    }.toList()
-      ..sort();
-    return list;
-  }
-
   @override
   void initState() {
     super.initState();
@@ -2896,6 +2875,10 @@ class _AffiliateRestaurantDetailSheetState
     _coupons = List<UserCoupon>.from(widget.coupons);
     _sortCoupons();
     _scrollController.addListener(_onScroll);
+    // QR로 들어왔으면 서버가 정한 분기 시트를 이 상세 위에 띄운다.
+    // 응답이 상세보다 먼저 도착했을 수도 있어 첫 프레임 뒤에도 한 번 확인한다.
+    DeepLinkService.instance.pendingQrEntry.addListener(_handleQrEntry);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handleQrEntry());
     _stampStatus = widget.initialStampStatus ??
         StampStatus(
           current: widget.restaurant.stampCurrent,
@@ -2984,10 +2967,71 @@ class _AffiliateRestaurantDetailSheetState
       restaurantId: widget.restaurant.id,
       source: widget.source,
     );
+    DeepLinkService.instance.pendingQrEntry.removeListener(_handleQrEntry);
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _imagePageController.dispose();
     super.dispose();
+  }
+
+  bool _qrEntryShowing = false;
+
+  /// QR 진입 분기 시트 (쿠폰 도착 / 갖고 계신 쿠폰 / 보상 / 스탬프 안내).
+  Future<void> _handleQrEntry() async {
+    if (!mounted || _qrEntryShowing) return;
+    final pending = DeepLinkService.instance.pendingQrEntry.value;
+    if (pending == null || pending.entry.restaurantId != widget.restaurant.id) {
+      return;
+    }
+    DeepLinkService.instance.pendingQrEntry.value = null;
+    if (!pending.isFresh(DateTime.now())) return;
+    _qrEntryShowing = true;
+    try {
+      final QrEntry entry = pending.entry;
+      // 방금 발급된 쿠폰은 이 시트의 목록에 아직 없다.
+      if (entry.couponCode != null &&
+          !_coupons.any((c) => c.code == entry.couponCode)) {
+        await _refreshCoupons();
+      }
+      if (!mounted) return;
+      final coupon =
+          _coupons.where((c) => c.code == entry.couponCode).firstOrNull;
+      final action = await showQrEntrySheet(
+        context,
+        entry: entry,
+        restaurantName: widget.restaurant.name,
+        coupon: coupon,
+      );
+      if (!mounted || action == null) return;
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.qrEntryAction,
+        parameters: {
+          AnalyticsEvents.paramRestaurantId: widget.restaurant.id,
+          'branch': entry.branch.value,
+          AnalyticsEvents.paramAction: switch (action) {
+            QrEntryAction.useCoupon => 'use_coupon',
+            QrEntryAction.useCouponWithStamp => 'use_coupon_with_stamp',
+            QrEntryAction.addStamp => 'add_stamp',
+            QrEntryAction.later => 'later',
+            QrEntryAction.viewStore => 'view_store',
+          },
+        },
+      );
+      switch (action) {
+        case QrEntryAction.useCoupon:
+          if (coupon != null) await _handleRedeem(coupon);
+        case QrEntryAction.useCouponWithStamp:
+          // 같은 PIN 한 번으로 쿠폰 사용 + 스탬프 적립 (스탬프 적립을 미리 켜 둔다)
+          if (coupon != null) await _handleRedeem(coupon, withStamp: true);
+        case QrEntryAction.addStamp:
+          await _handleAddStamp();
+        case QrEntryAction.later:
+        case QrEntryAction.viewStore:
+          break;
+      }
+    } finally {
+      _qrEntryShowing = false;
+    }
   }
 
   void _onScroll() {
@@ -3146,7 +3190,7 @@ class _AffiliateRestaurantDetailSheetState
     } on ApiHttpException catch (e) {
       final msg = _extractDetailMessage(e.body) ??
           (e.statusCode == 400 || e.statusCode == 401
-              ? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.'
+              ? 'PIN이 올바르지 않아요. 다시 확인해 주세요.'
               : '요청이 실패했어요 (HTTP ${e.statusCode})');
       if (mounted) setState(() => _stampError = msg);
     } on ApiNetworkException catch (e) {
@@ -3388,7 +3432,7 @@ class _AffiliateRestaurantDetailSheetState
     }
   }
 
-  Future<void> _handleRedeem(UserCoupon coupon) async {
+  Future<void> _handleRedeem(UserCoupon coupon, {bool withStamp = false}) async {
     setState(() => _processingCouponCode = coupon.code);
     try {
       final outcome = await showCouponRedeemPinDialog(
@@ -3398,6 +3442,7 @@ class _AffiliateRestaurantDetailSheetState
         restaurantName: widget.restaurant.name,
         notes: coupon.benefit?.notesText,
         fromScreen: 'detail',
+        initialAddStamp: withStamp,
       );
       if (!mounted) return;
       if (outcome != null && outcome.redeemed) {
@@ -3469,7 +3514,7 @@ class _AffiliateRestaurantDetailSheetState
                       Text.rich(
                         TextSpan(
                           text:
-                              '스탬프를 적립하시겠습니까?\n\n적립 개수를 선택하고 관리자 비밀번호를 입력하시면\n\n스탬프 $selectedCount개가 적립됩니다.',
+                              '스탬프를 적립하시겠습니까?\n\n적립 개수를 선택하고 직원이 매장 PIN을 입력하시면\n\n스탬프 $selectedCount개가 적립됩니다.',
                           style: const TextStyle(
                             color: Color(0xFF39393E),
                             fontSize: 14,
@@ -3534,7 +3579,7 @@ class _AffiliateRestaurantDetailSheetState
                       ),
                       const SizedBox(height: 26),
                       const Text(
-                        '비밀번호',
+                        '매장 PIN',
                         style: TextStyle(
                           color: Color(0xFF797979),
                           fontSize: 15,
@@ -3979,9 +4024,16 @@ class _AffiliateRestaurantDetailSheetState
         _buildDetailTabs(),
         const SizedBox(height: 16),
         if (_detailTab == 0) ...[
-          _buildStampSection(),
-          const SizedBox(height: 16),
-          _buildCouponSection(),
+          // 쓸 쿠폰을 가진 사람에게는 쿠폰 카드를 맨 위에. (시안 11)
+          if (_coupons.isNotEmpty && !widget.requiresLogin) ...[
+            _buildCouponSection(),
+            const SizedBox(height: 16),
+            _buildStampSection(),
+          ] else ...[
+            _buildStampSection(),
+            const SizedBox(height: 16),
+            _buildCouponSection(),
+          ],
           const SizedBox(height: 16),
           _buildRestaurantBenefitDetailSection(),
         ] else
@@ -4490,7 +4542,7 @@ class _AffiliateRestaurantDetailSheetState
                                 TextSpan(
                                   text: '$filled',
                                   style: const TextStyle(
-                                    fontSize: 26,
+                                    fontSize: 34,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: -0.9,
                                     color: _Theme.primary,
@@ -4500,7 +4552,7 @@ class _AffiliateRestaurantDetailSheetState
                                 TextSpan(
                                   text: ' / $total',
                                   style: const TextStyle(
-                                    fontSize: 22,
+                                    fontSize: 24,
                                     fontWeight: FontWeight.w800,
                                     letterSpacing: -0.7,
                                     color: Color(0xFF191F28),
@@ -4594,7 +4646,7 @@ class _AffiliateRestaurantDetailSheetState
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '하루 최대 ${AppConfigService.stampDailyLimitPerRestaurant}회 적립 · 마지막 칸이 리워드예요',
+                    '${AppConfigService.stampDailyLimitLabel} 적립 · 마지막 칸이 리워드예요',
                     style: const TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w500,
@@ -4613,13 +4665,15 @@ class _AffiliateRestaurantDetailSheetState
   String _stampSubtitle({required bool ready, required int remaining}) {
     if (widget.requiresLogin) return '로그인하면 스탬프를 적립할 수 있어요';
     final reward = _getNextReward() ?? _getCurrentReward();
+    final name = reward != null ? _benefitTextFor(reward) : null;
     if (ready) {
-      return reward != null
-          ? _formatRewardHeadline(reward)
+      return name != null
+          ? '리워드를 받을 수 있어요 · $name'
           : '리워드 쿠폰을 받을 수 있어요';
     }
-    if (reward != null) return _formatRewardHeadline(reward);
-    return '$remaining개 더 모으면 리워드 쿠폰';
+    return name != null
+        ? '다음 보상까지 $remaining개 · $name'
+        : '다음 보상까지 $remaining개';
   }
 
   /// 적립하기 / 리워드 받기 버튼 (시안: 흰 배경 + 인디고 외곽선)
@@ -4674,12 +4728,20 @@ class _AffiliateRestaurantDetailSheetState
     );
   }
 
+  int? _nextRewardStep() {
+    final next = _getNextReward();
+    return next?.stamps ?? next?.minVisit;
+  }
+
   /// 5칸씩 줄바꿈되는 원형 스탬프 그리드. 마지막 칸은 리워드(선물) 도장.
   Widget _buildStampGrid({required int filled, required int total}) {
     return StampAssetGrid(
       current: filled,
       target: total,
-      rewardSteps: _stampThresholds().toSet(),
+      // 선물 아이콘은 "다음 보상 칸" 하나만. 모든 보상 칸에 달면 4~10칸이 전부 선물로 보인다.
+      rewardSteps: {
+        if (_nextRewardStep() != null) _nextRewardStep()!,
+      },
     );
   }
 

@@ -118,7 +118,7 @@ class _MileageHistorySectionState extends State<MileageHistorySection> {
               ),
               SizedBox(height: 4),
               Text(
-                '제휴 매장에 방문하면 마일리지가 쌓여요.',
+                '스탬프를 찍거나 매장 QR을 찍으면 쌓여요.',
                 style: TextStyle(
                   fontFamily: 'Pretendard',
                   fontSize: 12.5,

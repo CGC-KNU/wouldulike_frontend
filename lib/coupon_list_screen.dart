@@ -899,7 +899,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  '받은 쿠폰 번호를 입력하거나\n식당에서 혜택을 받으면 이곳에 모여요',
+                  '매장 QR을 찍으면 쿠폰이 와요\n코드가 있다면 위에 입력해 주세요',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 13.5,
@@ -1007,6 +1007,10 @@ class _CouponListScreenState extends State<CouponListScreen> {
       notes: benefit?.notesText,
       expiryText: _formatExpiryDate(coupon.expiresAt),
       expiryUrgent: _isExpiringSoon(coupon),
+      // 24시간 안에 사라지는 쿠폰은 목록에서 바로 눈에 띄게 빨간 테두리 (시안 15)
+      borderColor: isCouponExpiringSoon(coupon, window: const Duration(hours: 24))
+          ? const Color(0xFFE5484D)
+          : null,
       isProcessing: _processingCouponCode == coupon.code,
       onAction: () => _handleRedeem(coupon),
     );

@@ -117,6 +117,13 @@ class MileageHistoryPage {
 }
 
 /// 응모 가능한 식사권 (GET /api/raffles/)
+class RaffleBoard {
+  const RaffleBoard({required this.raffles, this.nextOpensAt});
+
+  final List<Raffle> raffles;
+  final DateTime? nextOpensAt;
+}
+
 class Raffle {
   const Raffle({
     required this.id,
@@ -386,21 +393,32 @@ class MileageService {
     return const MileageHistoryPage(events: []);
   }
 
-  static Future<List<Raffle>> fetchRaffles() async {
+  static Future<List<Raffle>> fetchRaffles() async =>
+      (await fetchRaffleBoard()).raffles;
+
+  /// 응모 목록 + 아직 열리지 않은 다음 회차의 시작 시각(없으면 null).
+  /// 진행 중인 응모가 없을 때 "다음 응모 ○시 시작"을 보여주는 데 쓴다.
+  static Future<RaffleBoard> fetchRaffleBoard() async {
     try {
       final response =
           await ApiClient.get('/api/raffles/').timeout(const Duration(seconds: 8));
       final decoded = _decode(response);
       final raw = decoded is Map<String, dynamic> ? decoded['results'] : decoded;
       if (raw is List) {
-        return raw
-            .whereType<Map>()
-            .map((e) => Raffle.fromJson(Map<String, dynamic>.from(e)))
-            .toList();
+        final nextRaw =
+            decoded is Map<String, dynamic> ? decoded['next_opens_at'] : null;
+        return RaffleBoard(
+          raffles: raw
+              .whereType<Map>()
+              .map((e) => Raffle.fromJson(Map<String, dynamic>.from(e)))
+              .toList(),
+          nextOpensAt:
+              nextRaw is String ? DateTime.tryParse(nextRaw)?.toLocal() : null,
+        );
       }
     } catch (_) {}
-    if (kDebugMode) return _devRaffles();
-    return const [];
+    if (kDebugMode) return RaffleBoard(raffles: _devRaffles());
+    return const RaffleBoard(raffles: []);
   }
 
   static Future<List<MyRaffleEntry>> fetchMyEntries() async {
@@ -564,12 +582,93 @@ class MileageService {
         balance: map['balance'] == null ? null : _asInt(map['balance']),
         couponIssued: map['coupon_issued'] == true,
         issuedCoupons: issuedCoupons,
+        entry: map['entry'] is Map
+            ? QrEntry.fromJson(Map<String, dynamic>.from(map['entry'] as Map))
+            : null,
       );
     } catch (e) {
       debugPrint('[Mileage] QR visit credit failed: $e');
       return const QrVisitResult(credited: false, code: 'network_error');
     }
   }
+}
+
+/// QR 진입 후 보여 줄 화면 분기 (서버 coupons/qr_entry.py 와 같은 값).
+enum QrEntryBranch {
+  couponArrived('coupon_arrived'),
+  couponHeld('coupon_held'),
+  stampProgress('stamp_progress'),
+  stampDoneToday('stamp_done_today'),
+  none('none');
+
+  const QrEntryBranch(this.value);
+  final String value;
+
+  static QrEntryBranch parse(String? raw) => QrEntryBranch.values
+      .firstWhere((b) => b.value == raw, orElse: () => QrEntryBranch.none);
+}
+
+class QrEntryStamp {
+  const QrEntryStamp({
+    this.enabled = false,
+    this.current = 0,
+    this.target = 0,
+    this.remaining = 0,
+    this.nextReward = '',
+    this.stampedToday = false,
+    this.lastVisitAt,
+  });
+
+  factory QrEntryStamp.fromJson(Map<String, dynamic> json) => QrEntryStamp(
+        enabled: json['enabled'] == true,
+        current: _asInt(json['current']),
+        target: _asInt(json['target']),
+        remaining: _asInt(json['remaining']),
+        nextReward: json['next_reward']?.toString() ?? '',
+        stampedToday: json['stamped_today'] == true,
+        lastVisitAt: DateTime.tryParse(json['last_visit_at']?.toString() ?? '')
+            ?.toLocal(),
+      );
+
+  final bool enabled;
+  final int current;
+  final int target;
+
+  /// 가장 가까운 보상까지 남은 개수.
+  final int remaining;
+  final String nextReward;
+  final bool stampedToday;
+  final DateTime? lastVisitAt;
+}
+
+class QrEntry {
+  const QrEntry({
+    required this.branch,
+    required this.restaurantId,
+    this.couponCode,
+    this.couponIsReward = false,
+    this.stamp = const QrEntryStamp(),
+  });
+
+  factory QrEntry.fromJson(Map<String, dynamic> json) => QrEntry(
+        branch: QrEntryBranch.parse(json['branch']?.toString()),
+        restaurantId: _asInt(json['restaurant_id']),
+        couponCode: json['coupon_code']?.toString(),
+        couponIsReward: json['coupon_is_reward'] == true,
+        stamp: json['stamp'] is Map
+            ? QrEntryStamp.fromJson(
+                Map<String, dynamic>.from(json['stamp'] as Map))
+            : const QrEntryStamp(),
+      );
+
+  final QrEntryBranch branch;
+  final int restaurantId;
+  /// 함께 쓰도록 유도할 쿠폰 (첫 방문이면 방금 발급된 것, 재방문이면 아직 안 쓴 것).
+  final String? couponCode;
+
+  /// couponCode 가 스탬프 보상 쿠폰인지.
+  final bool couponIsReward;
+  final QrEntryStamp stamp;
 }
 
 /// QR 딥링크 방문 적립 결과 (POST /api/mileage/qr-visit/)
@@ -581,9 +680,13 @@ class QrVisitResult {
     this.balance,
     this.couponIssued = false,
     this.issuedCoupons = const [],
+    this.entry,
   });
 
   final bool credited;
+
+  /// 서버가 정한 QR 진입 화면 분기. 구 서버 응답이면 null.
+  final QrEntry? entry;
 
   /// disabled · daily_limit_reached · network_error 등
   final String? code;

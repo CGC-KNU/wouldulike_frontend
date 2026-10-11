@@ -9,6 +9,7 @@ import 'package:new1/services/coupon_service.dart';
 import 'package:new1/services/favorites_service.dart';
 import 'package:new1/services/promotion_service.dart';
 import 'package:new1/services/deep_link_service.dart';
+import 'package:new1/services/user_service.dart';
 
 /// 기획전 특집 화면 (스펙 7.4, 프로토타입 화면 13)
 class FeaturedCampaignScreen extends StatefulWidget {
@@ -59,10 +60,7 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
       _prefs = prefs;
       _favoriteIds = await FavoritesService.loadIds();
 
-      final tab = await AffiliateService.fetchTabRestaurants();
-      final byId = <int, AffiliateRestaurantSummary>{
-        for (final r in tab.affiliateRestaurants) r.id: r,
-      };
+      final byId = await _lookupCampaignRestaurants(widget.campaign.items);
       final stores = <_FeaturedStore>[];
       final standaloneBanners = <FeaturedCampaignItem>[];
       for (final item in widget.campaign.items) {
@@ -74,9 +72,8 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
         }
         final restaurant = byId[restaurantId];
         if (restaurant == null) {
-          // 스펙 7.4: 매칭 실패 항목은 제외하고 로그만 남긴다.
           debugPrint(
-              'featured item excluded: restaurant $restaurantId not in tab-restaurants');
+              'featured item excluded: restaurant $restaurantId not found');
           continue;
         }
         stores.add(_FeaturedStore(item: item, restaurant: restaurant));
@@ -96,6 +93,73 @@ class _FeaturedCampaignScreenState extends State<FeaturedCampaignScreen> {
         _isLoading = false;
       });
     }
+  }
+
+  /// 기획전 항목의 식당을 찾는다.
+  ///
+  /// 식당 탭 첫 페이지(기본 20곳, 대학가 미지정)와만 맞추면, 대학가가 늘어난 뒤
+  /// 그 페이지 밖에 있는 혜택 매장이 전부 빠진다. 전체 제휴 목록과 내 대학가
+  /// 목록을 보고, 그래도 없으면 식당 id로 단건 조회한다.
+  Future<Map<int, AffiliateRestaurantSummary>> _lookupCampaignRestaurants(
+    List<FeaturedCampaignItem> items,
+  ) async {
+    final wanted = <int>{
+      for (final item in items)
+        if (item.restaurantId != null && item.restaurantId! > 0)
+          item.restaurantId!,
+    };
+    final byId = <int, AffiliateRestaurantSummary>{};
+    if (wanted.isEmpty) return byId;
+
+    void absorb(Iterable<AffiliateRestaurantSummary> restaurants) {
+      for (final restaurant in restaurants) {
+        if (wanted.contains(restaurant.id)) byId[restaurant.id] = restaurant;
+      }
+    }
+
+    try {
+      absorb(await AffiliateService.fetchRestaurants());
+    } catch (e) {
+      debugPrint('affiliate catalog failed: $e');
+    }
+
+    if (byId.length < wanted.length) {
+      String? campus;
+      try {
+        final profile = await UserService.fetchCurrentUserProfile();
+        final raw = profile?['campus']?.toString().trim();
+        if (raw != null && raw.isNotEmpty) campus = raw;
+      } catch (_) {}
+      try {
+        final tab = await AffiliateService.fetchTabRestaurants(
+          campus: campus,
+          limit: 100,
+          includeAffiliates: true,
+        );
+        absorb(tab.affiliateRestaurants);
+      } catch (e) {
+        debugPrint('tab restaurants for featured failed: $e');
+      }
+    }
+
+    final missing =
+        wanted.where((id) => !byId.containsKey(id)).toList(growable: false);
+    if (missing.isEmpty) return byId;
+
+    final details = await Future.wait(missing.map((id) async {
+      try {
+        return await AffiliateService.fetchRestaurantDetail(restaurantId: id);
+      } catch (e) {
+        debugPrint('featured restaurant $id lookup failed: $e');
+        return null;
+      }
+    }));
+    for (final restaurant in details) {
+      if (restaurant != null && wanted.contains(restaurant.id)) {
+        byId[restaurant.id] = restaurant;
+      }
+    }
+    return byId;
   }
 
   Future<void> _loadUserData() async {

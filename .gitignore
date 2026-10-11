@@ -86,3 +86,6 @@ android/startup
 cdssetup/
 # 골든 테스트 실패 시 자동 생성되는 diff 이미지
 test/failures/
+
+# UI/UX 개선 기획안 자료 (로컬 전용, 커밋 안 함)
+docs/uiux_plan_local/

@@ -7,7 +7,6 @@ import 'package:new1/services/api_client.dart';
 import 'package:new1/services/app_config_service.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/services/master_content.dart';
-import 'package:new1/widgets/stamp_asset_grid.dart';
 
 /// 지갑 스탬프 탭: 매장별 스탬프 현황 카드 목록.
 /// /api/coupons/stamps/my/all/ 결과를 제휴 식당 목록과 restaurant_id로 매칭한다.
@@ -246,10 +245,13 @@ class _StampTabState extends State<StampTab> {
     final category = entry.restaurant?.category ?? '';
     final nextReward = status.nextReward;
     final remaining = status.remainingToNextReward;
-    final rewardTiers = status.thresholdRewards;
-    final rewardSteps = <int>{
-      for (final r in rewardTiers) r.stamps!,
-    };
+    // 보상이 하나도 등록되지 않은 매장은 "준비 중"으로 보여준다 (시안 12).
+    final noReward =
+        status.thresholdRewards.isEmpty && status.visitRewards.isEmpty;
+    // 진행 막대는 "가장 가까운 보상"까지 기준. 최대 보상 기준이면 막대가 늘 짧아 보인다.
+    final step = nextReward?.stamps ?? nextReward?.minVisit ?? board;
+    final fraction = step <= 0 ? 0.0 : (current / step).clamp(0.0, 1.0);
+    final ready = !noReward && (nextReward == null || remaining <= 0);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -270,20 +272,14 @@ class _StampTabState extends State<StampTab> {
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 15, 16, 13),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 15, 16, 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Image.asset(
-                  'assets/images/stamp/stamp_tag.png',
-                  width: 32,
-                  height: 32,
-                ),
-                const SizedBox(width: 9),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,31 +289,25 @@ class _StampTabState extends State<StampTab> {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 15,
+                          fontSize: 16,
                           fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w800,
                           letterSpacing: -0.4,
                           color: Color(0xFF191F28),
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        [
-                          if (category.isNotEmpty) category,
-                          nextReward == null || remaining <= 0
-                              ? '리워드를 받을 수 있어요'
-                              : '$remaining개 더 모으면 '
-                                  '${stampRewardBenefitText(nextReward)}',
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w500,
-                          color: Color(0xFF8B95A1),
+                      if (category.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          category,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontFamily: 'Pretendard',
+                            fontWeight: FontWeight.w500,
+                            color: Color(0xFF8B95A1),
+                          ),
                         ),
-                      ),
+                      ],
                     ],
                   ),
                 ),
@@ -328,17 +318,17 @@ class _StampTabState extends State<StampTab> {
                       TextSpan(
                         text: '$current',
                         style: const TextStyle(
-                          fontSize: 20,
+                          fontSize: 28,
                           fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w800,
-                          letterSpacing: -0.6,
+                          letterSpacing: -0.8,
                           color: Color(0xFF4F46E5),
                         ),
                       ),
                       TextSpan(
                         text: ' / $board',
                         style: const TextStyle(
-                          fontSize: 14,
+                          fontSize: 16,
                           fontFamily: 'Pretendard',
                           fontWeight: FontWeight.w800,
                           color: Color(0xFF191F28),
@@ -349,25 +339,76 @@ class _StampTabState extends State<StampTab> {
                 ),
               ],
             ),
-          ),
-          const _DashedDivider(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildStampGrid(
-                  current: current,
-                  target: board,
-                  rewardSteps: rewardSteps,
+            const SizedBox(height: 12),
+            if (noReward)
+              _buildNextRewardBox(
+                label: '준비 중',
+                text: '사장님이 보상을 준비하고 있어요',
+                muted: true,
+              )
+            else ...[
+              _buildNextRewardBox(
+                label: ready ? '보상 도착' : '다음 보상',
+                text: ready
+                    ? '리워드를 받을 수 있어요'
+                    : '$remaining개 더 모으면 ${stampRewardBenefitText(nextReward!)}',
+              ),
+              const SizedBox(height: 10),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(99),
+                child: LinearProgressIndicator(
+                  value: ready ? 1.0 : fraction,
+                  minHeight: 8,
+                  backgroundColor: const Color(0xFFEEEDFC),
+                  valueColor: const AlwaysStoppedAnimation(Color(0xFF4F46E5)),
                 ),
-                if (rewardTiers.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _buildRewardTierList(rewardTiers, current),
-                ],
-                const SizedBox(height: 14),
-                _buildAddStampButton(entry),
-              ],
+              ),
+            ],
+            const SizedBox(height: 14),
+            _buildAddStampButton(entry),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "다음 보상 · 1개 더 모으면 에이드 1잔" 박스.
+  Widget _buildNextRewardBox({
+    required String label,
+    required String text,
+    bool muted = false,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: muted ? const Color(0xFFF4F5F8) : const Color(0xFFEEEDFC),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontFamily: 'Pretendard',
+              fontWeight: FontWeight.w800,
+              color: muted ? const Color(0xFF8B95A1) : const Color(0xFF4F46E5),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13.5,
+                fontFamily: 'Pretendard',
+                fontWeight: FontWeight.w700,
+                color:
+                    muted ? const Color(0xFF8B95A1) : const Color(0xFF191F28),
+              ),
             ),
           ),
         ],
@@ -436,106 +477,4 @@ class _StampTabState extends State<StampTab> {
     // 적립 결과(도장 수·리워드 쿠폰)를 목록에 반영한다.
     await _load();
   }
-
-  /// "N개 → 혜택" 목록. 서버 rewards 그대로 보여준다(하드코딩 없음).
-  Widget _buildRewardTierList(List<StampReward> tiers, int current) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final r in tiers)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 4),
-            child: Row(
-              children: [
-                Container(
-                  width: 34,
-                  alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  decoration: BoxDecoration(
-                    color: (r.stamps ?? 0) <= current
-                        ? const Color(0xFFEEF2FF)
-                        : const Color(0xFFF2F4F6),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '${r.stamps}개',
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w800,
-                      color: (r.stamps ?? 0) <= current
-                          ? const Color(0xFF4F46E5)
-                          : const Color(0xFF8B95A1),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    stampRewardBenefitText(r),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontFamily: 'Pretendard',
-                      fontWeight: FontWeight.w600,
-                      color: (r.stamps ?? 0) <= current
-                          ? const Color(0xFF191F28)
-                          : const Color(0xFF6B7684),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    );
-  }
-
-  /// 5칸씩 줄바꿈되는 원형 도장. 리워드가 걸린 칸은 선물 도장으로 표시한다.
-  Widget _buildStampGrid({
-    required int current,
-    required int target,
-    required Set<int> rewardSteps,
-  }) {
-    return StampAssetGrid(
-      current: current,
-      target: target,
-      rewardSteps: rewardSteps,
-    );
-  }
-
-}
-
-/// 티켓 절취선.
-class _DashedDivider extends StatelessWidget {
-  const _DashedDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 1.5,
-      child: CustomPaint(painter: _DashedLinePainter(), size: Size.infinite),
-    );
-  }
-}
-
-class _DashedLinePainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFE3E6EF)
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round;
-    const dash = 5.0;
-    const gap = 5.0;
-    var x = 0.0;
-    while (x < size.width) {
-      canvas.drawLine(Offset(x, 0.75), Offset(x + dash, 0.75), paint);
-      x += dash + gap;
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

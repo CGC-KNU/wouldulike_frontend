@@ -136,6 +136,24 @@ class AppConfigService {
       _int(_stamp['daily_limit_per_restaurant'], fallbackStampDailyLimit)
           .clamp(1, 99);
 
+  /// 안내 문구용. 1회면 "같은 매장 하루 1회", 그 외는 "하루 최대 N회".
+  static String get stampDailyLimitLabel {
+    final n = stampDailyLimitPerRestaurant;
+    return n == 1 ? '같은 매장 하루 1회' : '하루 최대 $n회';
+  }
+
+  static Map<String, dynamic> get _mileage => _map(_policy['mileage']);
+
+  /// 지갑 마일리지 탭 "쌓는 법" 안내용. 서버 관리자 설정값을 따라간다.
+  static int get mileageQrVisitPoints =>
+      _int(_mileage['qr_visit_points'], 100).clamp(0, 100000);
+  static int get mileageQrVisitDailyLimit =>
+      _int(_mileage['qr_visit_daily_limit'], 2).clamp(0, 99);
+  static int get mileageStampVisitPoints =>
+      _int(_mileage['stamp_visit_points'], 100).clamp(0, 100000);
+  static int get mileageCouponUsePoints =>
+      _int(_mileage['coupon_use_points'], 100).clamp(0, 100000);
+
   static int get stampDefaultCycleTarget =>
       _int(_stamp['default_cycle_target'], fallbackStampCycleTarget)
           .clamp(1, 50);

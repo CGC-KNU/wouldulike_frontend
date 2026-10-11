@@ -516,10 +516,29 @@ class StampStatus {
 }
 
 /// 스탬프 리워드 혜택 문구 (subtitle 우선, 없으면 title)
-String stampRewardBenefitText(StampReward r) =>
-    (r.subtitle != null && r.subtitle!.isNotEmpty)
-        ? r.subtitle!
-        : (r.title ?? '리워드 쿠폰');
+String stampRewardBenefitText(StampReward r) {
+  final raw = (r.subtitle != null && r.subtitle!.isNotEmpty)
+      ? r.subtitle!
+      : (r.title ?? '');
+  final cleaned = cleanStampRewardName(raw);
+  return cleaned.isEmpty ? '리워드 쿠폰' : cleaned;
+}
+
+/// 매장이 등록한 보상명만 남긴다. 화면에서 "OO 제공"을 덧붙여도 "제공 제공"이
+/// 되지 않도록 끝의 "제공"을 떼고, "Stamp Reward (10)"·"N개 모으면" 같은
+/// 자리표시 문구는 빈 문자열로 돌려 호출부가 대체 문구를 쓰게 한다.
+String cleanStampRewardName(String raw) {
+  final text = raw.trim();
+  if (text.isEmpty) return '';
+  final lower = text.toLowerCase();
+  if (lower.startsWith('stamp reward') ||
+      lower.startsWith('stamp_reward') ||
+      text.contains('N개 모으면')) {
+    return '';
+  }
+  final stripped = text.replaceAll(RegExp(r'(\s*제공)+$'), '').trim();
+  return stripped.isEmpty ? text : stripped;
+}
 
 /// 서버 스탬프 현황(GET /api/coupons/stamps/my/)만으로 도장판을 그리기 위한 파생값.
 /// 화면마다 따로 계산하면 "몇 개 모으면 리워드" 문구가 서로 달라지므로 여기 모은다.
@@ -994,16 +1013,31 @@ class CouponRedeemAttemptResult {
     this.result,
     this.errorMessage,
     this.failReason,
+    this.attemptsLeft,
+    this.locked = false,
   });
 
   factory CouponRedeemAttemptResult.success(CouponRedeemResult r) =>
       CouponRedeemAttemptResult._(result: r);
 
-  factory CouponRedeemAttemptResult.failure(String msg, {String? failReason}) =>
+  factory CouponRedeemAttemptResult.failure(
+    String msg, {
+    String? failReason,
+    int? attemptsLeft,
+    bool locked = false,
+  }) =>
       CouponRedeemAttemptResult._(
         errorMessage: msg,
         failReason: failReason,
+        attemptsLeft: attemptsLeft,
+        locked: locked,
       );
+
+  /// PIN 오류 시 서버가 알려주는 잠금까지 남은 시도 횟수. 구 서버 응답이면 null.
+  final int? attemptsLeft;
+
+  /// 식당 PIN 입력이 잠긴 상태 (연속 실패). 이때는 맞는 PIN도 통과하지 않는다.
+  final bool locked;
 
   final CouponRedeemResult? result;
   final String? errorMessage;
@@ -1454,7 +1488,7 @@ class CouponService {
             (response.statusCode == 403 || error?.code == 'invalid_pin'
                 ? 'PIN 번호가 올바르지 않아요. 다시 확인해 주세요.'
                     : response.statusCode == 429
-                    ? '이 식당은 하루 최대 ${AppConfigService.stampDailyLimitPerRestaurant}회까지 스탬프를 적립할 수 있어요.'
+                    ? '이 식당은 ${AppConfigService.stampDailyLimitLabel}까지만 스탬프를 적립할 수 있어요.'
                     : response.statusCode == 400 &&
                             error?.code == 'invalid_stamp_count'
                         ? '스탬프 적립 개수는 1개 이상 ${AppConfigService.stampMaxPerScan}개 이하만 가능해요.'
@@ -1529,13 +1563,23 @@ class CouponService {
         },
       );
       if (response.statusCode >= 400) {
-        final msg = _extractDetailFromBody(response.body) ??
+        final error = _extractApiErrorFromBody(response.body);
+        final attempts = _parseRedeemPinState(response.body);
+        final codeMsg = _redeemMessageForCode(
+          error?.code,
+          lockSeconds: attempts.lockSeconds,
+        );
+        final msg = codeMsg ??
+            _extractDetailFromBody(response.body) ??
             (response.statusCode == 400 || response.statusCode == 401
-                ? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.'
+                ? 'PIN이 올바르지 않아요. 다시 확인해 주세요.'
                 : '요청이 실패했어요 (HTTP ${response.statusCode})');
         return CouponRedeemAttemptResult.failure(
           msg,
-          failReason: _redeemFailReason(response.statusCode, response.body),
+          failReason: _redeemFailReasonForCode(error?.code) ??
+              _redeemFailReason(response.statusCode, response.body),
+          attemptsLeft: attempts.attemptsLeft,
+          locked: error?.code == 'pin_locked' || attempts.locked,
         );
       }
       final decoded = _decodeResponseBody(response);
@@ -1573,6 +1617,59 @@ class CouponService {
         failReason: 'unknown',
       );
     }
+  }
+
+  /// 서버가 내려주는 `code`별 사용자 문구. 모르는 code면 null (기존 문구로 폴백).
+  static String? _redeemMessageForCode(String? code, {int? lockSeconds}) {
+    switch (code) {
+      case 'invalid_pin':
+        return 'PIN이 올바르지 않아요. 다시 확인해 주세요.';
+      case 'pin_locked':
+        final minutes = lockSeconds != null && lockSeconds >= 60
+            ? (lockSeconds / 60).ceil()
+            : 10;
+        return 'PIN을 여러 번 틀려서 $minutes분간 멈췄어요. 쿠폰은 그대로 있어요.';
+      case 'coupon_used':
+        return '이미 사용한 쿠폰이에요.';
+      case 'coupon_expired':
+        return '유효기간이 지난 쿠폰이에요.';
+      case 'restaurant_mismatch':
+        return '이 매장에서 쓸 수 있는 쿠폰이 아니에요.';
+    }
+    return null;
+  }
+
+  static String? _redeemFailReasonForCode(String? code) {
+    switch (code) {
+      case 'invalid_pin':
+        return 'invalid_pin';
+      case 'pin_locked':
+        return 'pin_locked';
+      case 'coupon_used':
+        return 'already_used';
+      case 'coupon_expired':
+        return 'expired';
+      case 'restaurant_mismatch':
+        return 'restaurant_mismatch';
+    }
+    return null;
+  }
+
+  static ({int? attemptsLeft, bool locked, int? lockSeconds})
+      _parseRedeemPinState(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is Map<String, dynamic>) {
+        final left = decoded['attempts_left'];
+        final lock = decoded['lock_seconds'];
+        return (
+          attemptsLeft: left is num ? left.toInt() : null,
+          locked: decoded['locked'] == true,
+          lockSeconds: lock is num ? lock.toInt() : null,
+        );
+      }
+    } catch (_) {}
+    return (attemptsLeft: null, locked: false, lockSeconds: null);
   }
 
   /// 사용 실패 사유 분류. 매장 마찰(만료·중복 사용·PIN 오류)을 구분해야
@@ -1910,7 +2007,7 @@ String _toUserFriendlyMessage(String raw) {
       lower.contains('validationerror') ||
       lower.contains('request method') ||
       lower.contains('/api/')) {
-    return '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
+    return 'PIN이 올바르지 않아요. 다시 확인해 주세요.';
   }
   return raw;
 }

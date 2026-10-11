@@ -407,7 +407,7 @@ class _StaffConfirmSheetState extends State<_StaffConfirmSheet> {
     final value = _controller.text.trim();
     if (value.length != AppConfigService.pinLength) {
       setState(() =>
-          _error = '비밀번호 ${AppConfigService.pinLength}자리를 입력해 주세요.');
+          _error = '매장 PIN ${AppConfigService.pinLength}자리를 입력해 주세요.');
       return;
     }
     setState(() {
@@ -456,7 +456,7 @@ class _StaffConfirmSheetState extends State<_StaffConfirmSheet> {
         },
       );
       setState(() {
-        _error = result.errorMessage ?? '비밀번호가 올바르지 않아요. 다시 확인해 주세요.';
+        _error = result.errorMessage ?? 'PIN이 올바르지 않아요. 다시 확인해 주세요.';
         _loading = false;
       });
     }
@@ -499,7 +499,7 @@ class _StaffConfirmSheetState extends State<_StaffConfirmSheet> {
             ),
             const SizedBox(height: 6),
             const Text(
-              '직원분이 관리자 비밀번호를 입력하면\n쿠폰이 사용 처리돼요.',
+              '직원이 매장 PIN을 입력하면\n쿠폰이 사용 처리돼요.',
               style: TextStyle(
                 fontFamily: 'Pretendard',
                 fontSize: 14,

@@ -12,6 +12,7 @@ import 'package:new1/utils/distance_calculator.dart';
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/utils/impression_tracker.dart';
+import 'package:new1/widgets/my_benefit_summary_card.dart';
 import 'affiliate_benefits_screen.dart';
 import 'coupon_list_screen.dart';
 import 'featured/featured_campaign_screen.dart';
@@ -124,7 +125,7 @@ class _HomeContentState extends State<HomeContent> {
   String? _processingHomeCouponCode;
   Set<int> _favoriteRestaurantIds = <int>{};
   Timer? _bannerAutoScrollTimer;
-  static const Duration _bannerAutoScrollDuration = Duration(seconds: 3);
+  static const Duration _bannerAutoScrollDuration = Duration(seconds: 5);
   List<FeaturedCampaign> _featuredCampaigns = const [];
   MissionTrack? _missionTrack;
 
@@ -1157,7 +1158,7 @@ class _HomeContentState extends State<HomeContent> {
   Widget _buildPromotionSlide(TrendItem item, int index) {
     final bool hasLink = item.hasBlogLink;
 
-    // 캐러셀은 3초마다 저절로 넘어간다. 그래서 「그 장이 절반 이상 1초 넘게
+    // 캐러셀은 5초마다 저절로 넘어간다. 그래서 「그 장이 절반 이상 1초 넘게
     // 보였을 때 · 한 세션에 한 번」으로 잠근다 — 홈에 오래 있어도 배너 수만큼만
     // 쌓인다. 구분 키는 배너의 링크·이미지다. 순서(index)는 서버에서 바뀌므로
     // 키에 쓰면 같은 배너가 자리만 옮겨도 다시 노출로 센다.
@@ -1215,21 +1216,23 @@ class _HomeContentState extends State<HomeContent> {
     }
 
     final int activeIndex = _currentBannerIndex % itemCount;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(itemCount, (index) {
-        final bool isActive = index == activeIndex;
-        return AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: isActive ? 12 : 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: isActive ? const Color(0xFF312E81) : const Color(0xFFD1D5DB),
-            borderRadius: BorderRadius.circular(3),
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF1F2F7),
+          borderRadius: BorderRadius.circular(99),
+        ),
+        child: Text(
+          '${activeIndex + 1} / $itemCount',
+          style: const TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF7C8090),
           ),
-        );
-      }),
+        ),
+      ),
     );
   }
 
@@ -1572,6 +1575,20 @@ class _HomeContentState extends State<HomeContent> {
     );
   }
 
+  // ===== 내 혜택 요약 (시안 10) =====
+  Widget _buildMyBenefitSummary() {
+    if (_affiliateRequiresLogin) return const SizedBox.shrink();
+    final names = {for (final r in _affiliateRestaurants) r.id: r.name};
+    final summary = MyBenefitSummary.from(
+      coupons: _affiliateCoupons,
+      stampStatuses: _affiliateStampStatuses,
+      restaurantName: (id) => names[id] ?? '매장 $id',
+      now: DateTime.now(),
+    );
+    if (summary.isEmpty) return const SizedBox.shrink();
+    return MyBenefitSummaryCard(summary: summary, onTap: _openCouponList);
+  }
+
   // ===== 프로모 블록 (기존 튜토리얼 블록 자리) =====
   // 운영이 켰을 때만 노출한다. 꺼져 있거나 기간 밖이면 여백도 남기지 않는다.
   Widget _buildPromoBlock() {
@@ -1734,12 +1751,13 @@ class _HomeContentState extends State<HomeContent> {
                 _buildPromoBlock(),
                 // 미션 배너: 환영 미션 → (종료 후) 친구 초대
                 _buildMissionBanner(),
-                // 기획전 캐러셀: 진행 중 기획전 있을 때만 노출 (기존 섹션 순서 유지)
+                // 기획전 세로배너. 진행 중 기획전이 있을 때만 노출한다.
                 _buildFeaturedCarousel(screenWidth - padding * 2),
-                // 일반 가로배너(트렌드): 서버에 등록된 항목이 있을 때만 노출한다.
-                _buildPromotionBanner(screenWidth - padding * 2),
-                // 현재 혜택이 있는 식당 목록도 같은 시기에 함께 되살렸다.
+                // 쿠폰·스탬프 현황판. 세로배너 바로 아래. 받은 혜택이 있을 때만.
+                _buildMyBenefitSummary(),
                 _buildAffiliateRestaurantsSection(),
+                // 일반 가로배너(트렌드): 홈 스크롤 맨 아래. 서버 항목이 있을 때만.
+                _buildPromotionBanner(screenWidth - padding * 2),
               ],
             ),
           ),
