@@ -194,6 +194,7 @@ String getCouponIssuanceSource(String? issueKey) {
   if (issueKey.startsWith('LIMITED_BONUS:')) return 'limited_bonus';
   if (issueKey.startsWith('LIMITED:')) return 'limited';
   if (issueKey.startsWith('QR_VISIT_COUPON:')) return 'qr_visit';
+  if (issueKey.startsWith('RAFFLE_WIN:')) return 'raffle_win';
   return 'other';
 }
 
@@ -224,6 +225,8 @@ String resolveCouponIssueSource(String? issueKey) {
   if (issueKey.startsWith('FINAL_EXAM:')) return 'FINAL_EXAM_EVENT';
   if (issueKey.startsWith('LIMITED_BONUS:')) return 'LIMITED_BONUS';
   if (issueKey.startsWith('LIMITED:')) return 'LIMITED_CAMPAIGN';
+  // 마일리지 식사권 응모 당첨 쿠폰. 따로 가르지 않으면 'other' 로 섞여 식사권 사용률을 못 센다.
+  if (issueKey.startsWith('RAFFLE_WIN:')) return 'RAFFLE_WIN';
   return 'other';
 }
 

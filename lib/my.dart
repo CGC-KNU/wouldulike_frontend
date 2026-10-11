@@ -550,6 +550,7 @@ class _MyScreenState extends State<MyScreen> {
       await KakaoShareService.shareInvite(
         context,
         referralCode: resolvedCode,
+        entryPoint: 'my',
       );
     } catch (e) {
       if (!mounted) return;

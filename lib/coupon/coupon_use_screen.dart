@@ -453,6 +453,8 @@ class _StaffConfirmSheetState extends State<_StaffConfirmSheet> {
           AnalyticsEvents.paramCouponCode: widget.coupon.code,
           AnalyticsEvents.paramRestaurantId: widget.restaurantId,
           AnalyticsEvents.paramFailReason: result.failReason ?? 'unknown',
+          AnalyticsEvents.paramCouponIssueSource:
+              widget.coupon.couponIssueSource,
         },
       );
       setState(() {

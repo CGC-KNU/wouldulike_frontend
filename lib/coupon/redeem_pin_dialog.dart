@@ -250,6 +250,8 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
           AnalyticsEvents.paramCouponCode: widget.coupon.code,
           AnalyticsEvents.paramRestaurantId: targetId,
           AnalyticsEvents.paramFailReason: redeem.failReason ?? 'unknown',
+          AnalyticsEvents.paramCouponIssueSource:
+              widget.coupon.couponIssueSource,
         },
       );
       setState(() {

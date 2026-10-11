@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:kakao_flutter_sdk_share/kakao_flutter_sdk_share.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../config/analytics_events.dart';
+import '../utils/analytics_logger.dart';
+
 class KakaoShareService {
   KakaoShareService._();
 
@@ -34,7 +37,16 @@ class KakaoShareService {
   static Future<void> shareInvite(
     BuildContext context, {
     required String referralCode,
+    String? entryPoint,
   }) async {
+    void log(String result) => AnalyticsLogger.logEvent(
+          AnalyticsEvents.inviteShare,
+          parameters: {
+            AnalyticsEvents.paramMethod: 'kakao',
+            AnalyticsEvents.paramResult: result,
+            if (entryPoint != null) AnalyticsEvents.paramEntryPoint: entryPoint,
+          },
+        );
     final template = buildTemplate(referralCode: referralCode);
     try {
       final bool isKakaoTalkInstalled =
@@ -43,12 +55,15 @@ class KakaoShareService {
         final Uri uri =
             await ShareClient.instance.shareDefault(template: template);
         await ShareClient.instance.launchKakaoTalk(uri);
+        log('launched');
         return;
       }
       final Uri webShareUri =
           await WebSharerClient.instance.makeDefaultUrl(template: template);
       await launchUrl(webShareUri, mode: LaunchMode.externalApplication);
+      log('launched');
     } catch (error, stackTrace) {
+      log('failed');
       debugPrint('Kakao share failed: $error');
       debugPrintStack(stackTrace: stackTrace);
       if (!context.mounted) return;
