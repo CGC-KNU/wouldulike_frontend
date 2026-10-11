@@ -32,6 +32,7 @@ import 'utils/analytics_navigator_observer.dart';
 import 'services/auth_service.dart';
 import 'services/deep_link_service.dart';
 import 'services/user_service.dart';
+import 'config/screen_ids.dart';
 
 const String kakaoNativeAppKey = '967525b584e9c1e2a2b5253888b42c83';
 const MethodChannel _deviceInfoChannel = MethodChannel('app/device_info');
@@ -412,6 +413,7 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.appEntry);
     _bootstrap();
   }
 

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../config/analytics_events.dart';
 import '../utils/analytics_logger.dart';
+import '../config/screen_ids.dart';
 
 const _ink = Color(0xFF191F28);
 const _sub = Color(0xFF4E5968);
@@ -58,6 +59,7 @@ Future<RaffleResultAction> showRaffleResultDialog(
 
   final action = await showDialog<RaffleResultAction>(
     context: context,
+    routeSettings: const RouteSettings(name: ScreenIds.raffleResult),
     barrierDismissible: true,
     builder: (dialogContext) => _ResultDialog(
       won: won,

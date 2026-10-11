@@ -9,6 +9,7 @@ import 'package:new1/services/mileage_service.dart';
 import '../config/analytics_events.dart';
 import '../utils/analytics_logger.dart';
 import '../widgets/ticket_shell.dart';
+import '../config/screen_ids.dart';
 
 /// 마일리지 상점 (프로토타입 화면 11, 스펙 7.2).
 /// 지갑 마일리지 탭에 [embedded]로 들어가고, 딥링크(type=shop)는 단독 화면으로 연다.
@@ -1150,7 +1151,9 @@ class _MileageShopScreenState extends State<MileageShopScreen> {
             icon: Icons.description_rounded,
             title: '응모 유의사항',
             onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RaffleTermsScreen()),
+              MaterialPageRoute(
+                settings: const RouteSettings(name: ScreenIds.raffleTerms),
+                builder: (_) => const RaffleTermsScreen()),
             ),
           ),
         ],

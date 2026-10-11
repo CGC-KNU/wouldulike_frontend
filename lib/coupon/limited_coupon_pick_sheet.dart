@@ -8,6 +8,7 @@ import 'package:new1/services/affiliate_service.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/widgets/category_strip.dart';
+import 'package:new1/config/screen_ids.dart';
 
 class LimitedCouponPickResult {
   const LimitedCouponPickResult({
@@ -28,6 +29,7 @@ Future<LimitedCouponPickResult?> showLimitedCouponPickSheet(
 }) {
   return Navigator.of(context, rootNavigator: true).push<LimitedCouponPickResult>(
     MaterialPageRoute(
+      settings: const RouteSettings(name: ScreenIds.couponLimitedPick),
       fullscreenDialog: true,
       builder: (_) => LimitedCouponPickSheet(offer: offer),
     ),

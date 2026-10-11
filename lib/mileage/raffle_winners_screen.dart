@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:new1/mileage/mileage_shop_screen.dart' show FadeSlideIn;
 import 'package:new1/mileage/raffle_terms_screen.dart';
 import 'package:new1/services/mileage_service.dart';
+import 'package:new1/config/screen_ids.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 const _ink = Color(0xFF191F28);
 const _sub = Color(0xFF4E5968);
@@ -31,6 +33,7 @@ class _RaffleWinnersScreenState extends State<RaffleWinnersScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.raffleWinners);
     _load();
   }
 
@@ -216,7 +219,9 @@ class _RaffleWinnersScreenState extends State<RaffleWinnersScreen> {
               alignment: Alignment.centerLeft,
             ),
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RaffleTermsScreen()),
+              MaterialPageRoute(
+                settings: const RouteSettings(name: ScreenIds.raffleTerms),
+                builder: (_) => const RaffleTermsScreen()),
             ),
             child: const Row(
               mainAxisSize: MainAxisSize.min,

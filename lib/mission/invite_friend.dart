@@ -6,6 +6,7 @@ import 'package:new1/services/coupon_service.dart';
 import 'package:new1/services/kakao_share_service.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/widgets/referral_code_sheet.dart';
+import 'package:new1/config/screen_ids.dart';
 
 /// 환영 미션이 끝나면 홈 배너 자리를 친구 초대가 이어받는다.
 /// 미션은 환영 미션 하나뿐이므로, 그 뒤로는 이 배너만 남는다.
@@ -133,6 +134,7 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.invite);
     final initialCode = widget.initialCode;
     if (initialCode != null && initialCode.isNotEmpty) {
       _code = initialCode;
