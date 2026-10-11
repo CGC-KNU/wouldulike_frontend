@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:new1/config/screen_ids.dart';
 import 'package:new1/favorite_restaurants_screen.dart';
 import 'package:new1/featured/featured_campaign_screen.dart';
 import 'package:new1/login_screen.dart';
@@ -27,7 +28,8 @@ class DeepLinkRouter {
         await _openFeatured(context, target.campaignCode);
         return;
       case DeepLinkScreen.mission:
-        _push(context, const MissionTrackScreen(entry: 'deeplink'));
+        _push(context, const MissionTrackScreen(entry: 'deeplink'),
+            name: ScreenIds.homeMission);
         return;
       case DeepLinkScreen.invite:
         _push(context, const InviteFriendScreen());
@@ -65,9 +67,12 @@ class DeepLinkRouter {
     }
   }
 
-  static void _push(BuildContext context, Widget screen) {
+  static void _push(BuildContext context, Widget screen, {String? name}) {
     Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(builder: (_) => screen),
+      MaterialPageRoute<void>(
+        settings: name == null ? null : RouteSettings(name: name),
+        builder: (_) => screen,
+      ),
     );
   }
 
@@ -90,7 +95,8 @@ class DeepLinkRouter {
       );
       return;
     }
-    _push(context, FeaturedCampaignScreen(campaign: campaign));
+    _push(context, FeaturedCampaignScreen(campaign: campaign),
+        name: ScreenIds.featuredDetail);
   }
 
   static Future<void> _openProfile(BuildContext context) async {

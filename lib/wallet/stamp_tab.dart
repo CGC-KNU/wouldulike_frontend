@@ -1,12 +1,15 @@
 import 'package:new1/widgets/category_strip.dart';
 import 'package:flutter/material.dart';
 
-import 'package:new1/affiliate_benefits_screen.dart';
+import 'package:new1/config/analytics_events.dart';
+import 'package:new1/coupon/stamp_add_dialog.dart';
 import 'package:new1/services/affiliate_service.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/services/app_config_service.dart';
 import 'package:new1/services/coupon_service.dart';
+import 'package:new1/services/demo_wallet.dart';
 import 'package:new1/services/master_content.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 /// 지갑 스탬프 탭: 매장별 스탬프 현황 카드 목록.
 /// /api/coupons/stamps/my/all/ 결과를 제휴 식당 목록과 restaurant_id로 매칭한다.
@@ -39,6 +42,7 @@ class _StampTabState extends State<StampTab> {
   bool _hasError = false;
   List<_StampEntry> _entries = const [];
   int? _defaultTarget;
+  bool _stampFlowOpen = false;
 
   @override
   void initState() {
@@ -425,7 +429,9 @@ class _StampTabState extends State<StampTab> {
       height: 44,
       child: ElevatedButton.icon(
         // 제휴 식당 목록에 없는 매장은 상세 시트를 열 수 없으므로 비활성화한다.
-        onPressed: restaurant == null ? null : () => _openStampAdd(entry),
+        onPressed: restaurant == null || _stampFlowOpen
+            ? null
+            : () => _openStampAdd(entry),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFF4F46E5),
           foregroundColor: Colors.white,
@@ -448,33 +454,102 @@ class _StampTabState extends State<StampTab> {
     );
   }
 
-  /// 식당 상세 시트를 띄워 스탬프 적립(PIN 확인)을 진행하고, 닫히면 목록을 갱신한다.
+  /// 매장 상세를 열지 않고, 기존 스탬프 적립 창에서 바로 적립한다.
   Future<void> _openStampAdd(_StampEntry entry) async {
     final restaurant = entry.restaurant;
-    if (restaurant == null) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (context) {
-        return AffiliateRestaurantDetailSheet(
-          restaurant: restaurant,
-          coupons: const [],
-          requiresLogin: false,
-          source: 'wallet_stamp',
-          isFavorite: false,
-          onFavoriteChanged: (_) {},
-          initialStampStatus: entry.status,
-          onStampStatusUpdated: (_) {},
-          onCouponRedeemed: (_) {},
-          onRewardCouponsIssued: (_) {},
-        );
-      },
+    if (restaurant == null || _stampFlowOpen) return;
+    setState(() => _stampFlowOpen = true);
+    try {
+      await _addStampFromDialog(entry, restaurant);
+    } finally {
+      if (mounted) setState(() => _stampFlowOpen = false);
+    }
+  }
+
+  Future<void> _addStampFromDialog(
+    _StampEntry entry,
+    AffiliateRestaurantSummary restaurant,
+  ) async {
+    final request = kDemoWallet
+        ? const StampAddRequest(pin: 'demo', count: 1)
+        : await showStampAddDialog(context);
+    if (request == null || !mounted) return;
+
+    final addResult = await CouponService.addStamp(
+      restaurantId: entry.restaurantId,
+      pin: request.pin,
+      count: request.count,
     );
     if (!mounted) return;
-    // 적립 결과(도장 수·리워드 쿠폰)를 목록에 반영한다.
+
+    if (!addResult.isSuccess) {
+      final failureMessage = addResult.errorMessage ?? '요청이 실패했어요.';
+      AnalyticsLogger.logEvent(
+        AnalyticsEvents.stampAddFailed,
+        parameters: {
+          AnalyticsEvents.paramRestaurantId: restaurant.id,
+          AnalyticsEvents.paramRestaurantName: restaurant.name,
+          AnalyticsEvents.paramFailReason: addResult.errorCode ??
+              (addResult.statusCode == 429
+                  ? 'daily_limit'
+                  : 'http_${addResult.statusCode ?? 0}'),
+          AnalyticsEvents.paramCount: request.count,
+        },
+      );
+      if (addResult.statusCode == 429 ||
+          addResult.errorCode == 'stamp_daily_limit_reached') {
+        await showStampDailyLimitDialog(context, failureMessage);
+      } else {
+        final retry = await showStampAddFailedDialog(context, failureMessage);
+        if (retry == true && mounted) {
+          _stampFlowOpen = false;
+          await _openStampAdd(entry);
+        }
+      }
+      return;
+    }
+
+    final result = addResult.result!;
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.stampIssued,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: restaurant.id,
+        AnalyticsEvents.paramRestaurantName: restaurant.name,
+        AnalyticsEvents.paramStampCountAfter: result.status.current,
+        AnalyticsEvents.paramStampAddedCount:
+            result.added > 0 ? result.added : request.count,
+      },
+    );
+    StampStatus status;
+    try {
+      status = await CouponService.fetchStampStatus(
+        restaurantId: entry.restaurantId,
+      );
+    } catch (_) {
+      status = StampStatus(
+        current: result.status.current,
+        target: result.status.target,
+        rewardCoupons: result.status.rewardCoupons,
+        rewards: entry.status.rewards,
+        notes: entry.status.notes,
+      );
+    }
+    if (!mounted) return;
+    final currentAfter = status.current;
+    final total =
+        status.boardLength > 0 ? status.boardLength : result.status.target;
+    final nextReward = status.nextReward;
+    await showStampStampedDialog(
+      context,
+      added: result.added > 0 ? result.added : request.count,
+      current: currentAfter,
+      total: total,
+      remaining: status.remainingToNextReward,
+      cycleReset: status.boardLength > 0 && currentAfter < result.status.current,
+      nextRewardText:
+          nextReward != null ? stampRewardBenefitText(nextReward) : null,
+    );
+    if (!mounted) return;
     await _load();
   }
 }

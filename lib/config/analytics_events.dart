@@ -97,6 +97,12 @@ class AnalyticsEvents {
   /// QR 방문 적립 시도 결과. 적립 실패·한도 초과·비로그인까지 result로 남긴다.
   /// 푸시 탭은 적립을 요청하지 않으므로 남지 않는다.
   static const AnalyticsEvent qrVisitCredit = AnalyticsEvent._('qr_visit_credit');
+  /// 기획전 상세 열림 (store_count = 그 기획전에 걸린 매장 수). 0이면 "선별 매장 0곳" 결함이다.
+  static const AnalyticsEvent featuredView = AnalyticsEvent._('featured_view');
+  /// QR 링크로 앱이 열림 (restaurant_id, link_source=src). 적립·발급 응답을 기다리지 않고 바로 남긴다.
+  static const AnalyticsEvent qrEntry = AnalyticsEvent._('qr_entry');
+  /// QR 방문 처리 결과 (result: credited · daily_limit_reached · network_error 등, coupon_issued)
+  static const AnalyticsEvent qrVisitResult = AnalyticsEvent._('qr_visit_result');
   /// QR 진입 후 분기 시트가 열림 (branch: reward_ready · coupon_arrived · coupon_held · stamp_progress · stamp_done_today)
   static const AnalyticsEvent qrEntryShown = AnalyticsEvent._('qr_entry_shown');
   /// 분기 시트에서 고른 행동 (action: use_coupon · add_stamp · later · view_store)

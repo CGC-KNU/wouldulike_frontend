@@ -37,6 +37,11 @@
   - 남음(앱 밖/별도): 웹 착지 `wouldulike.kr/s/{매장}`·deferred deeplink(설치 후 같은 매장 복귀), 스티커 QR 주소 확정(결정 대기), 보상 도착 전용 시트(현재는 기존 적립 완료 다이얼로그 재사용).
   - 시안 15 — 완료: (백) 푸시 사용자당 하루 1회 — 점심/저녁 쿠폰 알림은 사용자당 1건, D-2 만료 안내는 같은 날 이미 쿠폰 알림을 받은 사람 제외. (앱) 지갑 쿠폰 목록 24시간 이내 빨간 테두리(목록 [사용]·코드 입력·만료임박은 이미 있었음).
   - 시안 15 — 미착수/보류: 알림 고장 원인 진단(운영 로그 필요), 생년월일 수집(앱·서버 모두 필드 없음 — 개인정보 수집 추가라 결정 필요, 현 가입은 이미 닉네임+대학가 2항목), 직원용 1p 안내문(인쇄물; 시안에 "PIN은 매주 바뀐다"는 문구가 있어 결정 10과 충돌 — 수정 필요).
+  - Castor 0단계 요청 반영: 화면 ID 라우트 이름(`config/screen_ids.dart`: store.detail·coupon.use·coupon.done·featured.detail·home.mission·wallet.coupon·sheet.coupon_arrived, 바텀시트도 screen_view), setUserId JWT 폴백, `qr_entry`·`qr_visit_result`·`featured_view` 이벤트, QR 쿠폰 발급 경로 `QR_VISIT` 분리(앱·대시보드 동일 규칙).
+  - 2단계: Remote Config(`firebase_remote_config` 추가, `services/remote_text_service.dart`) — 쿠폰 사용 화면 문구·스탬프 기본값·배너 자동 넘김 초. 콘솔에 키 등록 필요.
+  - 탭 화면 ID: home·store.list·my(하단 탭), wallet.coupon·wallet.stamp·wallet.mileage(지갑 안쪽 탭)을 screen_view 로 기록. 홈 블록 순서는 원격 `home_block_order`(promo,mission,featured,restaurants,banner; 빠진 블록은 뒤에 자동 보정).
+  - QR 시나리오 테스트: 서버 `coupons/test_qr_scenarios.py`(API end-to-end 12건), 앱 `test/qr_scenarios_test.dart`(13건). 테스트로 발견·수정: QR 쿠폰 만료가 "받은 날 자정"이 아니라 발급일+1일 23:59(최대 2일)였던 것 → KST 당일 23:59:59 로 수정.
+  - 1-6 일부: 아이템 0개 기획전은 서버가 내려주지 않음.
   - 남음: 오늘 이미 적립했으면 "오늘 적립 완료" 표시(적립 현황 조회 필요), QR 진입 분기 시트, 사용 완료→스탬프 연결(PIN 재입력 없이는 서버 방문 토큰 필요).
 - 백: QR 진입 API(매장+src → 분기 1~6 판정, QR 쿠폰 발급: 사용자×매장 평생 1장·당일 자정 만료, "QR 방문" 분류 분리), 쿠폰 사용 후 스탬프용 방문 토큰.
 - 앱: 딥링크 `wouldulike.kr/s/{매장}?src=`, 진입 분기 시트(`sheet.coupon_arrived` 등), 쿠폰 사용 전체 화면(`coupon.use`), 사용 완료→스탬프 연결(`coupon.done`/`stamp.done`).

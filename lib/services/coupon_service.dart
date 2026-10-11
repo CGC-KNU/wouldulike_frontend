@@ -148,8 +148,10 @@ class UserCoupon {
   final String? campaignBucketName;
 
   /// Firebase coupon_issue_source: campaign_code 우선, 없으면 issue_key 기반
-  String get couponIssueSource =>
-      campaignCode ?? resolveCouponIssueSource(issueKey);
+  String get couponIssueSource => resolveCouponIssueSourceFor(
+        campaignCode: campaignCode,
+        issueKey: issueKey,
+      );
 
   bool get isWelcomeType {
     final code = couponTypeCode?.trim().toUpperCase() ?? '';
@@ -191,7 +193,17 @@ String getCouponIssuanceSource(String? issueKey) {
   if (issueKey.startsWith('FINAL_EXAM:')) return 'final_exam';
   if (issueKey.startsWith('LIMITED_BONUS:')) return 'limited_bonus';
   if (issueKey.startsWith('LIMITED:')) return 'limited';
+  if (issueKey.startsWith('QR_VISIT_COUPON:')) return 'qr_visit';
   return 'other';
+}
+
+/// coupon_issue_source 최종 값. QR 방문 쿠폰은 캠페인에 묶여 있어도 먼저 "QR_VISIT"으로
+/// 가른다 — 캠페인 코드로 뭉뚱그리면 QR 퍼널에서 빠진다. (대시보드 _issue_source 와 같은 규칙)
+String resolveCouponIssueSourceFor({String? campaignCode, String? issueKey}) {
+  if (issueKey != null && issueKey.startsWith('QR_VISIT_COUPON:')) {
+    return 'QR_VISIT';
+  }
+  return campaignCode ?? resolveCouponIssueSource(issueKey);
 }
 
 /// Firebase coupon_issue_source: campaign_code 스타일 값 반환
@@ -515,13 +527,23 @@ class StampStatus {
   final List<StampReward> rewards;
 }
 
-/// 스탬프 리워드 혜택 문구 (subtitle 우선, 없으면 title)
+/// 스탬프 리워드 혜택 문구. 받을 혜택 이름(title)을 쓰고, 이름이 없거나
+/// "8개 모으면"·"6" 같은 자리표시일 때만 subtitle 을 쓴다.
 String stampRewardBenefitText(StampReward r) {
-  final raw = (r.subtitle != null && r.subtitle!.isNotEmpty)
-      ? r.subtitle!
-      : (r.title ?? '');
-  final cleaned = cleanStampRewardName(raw);
-  return cleaned.isEmpty ? '리워드 쿠폰' : cleaned;
+  final title = _usableRewardName(r.title);
+  if (title.isNotEmpty) return title;
+  final subtitle = _usableRewardName(r.subtitle);
+  if (subtitle.isNotEmpty) return subtitle;
+  return '리워드 쿠폰';
+}
+
+String _usableRewardName(String? raw) {
+  final cleaned = cleanStampRewardName(raw ?? '');
+  if (cleaned.isEmpty) return '';
+  if (cleaned.contains('개 모으면')) return '';
+  if (RegExp(r'^\d+$').hasMatch(cleaned)) return '';
+  if (!RegExp(r'[0-9A-Za-z가-힣%]').hasMatch(cleaned)) return '';
+  return cleaned;
 }
 
 /// 매장이 등록한 보상명만 남긴다. 화면에서 "OO 제공"을 덧붙여도 "제공 제공"이
@@ -1079,8 +1101,10 @@ class IssuedCouponInfo {
   final String? couponTypeCode;
 
   /// coupon_issue_source 값: campaign_code 우선, 없으면 issue_key 기반
-  String get couponIssueSource =>
-      campaignCode ?? resolveCouponIssueSource(issueKey);
+  String get couponIssueSource => resolveCouponIssueSourceFor(
+        campaignCode: campaignCode,
+        issueKey: issueKey,
+      );
 }
 
 class ReferralAcceptResponse {

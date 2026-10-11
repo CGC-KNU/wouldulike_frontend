@@ -2,11 +2,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:new1/config/screen_ids.dart';
 import 'package:new1/coupon_list_screen.dart';
 import 'package:new1/mileage/mileage_shop_screen.dart';
 import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/services/master_content.dart';
 import 'package:new1/services/mileage_service.dart';
+import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/wallet/mileage_tab.dart';
 import 'package:new1/wallet/stamp_tab.dart';
 
@@ -49,8 +51,27 @@ class _WalletScreenState extends State<WalletScreen>
       vsync: this,
     );
     DeepLinkService.instance.pendingWalletTab.addListener(_onPendingWalletTab);
+    // 지갑 안쪽 탭을 화면 ID(wallet.coupon · wallet.stamp · wallet.mileage)로 남긴다.
+    _tabController.addListener(_logWalletTabScreen);
+    WidgetsBinding.instance.addPostFrameCallback((_) => _logWalletTabScreen(force: true));
     _loadSummary();
     _loadRaffleSchedule();
+  }
+
+  int? _lastLoggedWalletTab;
+
+  /// 스와이프 중간 값이 아니라 탭 전환이 끝난 뒤 한 번만 남긴다.
+  void _logWalletTabScreen({bool force = false}) {
+    if (!force && _tabController.indexIsChanging) return;
+    final index = _tabController.index;
+    if (_lastLoggedWalletTab == index) return;
+    _lastLoggedWalletTab = index;
+    const ids = [
+      ScreenIds.walletCoupon,
+      ScreenIds.walletStamp,
+      ScreenIds.walletMileage,
+    ];
+    if (index >= 0 && index < ids.length) AnalyticsLogger.logScreen(ids[index]);
   }
 
   Future<void> _loadRaffleSchedule() async {

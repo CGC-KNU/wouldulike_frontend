@@ -60,13 +60,34 @@ void main() {
 
     expect(find.text('마일리지 응모 일정'), findsOneWidget);
     expect(find.text('추첨일 하루 전 오전 11시부터'), findsNothing);
-    await tester.tap(find.text('펼치기'));
+    // 위쪽 카드가 응모 일정이다 (아래 "마일리지 쌓는 법"도 같은 펼치기 글씨를 쓴다).
+    await tester.tap(find.text('펼치기').first);
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('추첨일 하루 전 오전 11시부터'), findsOneWidget);
     expect(find.text('접기'), findsOneWidget);
 
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getBool('wallet_raffle_schedule_collapsed'), isFalse);
+  });
+
+  testWidgets('마일리지 쌓는 법은 기본으로 접혀 있고, 펼치면 3줄이 보이며 상태가 저장된다',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await _pumpMileageTab(tester);
+
+    expect(find.text('마일리지 쌓는 법'), findsOneWidget);
+    expect(find.text('매장 QR 찍기'), findsNothing);
+    expect(find.text('스탬프 적립'), findsNothing);
+    expect(find.text('쿠폰 사용'), findsNothing);
+
+    await tester.tap(find.text('마일리지 쌓는 법'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('매장 QR 찍기'), findsOneWidget);
+    expect(find.text('스탬프 적립'), findsOneWidget);
+    expect(find.text('쿠폰 사용'), findsOneWidget);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('wallet_mileage_earn_guide_collapsed'), isFalse);
   });
 
   testWidgets('펼쳐 둔 응모 일정은 다시 열어도 펼쳐져 있다', (tester) async {

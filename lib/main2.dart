@@ -11,6 +11,7 @@ import 'package:new1/services/api_client.dart';
 import 'package:new1/services/deep_link_router.dart';
 import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/config/analytics_events.dart';
+import 'package:new1/config/screen_ids.dart';
 import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/coupon/limited_coupon_offer_flow.dart';
 import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
@@ -114,6 +115,15 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   }
 
   void _logTabView(int index) {
+    // 탭은 라우트가 아니라 자동 screen_view 가 없다. 화면 ID 로 직접 남긴다.
+    // 지갑(2)은 안쪽 탭(쿠폰·스탬프·마일리지)이 따로 남기므로 여기서는 건너뛴다.
+    const tabScreens = {
+      0: ScreenIds.home,
+      1: ScreenIds.storeList,
+      3: ScreenIds.my,
+    };
+    final screenId = tabScreens[index];
+    if (screenId != null) AnalyticsLogger.logScreen(screenId);
     final tabName =
         index >= 0 && index < _tabNames.length ? _tabNames[index] : 'unknown';
     AnalyticsLogger.logEvent(

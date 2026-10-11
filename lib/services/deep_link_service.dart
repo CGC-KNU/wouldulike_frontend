@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import '../config/analytics_events.dart';
 import '../utils/analytics_logger.dart';
 import 'api_client.dart';
+import 'coupon_service.dart';
 import 'mileage_service.dart';
 
 /// 외부 딥링크가 앱에 들어온 통로. deep_link_open · qr_visit_credit 의 source 값.
@@ -503,6 +504,15 @@ class DeepLinkService {
     // 보내지 않아 source 를 모르는 서버에서도 적립·첫 쿠폰이 나가지 않게 한다.
     // 푸시로 식당을 연 규모는 deep_link_open(source=push_tap)으로 본다.
     if (channel == DeepLinkChannel.pushTap) return;
+    // QR로 매장에 들어왔다는 사실 자체를 먼저 남긴다. 아래 적립 요청이 실패·지연돼도
+    // "QR → 방문" 퍼널의 분자가 사라지지 않게 한다.
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.qrEntry,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: restaurantId,
+        AnalyticsEvents.paramLinkSource: linkSource,
+      },
+    );
     // 콜드 스타트에서는 세션 복구보다 먼저 호출된다. 토큰 유무를 같이 남겨
     // 비로그인 스캔이 조용히 사라지는 규모를 본다.
     final hasToken = await ApiClient.hasAccessToken();
@@ -524,6 +534,34 @@ class DeepLinkService {
         AnalyticsEvents.paramAuthState: hasToken ? 'has_token' : 'no_token',
       },
     );
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.qrVisitResult,
+      parameters: {
+        AnalyticsEvents.paramRestaurantId: restaurantId,
+        AnalyticsEvents.paramLinkSource: linkSource,
+        AnalyticsEvents.paramResult:
+            result.credited ? 'credited' : (result.code ?? 'not_credited'),
+        'coupon_issued': result.couponIssued ? 1 : 0,
+      },
+    );
+    // QR 로 방금 발급된 쿠폰은 발급 이벤트(coupon_issued)에도 남긴다. 이게 없으면 QR 쿠폰이
+    // 발급 퍼널에서 통째로 빠진다. 출처는 캠페인이 아니라 QR_VISIT 으로 가른다.
+    if (result.couponIssued) {
+      for (final c in result.issuedCoupons) {
+        AnalyticsLogger.logEvent(
+          AnalyticsEvents.couponIssued,
+          parameters: {
+            AnalyticsEvents.paramRestaurantId: restaurantId,
+            AnalyticsEvents.paramCouponCode: c.code,
+            AnalyticsEvents.paramCouponIssueSource:
+                resolveCouponIssueSourceFor(
+              campaignCode: c.campaignCode,
+              issueKey: c.issueKey,
+            ),
+          },
+        );
+      }
+    }
     final entry = result.entry;
     if (entry != null && entry.branch != QrEntryBranch.none) {
       AnalyticsLogger.logEvent(
