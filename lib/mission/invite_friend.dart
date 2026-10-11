@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:new1/config/analytics_events.dart';
 import 'package:new1/services/coupon_service.dart';
 import 'package:new1/services/kakao_share_service.dart';
+import 'package:new1/utils/analytics_logger.dart';
 import 'package:new1/widgets/referral_code_sheet.dart';
 
 /// 환영 미션이 끝나면 홈 배너 자리를 친구 초대가 이어받는다.
@@ -168,6 +170,14 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
     final code = _code;
     if (code == null || code.isEmpty) return;
     await Clipboard.setData(ClipboardData(text: code));
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.inviteShare,
+      parameters: {
+        AnalyticsEvents.paramMethod: 'copy',
+        AnalyticsEvents.paramResult: 'copied',
+        AnalyticsEvents.paramEntryPoint: 'invite_screen',
+      },
+    );
     if (!mounted) return;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -179,7 +189,11 @@ class _InviteFriendScreenState extends State<InviteFriendScreen> {
     if (code == null || code.isEmpty || _isSharing) return;
     setState(() => _isSharing = true);
     try {
-      await KakaoShareService.shareInvite(context, referralCode: code);
+      await KakaoShareService.shareInvite(
+        context,
+        referralCode: code,
+        entryPoint: 'invite_screen',
+      );
     } finally {
       if (mounted) setState(() => _isSharing = false);
     }

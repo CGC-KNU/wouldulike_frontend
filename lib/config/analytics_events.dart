@@ -77,6 +77,10 @@ class AnalyticsEvents {
   static const AnalyticsEvent affiliateRestaurantClick = AnalyticsEvent._('affiliate_restaurant_click');
   static const AnalyticsEvent referralCodeInputClick = AnalyticsEvent._('referral_code_input_click');
   static const AnalyticsEvent kakaoInviteClick = AnalyticsEvent._('kakao_invite_click');
+  /// 친구 초대 공유 시도의 결과 (method: kakao · copy, result: launched · failed · copied, entry_point: my · invite_screen).
+  /// kakao 의 launched 는 카카오톡(또는 웹 공유)을 **열었다**는 뜻이지 친구에게 보냈다는 보장은 아니다 —
+  /// SDK 가 전송 완료를 알려주지 않는다. kakao_invite_click 은 버튼 탭이고 이쪽은 그 다음 결과다.
+  static const AnalyticsEvent inviteShare = AnalyticsEvent._('invite_share');
 
   // ===== 첫 쿠폰 보강 (룰렛·로그인) =====
   /// 룰렛 회전 시작 (연출 시작 시점, attempt_no: 1부터)
@@ -117,10 +121,8 @@ class AnalyticsEvents {
   static const AnalyticsEvent ticketPurchaseFailed = AnalyticsEvent._('ticket_purchase_failed');
   /// 추첨 결과 확인
   static const AnalyticsEvent drawResultView = AnalyticsEvent._('draw_result_view');
-  /// 매장에서 식사권 사용 승인 요청
-  static const AnalyticsEvent voucherRedeemAttempt = AnalyticsEvent._('voucher_redeem_attempt');
-  /// 식사권 승인 처리 종료 (성공·실패 모두)
-  static const AnalyticsEvent voucherRedeemResult = AnalyticsEvent._('voucher_redeem_result');
+  // 식사권은 당첨되면 쿠폰함의 일반 쿠폰(issue_key RAFFLE_WIN:)이 되어 PIN 으로 쓴다.
+  // 별도 승인 화면이 없으므로 사용은 coupon_redeem_* 에서 coupon_issue_source=RAFFLE_WIN 으로 거른다.
 
   // ===== 미션 트랙 =====
   static const AnalyticsEvent missionTrackView = AnalyticsEvent._('mission_track_view');
