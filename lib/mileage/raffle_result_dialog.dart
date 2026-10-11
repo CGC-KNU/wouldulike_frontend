@@ -33,12 +33,14 @@ Future<RaffleResultAction> showRaffleResultDialog(
   required String title,
   int? raffleId,
   String? drawRound,
+  String? entryPoint,
 }) async {
   AnalyticsLogger.logEvent(
     AnalyticsEvents.drawResultView,
     parameters: {
       if (raffleId != null) AnalyticsEvents.paramRaffleId: raffleId,
       if (drawRound != null) AnalyticsEvents.paramDrawRound: drawRound,
+      if (entryPoint != null) AnalyticsEvents.paramEntryPoint: entryPoint,
       AnalyticsEvents.paramIsWinner: won,
       AnalyticsEvents.paramPrizeType: won ? 'voucher' : 'none',
       AnalyticsEvents.paramFaceValue: prizeAmount,

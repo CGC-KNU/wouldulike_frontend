@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 
@@ -316,7 +317,8 @@ class RaffleEnterResult {
   final int? balanceAfter;
   final int? entriesCount;
 
-  /// INSUFFICIENT_MILEAGE · ALREADY_ENTERED · RAFFLE_CLOSED
+  /// INSUFFICIENT_MILEAGE · ALREADY_ENTERED · RAFFLE_CLOSED (서버)
+  /// TIMEOUT · NETWORK_ERROR (앱이 붙임 — 서버 처리 여부를 모르는 실패)
   final String? code;
   final String? message;
 
@@ -498,9 +500,19 @@ class MileageService {
             ? null
             : _asInt(raffle!['participant_count']),
       );
+    } on TimeoutException {
+      // 서버는 이미 차감했을 수 있다. 같은 키로 재시도하면 서버가 첫 성공 응답을
+      // 그대로 돌려주므로(enter_raffle 멱등 처리) 구매는 그때 ticket_purchase 로 잡힌다.
+      // 응답이 늦는 빈도를 보려고 네트워크 오류와 구분해 둔다(화면 문구는 동일).
+      return const RaffleEnterResult(
+        ok: false,
+        code: 'TIMEOUT',
+        message: '네트워크 오류로 응모하지 못했어요.',
+      );
     } catch (_) {
       return const RaffleEnterResult(
         ok: false,
+        code: 'NETWORK_ERROR',
         message: '네트워크 오류로 응모하지 못했어요.',
       );
     }
@@ -510,14 +522,21 @@ class MileageService {
   /// 일반쿠폰 최초 1회 발급을 시도한다.
   /// 하루 최대 적립 횟수를 넘겨도 credited: false로 정상 응답이 오므로,
   /// 화면 이동 자체는 이 결과와 무관하게 계속 진행하면 된다.
+  ///
+  /// [source]는 유입 경로(qr · share)로 원장 MileageEvent.source 에 저장된다.
+  /// 모르면 보내지 않는다 — 서버는 빈 값으로 저장하고 적립은 그대로 한다.
   static Future<QrVisitResult> creditQrVisit(
     int restaurantId, {
     String? idempotencyKey,
+    String? source,
   }) async {
     try {
       final response = await ApiClient.postWithoutThrow(
         '/api/mileage/qr-visit/',
-        body: {'restaurant_id': restaurantId},
+        body: {
+          'restaurant_id': restaurantId,
+          if (source != null) 'source': source,
+        },
         headers: {
           'Idempotency-Key': idempotencyKey ?? generateQrVisitKey(restaurantId),
         },
@@ -525,7 +544,11 @@ class MileageService {
       final decoded = _decode(response);
       final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
       if (response.statusCode >= 400) {
-        return QrVisitResult(credited: false, code: map['code']?.toString());
+        // 코드 없는 에러(401 등)도 qr_visit_credit 에서 사유가 보이게 상태코드를 남긴다.
+        return QrVisitResult(
+          credited: false,
+          code: map['code']?.toString() ?? 'http_${response.statusCode}',
+        );
       }
       final rawCoupons = map['coupons'];
       final issuedCoupons = rawCoupons is List
@@ -570,6 +593,24 @@ class QrVisitResult {
   /// 이 요청으로 그 식당 일반쿠폰이 새로 발급됐는지 (최초 1회만 true).
   final bool couponIssued;
   final List<UserCoupon> issuedCoupons;
+}
+
+/// 추첨 회차 식별자(draw_round). 서버가 회차 개념을 내려주지 않아 마감일의
+/// 주차로 파생한다 (같은 주 마감 건을 한 회차로 묶는다). 상점·응모 내역이
+/// 같은 값을 써야 이벤트끼리 이어지므로 여기 한 곳에만 둔다.
+///
+/// 주의: ISO 8601 주차가 아니라 1월 1일 기준 단순 주차다. 수·금 주 2회 추첨이
+/// 같은 값으로 묶이는 한계가 있다. 서버가 회차를 내려주기 시작하면 그 값으로
+/// 교체해야 하며, 그 전까지 BigQuery 집계는 이 규칙과 동일하게 맞춰야 한다.
+String? drawRoundFromClosesAt(DateTime? closesAt) {
+  if (closesAt == null) return null;
+  final d = DateTime.utc(closesAt.year, closesAt.month, closesAt.day);
+  final week = ((d.difference(DateTime.utc(d.year, 1, 1)).inDays +
+              DateTime.utc(d.year, 1, 1).weekday -
+              1) ~/
+          7) +
+      1;
+  return '${d.year}-W${week.toString().padLeft(2, '0')}';
 }
 
 /// qr-visit-<restaurantId>-<난수>. 같은 딥링크 오픈 이벤트를 재시도할 때

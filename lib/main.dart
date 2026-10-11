@@ -171,7 +171,8 @@ Future<void> main() async {
     final initialUri = await appLinks.getInitialAppLink();
     if (initialUri != null) {
       debugPrint('Initial deep link: $initialUri');
-      DeepLinkService.instance.handleUri(initialUri);
+      DeepLinkService.instance
+          .handleUri(initialUri, channel: DeepLinkChannel.initialLink);
     }
   } on PlatformException {
     // Ignored: platform not ready for deep links.
@@ -420,6 +421,9 @@ class _AppEntryScreenState extends State<AppEntryScreen> {
       return;
     }
 
+    // 로그인 직후에는 AuthService가 넣는다. 재실행·업데이트 후에도 이어지도록 다시 넣는다.
+    unawaited(SharedPreferences.getInstance()
+        .then((p) => AnalyticsLogger.setUserId(p.getInt('user_id'))));
     final profile = await UserService.fetchCurrentUserProfile();
     // 이 기기에 이전 계정 등으로 남아있을 수 있는 로컬 온보딩 값을 서버
     // 진실로 동기화한다 — 로그인 화면을 거치지 않는 일반 재실행도 포함해서,
@@ -1008,12 +1012,13 @@ class MainScreenState extends State<MainScreen> {
       final uri = Uri.tryParse(deepLink);
       if (uri != null) {
         // 외부 wouldulike:// 링크와 동일한 경로로 처리 — 탭/화면 이동 로직을 재사용한다.
-        DeepLinkService.instance.handleUri(uri);
+        DeepLinkService.instance
+            .handleUri(uri, channel: DeepLinkChannel.pushTap);
       }
     }
 
     AnalyticsLogger.logEvent(
-      AnalyticsEvents.notificationOpen,
+      AnalyticsEvents.pushOpen,
       parameters: {
         'message_id': message.messageId ?? '',
         'from': message.from ?? '',

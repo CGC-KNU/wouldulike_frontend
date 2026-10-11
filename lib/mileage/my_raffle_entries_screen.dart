@@ -94,6 +94,10 @@ class _MyRaffleEntriesScreenState extends State<MyRaffleEntriesScreen> {
       prizeAmount: entry.prizeAmount,
       title: entry.title,
       raffleId: entry.raffleId,
+      drawRound: drawRoundFromClosesAt(entry.closesAt),
+      // 결과는 이 화면에 들어와야만 뜬다. 자동 팝업과 사용자가 직접 연 것을 갈라
+      // 결과 확인률이 화면 진입률에 묶여 있다는 것을 숫자로 보이게 한다.
+      entryPoint: popupId != null ? 'win_popup' : 'entry_list',
     );
     if (!mounted) return;
 
