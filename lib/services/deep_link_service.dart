@@ -25,17 +25,17 @@ String resolveDeepLinkSource(Uri uri) {
   return src.isEmpty ? 'none' : src;
 }
 
+/// 매장에 붙이는 인쇄물 종류. 전부 "매장 QR 스캔"이라 서버에는 qr 로 보낸다.
+/// 원래 값(sticker·poster·tent)은 분석(link_source)에 그대로 남아 인쇄물별 효과를 가른다.
+const kQrPrintSources = {'qr', 'sticker', 'poster', 'tent'};
+
 /// QR 방문 적립 요청에 실을 source (서버 MileageEvent.SOURCE_CHOICES: qr · share · push).
 /// src 없는 옛 QR 인쇄물이 섞여 있어 share 로 추정하지 않고 null(미전송)로 둔다.
 /// push 는 링크 표기가 아니라 통로로 판단하며, 푸시 탭은 요청 전에 걸러진다.
 String? qrVisitServerSource(String linkSource) {
-  switch (linkSource) {
-    case 'qr':
-    case 'share':
-      return linkSource;
-    default:
-      return null;
-  }
+  if (kQrPrintSources.contains(linkSource)) return 'qr';
+  if (linkSource == 'share') return 'share';
+  return null;
 }
 
 /// 앱 안에서 딥링크로 열 수 있는 화면.

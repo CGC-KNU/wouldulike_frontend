@@ -24,6 +24,25 @@ void main() {
       expect(qrVisitServerSource(src), 'qr');
     });
 
+    test('인쇄물 종류(sticker·poster·tent)는 서버에는 qr, 분석에는 원래 값', () {
+      for (final src in ['sticker', 'poster', 'tent']) {
+        final uri = Uri.parse('wouldulike://restaurant/317?src=$src');
+        expect(resolveWouldUlikeDeepLink(uri)?.restaurantId, 317);
+        expect(resolveDeepLinkSource(uri), src); // GA4 link_source 는 원래 값
+        expect(qrVisitServerSource(src), 'qr'); // 서버 MileageEvent.source 는 qr
+      }
+      expect(qrVisitServerSource('share'), 'share');
+      expect(qrVisitServerSource('whatever'), isNull);
+    });
+
+    test('브릿지가 넘기는 wouldulike://restaurant/{id}?src= 도 그 매장으로 간다', () {
+      final uri = Uri.parse('wouldulike://restaurant/317?src=qr');
+      expect(resolveWouldUlikeDeepLink(uri)?.screen,
+          DeepLinkScreen.restaurantDetail);
+      expect(resolveWouldUlikeDeepLink(uri)?.restaurantId, 317);
+      expect(resolveDeepLinkSource(uri), 'qr');
+    });
+
     test('src 없는 옛 스티커는 매장으로는 가지만 출처는 보내지 않는다', () {
       final old = Uri.parse(
           'https://cgc-knu.github.io/wouldulike_deeplink/?type=restaurant&id=7');

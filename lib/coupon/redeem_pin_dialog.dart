@@ -689,7 +689,7 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
                         }),
                       ),
                     ],
-                    const SizedBox(height: 14),
+                    const SizedBox(height: 18),
                     _stampSection(),
                     if (widget.notes != null && widget.notes!.isNotEmpty) ...[
                       const SizedBox(height: 14),
@@ -717,9 +717,9 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: _ink.withOpacity(0.10),
-            blurRadius: 30,
-            offset: const Offset(0, 14),
+            color: _ink.withOpacity(0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
