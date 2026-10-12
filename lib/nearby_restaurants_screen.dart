@@ -6,6 +6,8 @@ import 'dart:convert';
 import 'utils/location_helper.dart';
 import 'utils/distance_calculator.dart';
 import 'services/api_client.dart';
+import 'config/screen_ids.dart';
+import 'utils/analytics_logger.dart';
 
 class NearbyRestaurantsScreen extends StatefulWidget {
   const NearbyRestaurantsScreen({super.key});
@@ -23,6 +25,7 @@ class _NearbyRestaurantsScreenState extends State<NearbyRestaurantsScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.storeNearby);
     fetchNearbyRestaurants();
   }
 

@@ -6,6 +6,7 @@ import 'onboarding_prefs.dart';
 import 'onboarding_style.dart';
 import 'widgets/animated_reveal_text.dart';
 import '../widgets/coupon_ticket_card.dart';
+import '../config/screen_ids.dart';
 
 // 좌상단 굵은 헤드라인 (메시지 컷 공용)
 const TextStyle _headline = TextStyle(
@@ -87,6 +88,7 @@ class _OnboardingIntroScreenState extends State<OnboardingIntroScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.onboardingIntro);
     OnboardingPrefs.firstpickSessionId().then((id) {
       if (mounted) setState(() => _firstpickSessionId = id);
     });

@@ -5,6 +5,8 @@ import '../profile_setup_screen.dart';
 import 'onboarding_prefs.dart';
 import 'onboarding_reward_flow.dart';
 import 'onboarding_style.dart';
+import '../config/screen_ids.dart';
+import '../utils/analytics_logger.dart';
 
 /// 로그인 직후 신규 가입자의 홈 직행을 막는 게이트.
 ///
@@ -33,6 +35,7 @@ class _SignupOnboardingGateState extends State<SignupOnboardingGate> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.onboardingGate);
     if (!_needsProfile) {
       _checkRewardFlag();
     }

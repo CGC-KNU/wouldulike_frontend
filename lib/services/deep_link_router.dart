@@ -35,7 +35,8 @@ class DeepLinkRouter {
         _push(context, const InviteFriendScreen());
         return;
       case DeepLinkScreen.shop:
-        _push(context, const MileageShopScreen());
+        _push(context, const MileageShopScreen(),
+            name: ScreenIds.mileageShop);
         return;
       case DeepLinkScreen.raffleEntries:
         _push(context, const MyRaffleEntriesScreen());
@@ -44,10 +45,12 @@ class DeepLinkRouter {
         _push(context, const RaffleWinnersScreen());
         return;
       case DeepLinkScreen.raffleTerms:
-        _push(context, const RaffleTermsScreen());
+        _push(context, const RaffleTermsScreen(),
+            name: ScreenIds.raffleTerms);
         return;
       case DeepLinkScreen.favorites:
-        _push(context, const FavoriteRestaurantsScreen());
+        _push(context, const FavoriteRestaurantsScreen(),
+            name: ScreenIds.storeFavorites);
         return;
       case DeepLinkScreen.profile:
         await _openProfile(context);

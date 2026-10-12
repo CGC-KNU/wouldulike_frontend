@@ -18,4 +18,21 @@ class ScreenIds {
   static const String walletMileage = 'wallet.mileage';
   static const String my = 'my';
   static const String sheetCouponArrived = 'sheet.coupon_arrived';
+
+  // 10/12 — Castor 화면 지도의 나머지 ID. 라우트로 열리지 않는 화면(진입 분기·온보딩)은 initState 에서 logScreen 으로 남긴다.
+  static const String appEntry = 'app.entry';
+  static const String authProfile = 'auth.profile';
+  static const String onboardingGate = 'onboarding.gate';
+  static const String onboardingIntro = 'onboarding.intro';
+  static const String onboardingReward = 'onboarding.reward';
+  static const String storeFavorites = 'store.favorites';
+  static const String storeNearby = 'store.nearby';
+  static const String invite = 'invite';
+  static const String myWishlist = 'my.wishlist';
+  static const String couponLimitedPick = 'coupon.limited_pick';
+  static const String mileageShop = 'mileage.shop';
+  static const String raffleEntries = 'raffle.entries';
+  static const String raffleResult = 'raffle.result';
+  static const String raffleTerms = 'raffle.terms';
+  static const String raffleWinners = 'raffle.winners';
 }

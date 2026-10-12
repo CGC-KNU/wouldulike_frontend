@@ -9,6 +9,7 @@ import 'services/api_client.dart';
 import 'services/app_config_service.dart';
 import 'utils/analytics_logger.dart';
 import 'services/user_service.dart';
+import 'config/screen_ids.dart';
 
 class ProfileSetupScreen extends StatefulWidget {
   const ProfileSetupScreen({
@@ -50,6 +51,7 @@ class _ProfileSetupScreenState extends State<ProfileSetupScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.authProfile);
     final profile = widget.initialProfile;
 
     _initialNickname = profile?['nickname']?.toString().trim() ?? '';

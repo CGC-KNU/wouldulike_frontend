@@ -15,6 +15,7 @@ import 'onboarding_style.dart';
 import 'widgets/restaurant_pick_list.dart';
 import 'widgets/roulette_wheel.dart';
 import '../widgets/coupon_ticket_card.dart';
+import '../config/screen_ids.dart';
 
 enum _RewardStep { pick, spin }
 
@@ -95,6 +96,7 @@ class _OnboardingRewardFlowState extends State<OnboardingRewardFlow>
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.onboardingReward);
     OnboardingPrefs.firstpickSessionId().then((id) {
       if (mounted) setState(() => _firstpickSessionId = id);
     });

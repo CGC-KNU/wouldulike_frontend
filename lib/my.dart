@@ -19,6 +19,7 @@ import 'services/coupon_service.dart';
 import 'services/kakao_share_service.dart';
 import 'services/user_service.dart';
 import 'widgets/referral_code_sheet.dart';
+import 'package:new1/config/screen_ids.dart';
 
 const TextStyle _kSectionTitleStyle = TextStyle(
   fontSize: 16,
@@ -582,6 +583,7 @@ class _MyScreenState extends State<MyScreen> {
   void _openFavoriteRestaurants() {
     Navigator.of(context).push(
       MaterialPageRoute(
+        settings: const RouteSettings(name: ScreenIds.storeFavorites),
         builder: (_) => const FavoriteRestaurantsScreen(),
       ),
     );

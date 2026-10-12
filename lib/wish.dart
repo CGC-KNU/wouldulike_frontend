@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:new1/utils/location_helper.dart';
 import 'package:new1/utils/distance_calculator.dart';
 import 'package:new1/services/api_client.dart';
+import 'package:new1/config/screen_ids.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 class WishlistScreen extends StatefulWidget {
   const WishlistScreen({super.key});
@@ -36,6 +38,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.myWishlist);
     _loadLikedRestaurants();
   }
   void _onToggleFilter(int index) {

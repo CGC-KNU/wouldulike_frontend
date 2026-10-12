@@ -8,6 +8,8 @@ import 'package:new1/coupon_list_screen.dart';
 import 'package:new1/mileage/mileage_shop_screen.dart' show FadeSlideIn;
 import 'package:new1/mileage/raffle_result_dialog.dart';
 import 'package:new1/services/mileage_service.dart';
+import 'package:new1/config/screen_ids.dart';
+import 'package:new1/utils/analytics_logger.dart';
 
 const _ink = Color(0xFF191F28);
 const _sub = Color(0xFF4E5968);
@@ -35,6 +37,7 @@ class _MyRaffleEntriesScreenState extends State<MyRaffleEntriesScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsLogger.logScreen(ScreenIds.raffleEntries);
     _load();
   }
 
