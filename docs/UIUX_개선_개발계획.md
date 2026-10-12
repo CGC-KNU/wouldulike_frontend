@@ -41,7 +41,7 @@
   - 2단계: Remote Config(`firebase_remote_config` 추가, `services/remote_text_service.dart`) — 쿠폰 사용 화면 문구·스탬프 기본값·배너 자동 넘김 초. 콘솔에 키 등록 필요.
   - 탭 화면 ID: home·store.list·my(하단 탭), wallet.coupon·wallet.stamp·wallet.mileage(지갑 안쪽 탭)을 screen_view 로 기록. 홈 블록 순서는 원격 `home_block_order`(promo,mission,featured,restaurants,banner; 빠진 블록은 뒤에 자동 보정).
   - QR 시나리오 테스트: 서버 `coupons/test_qr_scenarios.py`(API end-to-end 12건), 앱 `test/qr_scenarios_test.dart`(13건). 테스트로 발견·수정: QR 쿠폰 만료가 "받은 날 자정"이 아니라 발급일+1일 23:59(최대 2일)였던 것 → KST 당일 23:59:59 로 수정.
-  - 1-6 일부: 아이템 0개 기획전은 서버가 내려주지 않음.
+  - 1-6 일부: 기획전 "선별 매장 0곳" 방지는 게시 단계(세틀라이트 등록 검사)에서 막는다. 서버 쪽 "item 0개 기획전 제외"는 bannerlab 큐레이션 동작과 충돌해 되돌렸다(item 이 원래 없던 기획전은 예전처럼 내려간다). 앱은 `featured_view(store_count)` 로 0곳 진입을 계측한다.
   - 남음: 오늘 이미 적립했으면 "오늘 적립 완료" 표시(적립 현황 조회 필요), QR 진입 분기 시트, 사용 완료→스탬프 연결(PIN 재입력 없이는 서버 방문 토큰 필요).
 - 백: QR 진입 API(매장+src → 분기 1~6 판정, QR 쿠폰 발급: 사용자×매장 평생 1장·당일 자정 만료, "QR 방문" 분류 분리), 쿠폰 사용 후 스탬프용 방문 토큰.
 - 앱: 딥링크 `wouldulike.kr/s/{매장}?src=`, 진입 분기 시트(`sheet.coupon_arrived` 등), 쿠폰 사용 전체 화면(`coupon.use`), 사용 완료→스탬프 연결(`coupon.done`/`stamp.done`).
