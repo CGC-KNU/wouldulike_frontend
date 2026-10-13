@@ -1,0 +1,64 @@
+name: Castor screenshots
+
+# main 에 올라올 때마다 화면별 캡처(PNG, 파일 이름 = 화면 ID)를 다시 만든다.
+# 가짜 데이터로 그리는 위젯 테스트(test/castor/)라 기기 · 서버 · Firebase 가 필요 없다.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: castor-screenshots
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CASTOR_SHOTS_DIR: build/castor_shots
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Install packages
+        run: flutter pub get
+
+      - name: Render screens
+        run: flutter test test/castor/castor_screens_test.dart --reporter expanded
+
+      - name: List PNGs
+        if: ${{ !cancelled() }}
+        run: ls -la "$CASTOR_SHOTS_DIR" || true
+
+      - name: Upload artifact
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: castor-shots-${{ github.sha }}
+          path: ${{ env.CASTOR_SHOTS_DIR }}/*.png
+          retention-days: 30
+          if-no-files-found: warn
+
+      # Castor 썸네일 갱신 — 저장소 시크릿 CASTOR_ADMIN_TOKEN(세틀라이트 관리자 access 토큰)이 있을 때만.
+      # 없으면 건너뛰고 아티팩트만 남는다.
+      - name: Upload to Castor
+        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+        env:
+          CASTOR_ADMIN_TOKEN: ${{ secrets.CASTOR_ADMIN_TOKEN }}
+          CASTOR_SOURCE: ${{ github.sha }}
+        run: |
+          if [ -z "$CASTOR_ADMIN_TOKEN" ]; then
+            echo "::notice::CASTOR_ADMIN_TOKEN 시크릿이 없어 Castor 업로드를 건너뜁니다(아티팩트만 남김)."
+            exit 0
+          fi
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')
+          CASTOR_SOURCE="v${VERSION} @ ${GITHUB_SHA::7}" python3 tool/castor/upload_shots.py "$CASTOR_SHOTS_DIR"
