@@ -48,16 +48,17 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-      # Castor 썸네일 갱신 — 저장소 시크릿 CASTOR_ADMIN_TOKEN(세틀라이트 관리자 access 토큰)이 있을 때만.
-      # 없으면 건너뛰고 아티팩트만 남는다.
+      # Castor 썸네일 갱신 — 저장소 시크릿 CASTOR_UPLOAD_TOKEN(업로드 전용 장기 토큰)이 있으면 그것,
+      # 없으면 CASTOR_ADMIN_TOKEN(세틀라이트 관리자 access 토큰, 30일 만료)으로. 둘 다 없으면 건너뛰고 아티팩트만 남는다.
       - name: Upload to Castor
         if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
         env:
+          CASTOR_UPLOAD_TOKEN: ${{ secrets.CASTOR_UPLOAD_TOKEN }}
           CASTOR_ADMIN_TOKEN: ${{ secrets.CASTOR_ADMIN_TOKEN }}
           CASTOR_SOURCE: ${{ github.sha }}
         run: |
-          if [ -z "$CASTOR_ADMIN_TOKEN" ]; then
-            echo "::notice::CASTOR_ADMIN_TOKEN 시크릿이 없어 Castor 업로드를 건너뜁니다(아티팩트만 남김)."
+          if [ -z "$CASTOR_UPLOAD_TOKEN" ] && [ -z "$CASTOR_ADMIN_TOKEN" ]; then
+            echo "::notice::CASTOR_UPLOAD_TOKEN · CASTOR_ADMIN_TOKEN 시크릿이 없어 Castor 업로드를 건너뜁니다(아티팩트만 남김)."
             exit 0
           fi
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}')

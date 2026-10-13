@@ -4,14 +4,16 @@
   python3 tool/castor/upload_shots.py build/castor_shots [--dry-run]
 
 PNG 파일 이름이 곧 Castor 화면 ID 다(예: store.detail.png).
-1) 관리자 토큰으로 Castor `player` 문서를 읽는다.
+1) 업로드 토큰으로 Castor `player` 문서(썸네일 칸)를 읽는다.
 2) 바뀐 PNG 만 presign(upload_type=castor)으로 S3 castor/ 에 올린다(내용 해시가 같으면 건너뜀).
 3) player 문서의 thumbs[화면 ID] 를 새 주소로 바꾸고 thumbs_meta 에 해시 · 커밋 · 시각을 남긴다.
    처음 한 번은 손으로 찍은 옛 썸네일을 thumbs_manual 에 보관한다.
 4) base_updated_at 으로 저장 — 그사이 누가 고쳤으면(409) 다시 읽어 합친다.
 
 환경 변수
-  CASTOR_ADMIN_TOKEN  (필수) 세틀라이트 관리자 로그인 access 토큰(Bearer). 30일마다 만료.
+  CASTOR_UPLOAD_TOKEN (권장) 캡처 업로드 전용 장기 토큰(헤더 X-Castor-Upload-Token).
+                      백엔드 환경변수 CASTOR_UPLOAD_TOKEN 과 같은 값. castor 캡처 업로드 · player 썸네일 칸만 된다.
+  CASTOR_ADMIN_TOKEN  (폴백) CASTOR_UPLOAD_TOKEN 이 없을 때만. 세틀라이트 관리자 access 토큰(Bearer), 30일마다 만료.
   CASTOR_API_URL      (선택) 백엔드 주소. 기본값은 앱 ApiClient.baseUrl 과 같은 주소.
   CASTOR_SOURCE       (선택) thumbs_meta 에 남길 출처(예: 커밋 SHA · 버전)
 
@@ -38,7 +40,18 @@ class ApiError(Exception):
         self.body = body
 
 
-def call(method, url, token=None, payload=None, raw=None, content_type="application/json"):
+def auth_headers():
+    """(헤더, 이름) — 업로드 전용 토큰 우선, 없으면 관리자 토큰. 둘 다 없으면 (None, None)."""
+    upload = os.environ.get("CASTOR_UPLOAD_TOKEN", "").strip()
+    if upload:
+        return {"X-Castor-Upload-Token": upload}, "CASTOR_UPLOAD_TOKEN"
+    admin = os.environ.get("CASTOR_ADMIN_TOKEN", "").strip()
+    if admin:
+        return {"Authorization": f"Bearer {admin}"}, "CASTOR_ADMIN_TOKEN"
+    return None, None
+
+
+def call(method, url, auth=None, payload=None, raw=None, content_type="application/json"):
     headers = {"Accept": "application/json"}
     data = None
     if payload is not None:
@@ -47,8 +60,8 @@ def call(method, url, token=None, payload=None, raw=None, content_type="applicat
     elif raw is not None:
         data = raw
         headers["Content-Type"] = content_type
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+    if auth:
+        headers.update(auth)
     req = urllib.request.Request(url, data=data, method=method, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=60) as r:
@@ -74,8 +87,8 @@ def load_shots(folder):
     return shots
 
 
-def upload_png(api, token, screen_id, path):
-    pr = call("POST", api + PRESIGN_PATH, token, {
+def upload_png(api, auth, screen_id, path):
+    pr = call("POST", api + PRESIGN_PATH, auth, {
         "filename": f"{screen_id}.png", "content_type": "image/png", "upload_type": "castor",
     })
     with open(path, "rb") as f:
@@ -108,19 +121,22 @@ def main():
     if not shots:
         sys.exit(f"PNG 가 없습니다: {args.folder}")
 
-    token = os.environ.get("CASTOR_ADMIN_TOKEN", "").strip()
+    token, token_name = auth_headers()
     api = os.environ.get("CASTOR_API_URL", DEFAULT_API).rstrip("/")
     source = os.environ.get("CASTOR_SOURCE", "local")
     if not token:
         if args.dry_run:
             print(f"[dry-run] 토큰 없음 — PNG {len(shots)}장: {', '.join(shots)}")
             return
-        sys.exit("CASTOR_ADMIN_TOKEN 이 없습니다(세틀라이트 관리자 access 토큰).")
+        sys.exit("토큰이 없습니다 — CASTOR_UPLOAD_TOKEN(업로드 전용, 권장) 또는 CASTOR_ADMIN_TOKEN(관리자 access 토큰)을 넣으세요.")
+    print(f"인증: {token_name}")
 
     try:
         doc = call("GET", api + DOC_PATH, token)
     except ApiError as e:
         if e.status in (401, 403):
+            if token_name == "CASTOR_UPLOAD_TOKEN":
+                sys.exit(f"토큰이 거절됐습니다({e.status}) — CASTOR_UPLOAD_TOKEN 이 백엔드 환경변수와 다르거나 백엔드에 아직 없습니다.")
             sys.exit(f"토큰이 거절됐습니다({e.status}) — 만료(30일)됐거나 관리자 토큰이 아닙니다. 새로 받아 CASTOR_ADMIN_TOKEN 을 갱신하세요.")
         raise
     data = doc.get("data") or {}
