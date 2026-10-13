@@ -37,7 +37,10 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     final pending = DeepLinkService.instance.consumePendingTarget();
     if (pending != null) _selectedIndex = pending.tabIndex;
     _deepLinkTabSub = DeepLinkService.instance.tabStream.listen((tabIndex) {
-      if (mounted) setState(() => _selectedIndex = tabIndex);
+      if (!mounted) return;
+      setState(() => _selectedIndex = tabIndex);
+      // 딥링크·QR 로 탭이 바뀌어도 탭 화면 기록을 남긴다(Castor QR 흐름).
+      _logTabView(tabIndex);
     });
     _deepLinkTargetSub =
         DeepLinkService.instance.targetStream.listen(_onDeepLinkTarget);
@@ -87,6 +90,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
     if (!mounted) return;
     _popToThisRoute();
     setState(() => _selectedIndex = target.tabIndex);
+    _logTabView(target.tabIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
       await _openDeepLink(target);
