@@ -17,6 +17,7 @@ import 'package:new1/utils/impression_tracker.dart';
 import 'package:new1/widgets/my_benefit_summary_card.dart';
 import 'affiliate_benefits_screen.dart';
 import 'coupon_list_screen.dart';
+import 'featured/featured_banner_analytics.dart';
 import 'featured/featured_campaign_screen.dart';
 import 'mission/mission_track_screen.dart';
 import 'mission/invite_friend.dart';
@@ -1489,7 +1490,7 @@ class _HomeContentState extends State<HomeContent> {
     AnalyticsLogger.logEvent(
       AnalyticsEvents.featuredView,
       parameters: {
-        'campaign_code': campaign.code,
+        AnalyticsEvents.paramCampaignCode: campaign.code,
         // 매장이 걸린 항목 수. 0이면 상세 화면이 비어 "선별 매장 0곳"으로 보인다.
         'store_count': campaign.items
             .where((item) => item.restaurantId != null)
@@ -1518,7 +1519,12 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   /// 독립형 배너는 자기 링크를 열고, 식당 연결형은 그 배너가 속한 기획전 상세 화면을 연다.
-  void _handleFeaturedItemTap(_FeaturedBannerSlide slide) {
+  /// 어느 쪽이든 먼저 클릭을 남긴다 — 독립형은 링크만 열고 끝나서 예전엔 아무 기록도 없었다.
+  void _handleFeaturedItemTap(_FeaturedBannerSlide slide, int index) {
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.homeBannerClick,
+      parameters: featuredBannerParams(slide.campaign, slide.item, index),
+    );
     final link = slide.item.linkUrl;
     if (link != null) {
       _launchURL(link.toString());
@@ -1558,12 +1564,22 @@ class _HomeContentState extends State<HomeContent> {
                 }
               },
               itemBuilder: (context, index) {
-                final item = slides[index].item;
-                return _FeaturedBannerCard(
-                  imageUrl: _resolveFeaturedItemImage(item),
-                  fallbackAsset: _kFeaturedFallbackAssets[
-                      index % _kFeaturedFallbackAssets.length],
-                  onTap: () => _handleFeaturedItemTap(slides[index]),
+                final slide = slides[index];
+                final item = slide.item;
+                // 트렌드 배너와 같은 규칙 — 절반 이상 1초 · 한 세션에 한 번.
+                // 자동 넘김이 없어 옆 장은 스와이프해야 보이고, 그때 센다.
+                return ImpressionDetector(
+                  dedupKey: featuredBannerDedupKey(slide.campaign, item),
+                  onImpression: () => AnalyticsLogger.logEvent(
+                    AnalyticsEvents.homeBannerImpression,
+                    parameters: featuredBannerParams(slide.campaign, item, index),
+                  ),
+                  child: _FeaturedBannerCard(
+                    imageUrl: _resolveFeaturedItemImage(item),
+                    fallbackAsset: _kFeaturedFallbackAssets[
+                        index % _kFeaturedFallbackAssets.length],
+                    onTap: () => _handleFeaturedItemTap(slide, index),
+                  ),
                 );
               },
             ),
