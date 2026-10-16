@@ -140,7 +140,8 @@ class AnalyticsEvents {
   static const AnalyticsEvent couponRedeemFailed = AnalyticsEvent._('coupon_redeem_failed');
 
   // ===== 노출 · 탐색 =====
-  /// 홈 배너 노출 (뷰포트 50% · 1초 · 인상당 1회)
+  /// 홈 배너 노출 (뷰포트 50% · 1초 · 인상당 1회).
+  /// banner_type 으로 가른다 — promo(트렌드 가로배너) · featured(기획전 세로배너). 클릭(home_banner_click)도 같다.
   static const AnalyticsEvent homeBannerImpression = AnalyticsEvent._('home_banner_impression');
   /// 매장 카드 노출 (동일 규칙)
   static const AnalyticsEvent restaurantListImpression = AnalyticsEvent._('restaurant_list_impression');
@@ -278,6 +279,8 @@ class AnalyticsEvents {
   static const String paramBannerTitle = 'banner_title';
   static const String paramBannerUrl = 'banner_url';
   static const String paramBannerSource = 'banner_source';
+  /// 기획전 코드 (featured_view · 기획전 배너 노출·클릭)
+  static const String paramCampaignCode = 'campaign_code';
   static const String paramListIndex = 'list_index';
   static const String paramListType = 'list_type';
   /// 어느 목록인지 (affiliate · affiliate_general · home · search)
