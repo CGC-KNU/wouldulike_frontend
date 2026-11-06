@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/jwt_helper.dart';
@@ -34,8 +35,18 @@ class ApiNetworkException implements Exception {
 }
 
 class ApiClient {
-  static const String baseUrl =
+  static const String _prodBaseUrl =
       'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app';
+
+  /// 실험실(맥에서 띄운 로컬 백엔드)에 붙을 때만 넘긴다.
+  ///   flutter run --dart-define=API_BASE_URL=http://10.0.2.2:8000
+  /// 릴리스 빌드는 이 값을 무시하고 항상 운영 서버를 쓴다.
+  static const String _labBaseUrl = String.fromEnvironment('API_BASE_URL');
+
+  /// 운영이 아닌 서버를 보고 있으면 true. GA4 수집을 끄고 화면에 LAB 띠를 단다.
+  static const bool isLab = !kReleaseMode && _labBaseUrl != '';
+
+  static const String baseUrl = isLab ? _labBaseUrl : _prodBaseUrl;
 
   static final http.Client _http = http.Client();
   static Completer<bool>? _refreshCompleter;

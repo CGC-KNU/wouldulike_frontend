@@ -4,4 +4,7 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 실험실(맥에서 띄운 로컬 백엔드, http://10.0.2.2:8000)에 붙을 수 있게
+         디버그 빌드에서만 평문 HTTP 를 허용한다. 릴리스 빌드에는 들어가지 않는다. -->
+    <application android:usesCleartextTraffic="true" />
 </manifest>

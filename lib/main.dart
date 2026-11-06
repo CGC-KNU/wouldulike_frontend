@@ -155,6 +155,10 @@ Future<void> main() async {
   await Firebase.initializeApp(
     options: DefaultFirebaseOptions.currentPlatform,
   );
+  if (ApiClient.isLab) {
+    // 실험실(로컬 백엔드)에서 한 일이 운영 GA4 지표(Probe)에 섞이지 않게 수집을 끈다.
+    await FirebaseAnalytics.instance.setAnalyticsCollectionEnabled(false);
+  }
   // 원격 설정은 시작을 막지 않게 백그라운드로 가져온다. 실패하면 코드 기본값을 쓴다.
   unawaited(RemoteText.init());
   await MobileAds.instance.initialize();
@@ -362,6 +366,15 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      // 실험실 서버에 붙어 있으면 오른쪽 위에 LAB 띠를 달아 운영 앱과 헷갈리지 않게 한다.
+      builder: ApiClient.isLab
+          ? (context, child) => Banner(
+                message: 'LAB',
+                location: BannerLocation.topEnd,
+                color: Colors.deepOrange,
+                child: child ?? const SizedBox.shrink(),
+              )
+          : null,
       theme: ThemeData(
         fontFamily: 'Pretendard',
         // Material 3 기본 surface(#FEF7FF)는 분홍기가 돌아 상단 안전영역이 분홍으로 보인다.
