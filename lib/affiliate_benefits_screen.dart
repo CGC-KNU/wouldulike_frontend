@@ -28,7 +28,10 @@ import 'widgets/network_thumb.dart';
 import 'coupon/redeem_pin_dialog.dart';
 import 'coupon/qr_entry_sheet.dart';
 import 'coupon/stamp_add_dialog.dart';
-import 'services/mileage_service.dart' show QrEntry;
+import 'services/mileage_service.dart'
+    show QrEntry, StoreVisitService, StoreVisitStatus;
+import 'mileage/mileage_shop_screen.dart';
+import 'mileage/mileage_visit_dialogs.dart';
 import 'coupon/limited_coupon_offer_flow.dart';
 import 'widgets/coupon_issued_dialog.dart';
 import 'services/deep_link_service.dart';
@@ -2763,6 +2766,11 @@ class _AffiliateRestaurantDetailSheetState
   bool _isStampLoading = true;
   bool _isStampProcessing = false;
   String? _stampError;
+
+  /// 스탬프 없는 매장의 마일리지 방문 적립 카드 (1018 목업). 스탬프 판이 0칸일 때만 불러온다.
+  StoreVisitStatus? _visitStatus;
+  bool _isVisitLoading = false;
+  bool _isVisitProcessing = false;
   String? _processingCouponCode;
   final PageController _imagePageController = PageController();
   final ScrollController _scrollController = ScrollController();
@@ -2871,7 +2879,10 @@ class _AffiliateRestaurantDetailSheetState
     // QR로 들어왔으면 서버가 정한 분기 시트를 이 상세 위에 띄운다.
     // 응답이 상세보다 먼저 도착했을 수도 있어 첫 프레임 뒤에도 한 번 확인한다.
     DeepLinkService.instance.pendingQrEntry.addListener(_handleQrEntry);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _handleQrEntry());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _handleQrEntry();
+      _maybeLoadVisitStatus();
+    });
     _stampStatus = widget.initialStampStatus ??
         StampStatus(
           current: widget.restaurant.stampCurrent,
@@ -3089,6 +3100,8 @@ class _AffiliateRestaurantDetailSheetState
     } finally {
       if (mounted) {
         setState(() => _isStampLoading = false);
+        // 스탬프 판이 0칸으로 확정된 뒤에야 마일리지 카드를 부를지 안다.
+        _maybeLoadVisitStatus();
       }
     }
   }
@@ -4046,8 +4059,9 @@ class _AffiliateRestaurantDetailSheetState
     // 칸 수는 서버 target(cycle_target)과 최상단 리워드에서 나온다.
     // 예전엔 최소 10칸을 강제해 리워드가 3개뿐인 매장도 10칸으로 그려졌다.
     final total = status.boardLength;
-    // 스탬프 프로그램 정보가 없으면 0/0 판을 그리지 않고 섹션을 숨긴다.
-    if (total <= 0) return const SizedBox.shrink();
+    // 스탬프 프로그램 정보가 없으면 0/0 판을 그리지 않는다.
+    // 스탬프를 꺼 둔 매장이면 그 자리에 마일리지 방문 적립 카드를 둔다.
+    if (total <= 0) return _buildMileageVisitSection();
     final current = status.current;
     final filled = math.min(current, total);
     // 남은 개수는 "다음 리워드까지"다. 판 끝까지가 아니다.
@@ -4233,6 +4247,316 @@ class _AffiliateRestaurantDetailSheetState
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Future<void> _maybeLoadVisitStatus() async {
+    if (!mounted || widget.requiresLogin || kDemoWallet) return;
+    if (_isVisitLoading || _visitStatus != null) return;
+    if (_isStampLoading || _effectiveStampStatus.boardLength > 0) return;
+    await _loadVisitStatus();
+  }
+
+  Future<void> _loadVisitStatus() async {
+    _isVisitLoading = true;
+    final status = await StoreVisitService.fetchStatus(widget.restaurant.id);
+    _isVisitLoading = false;
+    if (!mounted || status == null) return;
+    setState(() => _visitStatus = status);
+  }
+
+  Future<void> _handleMileageVisit() async {
+    final status = _visitStatus;
+    if (status == null || status.creditedToday || _isVisitProcessing) return;
+    _logDetailCta('mileage_visit');
+    final pin = await showMileageVisitDialog(context, points: status.points);
+    if (pin == null || !mounted) return;
+    setState(() => _isVisitProcessing = true);
+    final result = await StoreVisitService.credit(widget.restaurant.id, pin);
+    if (!mounted) return;
+    setState(() => _isVisitProcessing = false);
+    if (result.ok) {
+      final balance = result.balance ?? status.balance + result.delta;
+      setState(() {
+        _visitStatus = status.copyWith(creditedToday: true, balance: balance);
+      });
+      await showMileageEarnedDialog(
+        context,
+        added: result.delta,
+        balance: balance,
+      );
+      return;
+    }
+    if (result.code == 'visit_daily_limit_reached') {
+      setState(() {
+        _visitStatus =
+            status.copyWith(creditedToday: true, balance: result.balance);
+      });
+      await showStampDailyLimitDialog(
+        context,
+        result.message ?? '오늘은 이 매장에서 이미 적립했어요.',
+      );
+      return;
+    }
+    final retry = await showStampAddFailedDialog(
+      context,
+      result.message ?? '적립하지 못했어요.',
+    );
+    if (retry == true && mounted) await _handleMileageVisit();
+  }
+
+  Future<void> _openMileageShop() async {
+    _logDetailCta('mileage_shop');
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => const MileageShopScreen()),
+    );
+    if (mounted) await _loadVisitStatus();
+  }
+
+  /// 스탬프 카드와 같은 카드. 스탬프 판 대신 이번에 받을 마일리지와 내 잔액을 보여 준다.
+  Widget _buildMileageVisitSection() {
+    final status = _visitStatus;
+    if (status == null || !status.available) return const SizedBox.shrink();
+    final done = status.creditedToday;
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x0D191F28),
+            blurRadius: 2,
+            offset: Offset(0, 1),
+          ),
+          BoxShadow(
+            color: Color(0x14191F28),
+            blurRadius: 16,
+            offset: Offset(0, 6),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Image.asset(
+                      'assets/images/mileage/mileage_tag.png',
+                      width: 34,
+                      height: 34,
+                    ),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Text(
+                        '${widget.restaurant.name} 마일리지',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.4,
+                          color: Color(0xFF333D4B),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: '+${formatMileage(status.points)}',
+                                  style: const TextStyle(
+                                    fontSize: 34,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.9,
+                                    color: _Theme.primary,
+                                    height: 1.1,
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text: ' M',
+                                  style: TextStyle(
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w800,
+                                    letterSpacing: -0.7,
+                                    color: Color(0xFF191F28),
+                                    height: 1.1,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            done
+                                ? '내일 다시 적립할 수 있어요'
+                                : '계산할 때 직원에게 이 화면을 보여 주세요',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF8B95A1),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _buildMileageVisitButton(done),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const _DashedDivider(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            child: Row(
+              children: [
+                const Text(
+                  '내 마일리지',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF4E5968),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '${formatMileage(status.balance)} M',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF191F28),
+                  ),
+                ),
+                const Spacer(),
+                GestureDetector(
+                  onTap: _openMileageShop,
+                  behavior: HitTestBehavior.opaque,
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        '마일리지 상점',
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.3,
+                          color: _Theme.primary,
+                        ),
+                      ),
+                      SizedBox(width: 1),
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: 16,
+                        color: _Theme.primary,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: double.infinity,
+            color: const Color(0xFFF7F8FB),
+            padding: const EdgeInsets.fromLTRB(18, 11, 18, 11),
+            child: Row(
+              children: [
+                Image.asset(
+                  'assets/images/stamp/stamp_info.png',
+                  width: 20,
+                  height: 20,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    status.dailyLimit > 1
+                        ? '같은 매장 하루 ${status.dailyLimit}회 적립 · 마일리지는 전 매장 공통'
+                        : '같은 매장 하루 1회 적립 · 마일리지는 전 매장 공통',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 스탬프 카드의 적립하기 버튼과 같은 모양. 오늘 받았으면 「적립 완료」로 꺼진다.
+  Widget _buildMileageVisitButton(bool done) {
+    final disabled = done || _isVisitProcessing;
+    return InkWell(
+      onTap: disabled ? null : _handleMileageVisit,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: ShapeDecoration(
+          color: done ? const Color(0xFFF4F5F8) : Colors.white,
+          shape: RoundedRectangleBorder(
+            side: BorderSide(
+              color: done ? const Color(0xFFE5E7EB) : _Theme.border,
+              width: 1.4,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: _isVisitProcessing
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: _Theme.primary,
+                ),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    done ? '적립 완료' : '적립하기',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: -0.3,
+                      color: done ? const Color(0xFF9CA3AF) : _Theme.primary,
+                    ),
+                  ),
+                  if (!done) ...[
+                    const SizedBox(width: 3),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 17,
+                      color: _Theme.primary,
+                    ),
+                  ],
+                ],
+              ),
       ),
     );
   }
