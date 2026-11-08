@@ -13,7 +13,9 @@ import 'package:new1/mission/mission_track_screen.dart';
 import 'package:new1/profile_setup_screen.dart';
 import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/services/promotion_service.dart';
+import 'package:new1/services/survey_service.dart';
 import 'package:new1/services/user_service.dart';
+import 'package:new1/survey/survey_screen.dart';
 
 /// MainAppScreen 위에서 딥링크 목적 화면을 연다.
 class DeepLinkRouter {
@@ -26,6 +28,9 @@ class DeepLinkRouter {
     switch (target.screen) {
       case DeepLinkScreen.featured:
         await _openFeatured(context, target.campaignCode);
+        return;
+      case DeepLinkScreen.survey:
+        await _openSurvey(context, target);
         return;
       case DeepLinkScreen.mission:
         _push(context, const MissionTrackScreen(entry: 'deeplink'),
@@ -68,6 +73,18 @@ class DeepLinkRouter {
       case DeepLinkScreen.my:
         return;
     }
+  }
+
+  static Future<void> _openSurvey(
+    BuildContext context,
+    DeepLinkTarget target,
+  ) async {
+    var code = target.surveyCode;
+    if (code == null || code.isEmpty) {
+      code = (await SurveyService.fetchActive())?.code;
+    }
+    if (code == null || code.isEmpty || !context.mounted) return;
+    await SurveyScreen.open(context, code: code, entry: target.entry ?? 'deeplink');
   }
 
   static void _push(BuildContext context, Widget screen, {String? name}) {

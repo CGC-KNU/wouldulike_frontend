@@ -956,8 +956,12 @@ class LimitedCouponOffer {
   bool get isMultiPick => picksNeeded > 1;
 
   /// 발급 팝업·선택 화면 태그.
+  /// 앱 내 설문 보상(설문 참여 감사 쿠폰). 설문을 마친 사람에게만 오퍼가 내려온다.
+  bool get isSurveyReward => couponTypeCode == 'SURVEY_GENERAL_SELECT';
+
   String get tagLabel {
     if (isTueThuGeneralSelect) return '화·목 골라받기 쿠폰';
+    if (isSurveyReward) return '설문 참여 쿠폰';
     if (isStudentCouncil) return '학생회 쿠폰';
     if (source?.toUpperCase() == 'CODE') return '이벤트 쿠폰';
     return '한정쿠폰';

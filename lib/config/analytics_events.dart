@@ -166,6 +166,16 @@ class AnalyticsEvents {
   /// 친구 초대 배너 닫기
   static const AnalyticsEvent inviteBannerDismiss = AnalyticsEvent._('invite_banner_dismiss');
 
+  // ===== 앱 내 설문 (서버설계 Rev.6 7절) =====
+  /// 설문 화면 열림. entry = push · home_promo · home_featured · wallet_card · deeplink
+  static const AnalyticsEvent surveyView = AnalyticsEvent._('survey_view');
+  /// 시작하기 누름
+  static const AnalyticsEvent surveyStart = AnalyticsEvent._('survey_start');
+  /// 응답 제출 성공
+  static const AnalyticsEvent surveySubmit = AnalyticsEvent._('survey_submit');
+  /// 제출 뒤 보상 쿠폰을 받음
+  static const AnalyticsEvent surveyCouponClaim = AnalyticsEvent._('survey_coupon_claim');
+
   // ===== 실패 · 설정 =====
   /// 스탬프 적립 실패
   static const AnalyticsEvent stampAddFailed = AnalyticsEvent._('stamp_add_failed');

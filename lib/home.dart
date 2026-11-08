@@ -35,6 +35,8 @@ import 'services/promotion_service.dart';
 import 'services/trend_service.dart';
 import 'services/user_service.dart';
 import 'services/deep_link_service.dart';
+import 'services/survey_service.dart';
+import 'survey/survey_screen.dart';
 
 bool _isValidHttpImageUrl(String? value) {
   if (value == null) return false;
@@ -156,8 +158,27 @@ class _HomeContentState extends State<HomeContent> {
     _loadAffiliateRestaurants();
     _loadFeaturedCampaign();
     _loadMissionTrack();
+    _loadActiveSurvey();
+    SurveyService.changes.addListener(_onSurveyChanged);
     _startBannerAutoScroll();
   }
+
+  /// 지금 열린 설문. 홈 세로배너(기획전 캐러셀)의 설문 배너는 참여 전일 때만 보인다.
+  /// 기획전 API 는 로그인 없이 캐시로 내려와 서버가 「답한 사람」을 모르므로 앱이 가린다.
+  ActiveSurvey? _activeSurvey;
+
+  Future<void> _loadActiveSurvey() async {
+    final survey = await SurveyService.fetchActive();
+    if (mounted) setState(() => _activeSurvey = survey);
+  }
+
+  void _onSurveyChanged() {
+    _loadActiveSurvey();
+    _loadMissionTrack(); // 프로모 블록은 서버가 참여 전인 사람에게만 내려준다
+  }
+
+  Future<void> _openSurvey(String code, String entry) =>
+      SurveyScreen.open(context, code: code, entry: entry);
 
   /// 홈 미션 배너용. 미션 트랙 화면과 같은 응답을 쓰고 별도 호출을 만들지 않는다 (스펙 7.3).
   Future<void> _loadMissionTrack() async {
@@ -1470,6 +1491,7 @@ class _HomeContentState extends State<HomeContent> {
 
   @override
   void dispose() {
+    SurveyService.changes.removeListener(_onSurveyChanged);
     _stopBannerAutoScroll();
     _bannerController.dispose();
     _featuredBannerController.dispose();
@@ -1482,7 +1504,9 @@ class _HomeContentState extends State<HomeContent> {
     return [
       for (final campaign in _featuredCampaigns)
         for (final item in campaign.items)
-          _FeaturedBannerSlide(campaign: campaign, item: item),
+          if (surveyCodeFromLink(item.linkUrl) == null ||
+              (_activeSurvey?.showEntry ?? false))
+            _FeaturedBannerSlide(campaign: campaign, item: item),
     ];
   }
 
@@ -1526,6 +1550,12 @@ class _HomeContentState extends State<HomeContent> {
       parameters: featuredBannerParams(slide.campaign, slide.item, index),
     );
     final link = slide.item.linkUrl;
+    final surveyCode = surveyCodeFromLink(link);
+    if (surveyCode != null) {
+      // 설문 링크는 밖(브라우저)이 아니라 앱 안 설문 화면으로 연다.
+      _openSurvey(surveyCode, 'home_featured');
+      return;
+    }
     if (link != null) {
       _launchURL(link.toString());
       return;
@@ -1674,6 +1704,11 @@ class _HomeContentState extends State<HomeContent> {
               AnalyticsLogger.logEvent(AnalyticsEvents.promoBlockTap, parameters: {
                 'title': block.title,
               });
+              final surveyCode = surveyCodeFromLink(link);
+              if (surveyCode != null) {
+                _openSurvey(surveyCode, 'home_promo');
+                return;
+              }
               UrlLauncherUtil.launchURL(link.toString());
             },
     );
