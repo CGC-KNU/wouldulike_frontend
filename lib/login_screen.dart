@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -13,6 +15,8 @@ import 'onboarding/onboarding_style.dart';
 import 'services/auth_service.dart';
 import 'services/api_client.dart';
 import 'services/coupon_service.dart';
+import 'services/deep_link_router.dart';
+import 'services/deep_link_service.dart';
 import 'utils/analytics_logger.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -25,6 +29,54 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoggingIn = false;
   bool _isDialogOpen = false;
+  StreamSubscription<DeepLinkTarget>? _surveyLinkSub;
+  bool _surveyOpen = false;
+
+  /// 앱 첫 화면으로 뜬 로그인 화면인지(설문·쿠폰함 등에서 띄운 로그인은 redirect 인자가 있다).
+  bool get _isRootLogin {
+    final args = ModalRoute.of(context)?.settings.arguments;
+    return !(args is Map && args['redirect'] != null);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // 설문 링크(알림·인스타 등)로 들어온 비로그인 사용자는 로그인보다 설문을 먼저 보여 준다.
+    // 다 답하면 설문 화면이 로그인을 띄우고, 쿠폰까지 받으면 메인으로 간다(11/8).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isRootLogin) return;
+      final pending = DeepLinkService.instance.consumePendingSurvey();
+      if (pending != null) _openSurveyFirst(pending);
+      _surveyLinkSub = DeepLinkService.instance.targetStream.listen((target) {
+        if (target.screen != DeepLinkScreen.survey) return;
+        if (DeepLinkService.instance.consumePendingSurvey() == null) return;
+        _openSurveyFirst(target);
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _surveyLinkSub?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _openSurveyFirst(DeepLinkTarget target) async {
+    if (_surveyOpen || !mounted) return;
+    _surveyOpen = true;
+    try {
+      await DeepLinkRouter.openSurvey(context, target);
+    } finally {
+      _surveyOpen = false;
+    }
+    if (!mounted) return;
+    // 설문 안에서 로그인까지 마쳤으면 이 로그인 화면은 필요 없다.
+    if (await ApiClient.hasAccessToken() && mounted) {
+      await OnboardingPrefs.pullFromServer();
+      if (!mounted) return;
+      Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);
+    }
+  }
 
   Future<void> _openStore(String packageName) async {
     final market = Uri.parse('market://details?id=$packageName');
@@ -207,6 +259,11 @@ class _LoginScreenState extends State<LoginScreen> {
         }
         await OnboardingPrefs.pullFromServer();
         Navigator.of(context).pop(coupons ?? true);
+      } else if (redirect == 'survey') {
+        // 설문을 다 답하고 로그인한 경우: 설문 화면으로 돌아가 쿠폰 고르기를 이어 간다.
+        await OnboardingPrefs.pullFromServer();
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
       } else {
         // 일반 진입(앱 시작 등) 또는 재로그인: 스택을 비우고 메인 화면으로 이동
         await OnboardingPrefs.pullFromServer();
@@ -290,6 +347,10 @@ class _LoginScreenState extends State<LoginScreen> {
         } catch (_) {}
         await OnboardingPrefs.pullFromServer();
         Navigator.of(context).pop(coupons ?? true);
+      } else if (redirect == 'survey') {
+        await OnboardingPrefs.pullFromServer();
+        if (!mounted) return;
+        Navigator.of(context).pop(true);
       } else {
         await OnboardingPrefs.pullFromServer();
         Navigator.pushNamedAndRemoveUntil(context, '/main', (route) => false);

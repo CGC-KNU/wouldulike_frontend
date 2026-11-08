@@ -471,6 +471,16 @@ class DeepLinkService {
     return idx;
   }
 
+  /// 로그인 전 화면이 설문 링크만 먼저 가져간다 — 설문은 답한 뒤에 로그인한다(11/8).
+  /// 설문이 아니면 그대로 두어 로그인 후 메인이 소비하게 한다.
+  DeepLinkTarget? consumePendingSurvey() {
+    final target = _pendingTarget;
+    if (target == null || target.screen != DeepLinkScreen.survey) return null;
+    _pendingTarget = null;
+    _pendingTabIndex = null;
+    return target;
+  }
+
   /// 앱 최초 실행 시 푸시할 화면까지 포함한 목적지.
   DeepLinkTarget? consumePendingTarget() {
     final target = _pendingTarget;

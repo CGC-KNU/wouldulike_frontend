@@ -5,18 +5,21 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'api_client.dart';
+import 'coupon_service.dart';
 
 /// 앱 내 설문 (서버 surveys 앱, 서버설계 Rev.6).
 ///
-/// 상태: open(참여 전) · answered(응답, 쿠폰 미수령) · claimed(쿠폰까지 받음) · closed(기간 밖).
-enum SurveyStatus { open, answered, claimed, closed, unknown }
+/// 상태: open(참여 전, 비로그인 포함) · claimed(답 + 쿠폰 = 끝) · closed(기간 밖)
+/// · ineligible(대상에서 뺀 대학가, 11/8 계명대·영남대).
+/// 답과 쿠폰은 쿠폰을 받는 순간 같이 저장된다 — 그 전에 나가면 아무것도 남지 않는다.
+enum SurveyStatus { open, claimed, closed, ineligible, unknown }
 
 SurveyStatus _parseStatus(Object? raw) {
   switch (raw?.toString()) {
     case 'open':
       return SurveyStatus.open;
-    case 'answered':
-      return SurveyStatus.answered;
+    case 'ineligible':
+      return SurveyStatus.ineligible;
     case 'claimed':
       return SurveyStatus.claimed;
     case 'closed':
@@ -74,6 +77,7 @@ class SurveyDetail {
     required this.description,
     required this.status,
     required this.questions,
+    this.loggedIn = false,
     this.rewardTitle,
     this.rewardValidDays,
   });
@@ -89,6 +93,7 @@ class SurveyDetail {
       headline: json['headline']?.toString() ?? '',
       description: json['description']?.toString() ?? '',
       status: _parseStatus(json['status']),
+      loggedIn: json['logged_in'] == true,
       rewardTitle: reward['title']?.toString(),
       rewardValidDays: days,
       questions: (json['questions'] is List)
@@ -106,6 +111,9 @@ class SurveyDetail {
   final String description;
   final SurveyStatus status;
   final List<SurveyQuestion> questions;
+
+  /// 서버가 이 요청을 로그인으로 봤는지. 비로그인도 문항은 받는다.
+  final bool loggedIn;
   final String? rewardTitle;
   final int? rewardValidDays;
 }
@@ -123,20 +131,23 @@ class ActiveSurvey {
   final String code;
   final String title;
 
-  /// 로그인 안 했으면 unknown.
+  /// 비로그인도 기간 안이면 open.
   final SurveyStatus status;
   final String? rewardTitle;
   final int? rewardValidDays;
 
-  /// 홈 배너·쿠폰함 카드를 보일지 — 참여 전일 때만.
+  /// 홈 배너·쿠폰함 카드를 보일지 — 쿠폰까지 받기 전(참여 전)일 때만.
   bool get showEntry => status == SurveyStatus.open;
 }
 
-class SurveySubmitResult {
-  const SurveySubmitResult({required this.ok, this.status, this.code, this.message});
+/// 쿠폰 고르기 오퍼 조회 결과 (GET /api/surveys/<code>/reward/).
+class SurveyRewardResult {
+  const SurveyRewardResult({this.status, this.offer, this.code, this.message});
 
-  final bool ok;
   final SurveyStatus? status;
+  final LimitedCouponOffer? offer;
+
+  /// 실패 코드: ineligible · closed · network_error …
   final String? code;
   final String? message;
 }
@@ -149,8 +160,11 @@ class SurveyService {
 
   static Future<ActiveSurvey?> fetchActive() async {
     try {
-      final response = await ApiClient.getWithoutThrow('/api/surveys/active/')
-          .timeout(const Duration(seconds: 8));
+      // 토큰이 아예 없으면 인증 헤더를 붙이지 않는다(비로그인도 설문을 본다).
+      final response = await ApiClient.getWithoutThrow(
+        '/api/surveys/active/',
+        authenticated: await ApiClient.hasAccessToken(),
+      ).timeout(const Duration(seconds: 8));
       if (response.statusCode != 200) return null;
       final map = _decode(response);
       if (map is! Map<String, dynamic>) return null;
@@ -172,43 +186,70 @@ class SurveyService {
     }
   }
 
-  /// 401 이면 null 이 아니라 예외(ApiAuthException)가 나간다 — 화면이 비로그인 안내로 바꾼다.
+  /// 비로그인도 문항을 받는다. 로그인했으면 토큰을 붙여 상태(claimed 등)를 받는다.
   static Future<SurveyDetail?> fetchDetail(String code) async {
-    final response = await ApiClient.get('/api/surveys/$code/')
-        .timeout(const Duration(seconds: 8));
+    final response = await ApiClient.getWithoutThrow(
+      '/api/surveys/$code/',
+      authenticated: await ApiClient.hasAccessToken(),
+    ).timeout(const Duration(seconds: 8));
+    if (response.statusCode == 404) {
+      throw ApiHttpException(404, response.body);
+    }
+    if (response.statusCode != 200) {
+      throw ApiHttpException(response.statusCode, response.body);
+    }
     final map = _decode(response);
     return map is Map<String, dynamic> ? SurveyDetail.fromJson(map) : null;
   }
 
-  static Future<SurveySubmitResult> submit(
-    String code,
-    Map<String, String> answers, {
-    String? entry,
-  }) async {
+  /// 쿠폰 고르기에 넘길 보상 오퍼. 답은 아직 저장하지 않는다.
+  static Future<SurveyRewardResult> fetchReward(String code) async {
     try {
-      final response = await ApiClient.postWithoutThrow(
-        '/api/surveys/$code/submit/',
-        body: {'answers': answers, if (entry != null) 'entry': entry},
-      ).timeout(const Duration(seconds: 10));
+      final response = await ApiClient.getWithoutThrow('/api/surveys/$code/reward/')
+          .timeout(const Duration(seconds: 10));
       final map = _decode(response);
       final body = map is Map<String, dynamic> ? map : const <String, dynamic>{};
       if (response.statusCode >= 400) {
-        return SurveySubmitResult(
-          ok: false,
+        return SurveyRewardResult(
           code: body['code']?.toString() ?? 'http_${response.statusCode}',
           message: body['detail']?.toString(),
         );
       }
-      changes.value++;
-      return SurveySubmitResult(ok: true, status: _parseStatus(body['status']));
+      final rawOffer = body['offer'];
+      return SurveyRewardResult(
+        status: _parseStatus(body['status']),
+        offer: rawOffer is Map
+            ? LimitedCouponOffer.fromJson(Map<String, dynamic>.from(rawOffer))
+            : null,
+      );
     } catch (e) {
-      debugPrint('[Survey] submit failed: $e');
-      return const SurveySubmitResult(
-        ok: false,
+      debugPrint('[Survey] reward failed: $e');
+      return const SurveyRewardResult(
         code: 'network_error',
-        message: '네트워크 오류로 보내지 못했어요. 다시 시도해 주세요.',
+        message: '네트워크 오류로 불러오지 못했어요. 다시 시도해 주세요.',
       );
     }
+  }
+
+  /// 답 + 고른 식당을 한 번에 보낸다. 서버가 응답 저장과 쿠폰 발급을 같이 한다.
+  static Future<LimitedCouponClaimResult> complete(
+    String code, {
+    required Map<String, String> answers,
+    required int restaurantId,
+    String? entry,
+    int? elapsedSeconds,
+  }) async {
+    final result = await CouponService.postLimitedClaim(
+      '/api/surveys/$code/complete/',
+      {
+        'answers': answers,
+        'restaurant_id': restaurantId,
+        if (entry != null) 'entry': entry,
+        if (elapsedSeconds != null) 'elapsed_seconds': elapsedSeconds,
+      },
+    );
+    if (result.isSuccess) changes.value++;
+    return result;
   }
 }
 

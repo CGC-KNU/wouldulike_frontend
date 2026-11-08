@@ -3,18 +3,32 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/coupon/limited_coupon_offer_flow.dart';
+import 'package:new1/coupon/limited_coupon_pick_sheet.dart';
 import 'package:new1/onboarding/onboarding_style.dart';
 import 'package:new1/services/api_client.dart';
 import 'package:new1/services/deep_link_service.dart';
 import 'package:new1/services/survey_service.dart';
 import 'package:new1/utils/analytics_logger.dart';
+import 'package:new1/widgets/coupon_issued_dialog.dart';
 import 'package:new1/widgets/coupon_ticket_card.dart';
 
-/// 앱 내 설문 화면 (목업 ④~⑦·⑩~⑫).
+/// 쿠폰까지 받고 설문을 끝냈을 때 화면이 돌려주는 값. 발급 팝업은 설문 화면을 닫은 뒤 띄운다.
+class SurveyOutcome {
+  const SurveyOutcome({required this.tag, required this.title, required this.issuedCodes});
+
+  final String tag;
+  final String title;
+  final List<String> issuedCodes;
+}
+
+/// 앱 내 설문 화면 (목업 ④~⑦·⑩~⑫, 11/8 결정 반영).
 ///
 /// 온보딩 첫 화면(onboarding_intro_screen.dart) 틀을 그대로 쓴다: 오른쪽 위 글자 버튼,
 /// 28pt 제목, 쿠폰 카드 그림, 아래 버튼. 선택지는 식당 고르기 목록(RestaurantPickList) 항목 모양.
-/// 제출하면 화면을 닫고 기존 한정쿠폰 흐름(LimitedCouponOfferFlow)이 쿠폰 고르기를 띄운다.
+///
+/// 11/8: 답은 화면에만 들고 있다가 쿠폰을 고르는 순간 쿠폰과 같이 저장한다.
+/// 중간에 닫거나 쿠폰 고르기에서 나가면 아무것도 남지 않고, 다음에 처음부터 다시 답한다.
+/// 로그인 안 한 사람도 답할 수 있고, 다 답하면 로그인 → 쿠폰 고르기로 이어진다.
 class SurveyScreen extends StatefulWidget {
   const SurveyScreen({super.key, required this.code, required this.entry});
 
@@ -23,30 +37,27 @@ class SurveyScreen extends StatefulWidget {
   /// push · home_promo · home_featured · wallet_card · deeplink
   final String entry;
 
-  /// 설문을 열고, 제출(또는 응답만 하고 쿠폰을 안 받은 상태)이면 닫은 뒤 쿠폰 고르기를 띄운다.
+  /// 설문을 열고, 쿠폰까지 받았으면 닫은 뒤 발급 팝업을 띄운다.
   static Future<void> open(
     BuildContext context, {
     required String code,
     required String entry,
     VoidCallback? onCouponsChanged,
   }) async {
-    final needsOffer = await Navigator.of(context).push<bool>(
+    final outcome = await Navigator.of(context).push<SurveyOutcome>(
       MaterialPageRoute(
         settings: const RouteSettings(name: 'survey'),
         builder: (_) => SurveyScreen(code: code, entry: entry),
       ),
     );
-    if (needsOffer != true || !context.mounted) return;
-    await LimitedCouponOfferFlow.maybePresent(
+    if (outcome == null) return;
+    onCouponsChanged?.call();
+    if (!context.mounted) return;
+    await showCouponIssuedDialog(
       context,
-      onCouponsChanged: () {
-        AnalyticsLogger.logEvent(
-          AnalyticsEvents.surveyCouponClaim,
-          parameters: {'survey_code': code, 'entry': entry},
-        );
-        SurveyService.changes.value++;
-        onCouponsChanged?.call();
-      },
+      tag: outcome.tag,
+      title: outcome.title,
+      issuedCodes: outcome.issuedCodes,
     );
   }
 
@@ -54,7 +65,7 @@ class SurveyScreen extends StatefulWidget {
   State<SurveyScreen> createState() => _SurveyScreenState();
 }
 
-enum _Phase { loading, guest, start, question, done, closed, error }
+enum _Phase { loading, start, question, login, claiming, done, closed, notice, error }
 
 // 온보딩 첫 화면 헤드라인과 같은 값
 const TextStyle _headline = TextStyle(
@@ -73,6 +84,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
   late List<String?> _answers = const [];
   bool _submitting = false;
   String? _error;
+  final DateTime _openedAt = DateTime.now();
+
+  /// _Phase.notice 문구 (대상 아님·고를 식당 없음)
+  String _noticeTitle = '';
+  String _noticeBody = '';
 
   @override
   void initState() {
@@ -90,10 +106,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
       _phase = _Phase.loading;
       _error = null;
     });
-    if (!await ApiClient.hasAccessToken()) {
-      if (mounted) setState(() => _phase = _Phase.guest);
-      return;
-    }
     try {
       final detail = await SurveyService.fetchDetail(widget.code);
       if (!mounted) return;
@@ -101,23 +113,22 @@ class _SurveyScreenState extends State<SurveyScreen> {
         setState(() => _phase = _Phase.error);
         return;
       }
-      if (detail.status == SurveyStatus.answered) {
-        // 응답만 하고 쿠폰을 안 고른 사람 — 설문 대신 쿠폰 고르기로 보낸다.
-        Navigator.of(context).pop(true);
-        return;
-      }
       setState(() {
         _detail = detail;
         _answers = List<String?>.filled(detail.questions.length, null);
-        _phase = switch (detail.status) {
-          SurveyStatus.open => _Phase.start,
-          SurveyStatus.claimed => _Phase.done,
-          SurveyStatus.closed => _Phase.closed,
-          _ => _Phase.error,
-        };
+        switch (detail.status) {
+          case SurveyStatus.open:
+            _phase = _Phase.start;
+          case SurveyStatus.claimed:
+            _phase = _Phase.done;
+          case SurveyStatus.closed:
+            _phase = _Phase.closed;
+          case SurveyStatus.ineligible:
+            _showIneligible();
+          case SurveyStatus.unknown:
+            _phase = _Phase.error;
+        }
       });
-    } on ApiAuthException {
-      if (mounted) setState(() => _phase = _Phase.guest);
     } on ApiHttpException catch (e) {
       if (!mounted) return;
       setState(() => _phase = e.statusCode == 404 ? _Phase.closed : _Phase.error);
@@ -126,7 +137,13 @@ class _SurveyScreenState extends State<SurveyScreen> {
     }
   }
 
-  void _close() => Navigator.of(context).pop(false);
+  void _showIneligible() {
+    _noticeTitle = '지금은 참여할 수\n없는 설문이에요';
+    _noticeBody = '이번 설문은 경북대 근처 사용자만 참여할 수 있어요.';
+    _phase = _Phase.notice;
+  }
+
+  void _close() => Navigator.of(context).pop();
 
   void _begin() {
     AnalyticsLogger.logEvent(
@@ -139,6 +156,14 @@ class _SurveyScreenState extends State<SurveyScreen> {
     });
   }
 
+  Map<String, String> get _answerMap {
+    final d = _detail!;
+    return {
+      for (var i = 0; i < d.questions.length; i++)
+        if (_answers[i] != null) d.questions[i].code: _answers[i]!,
+    };
+  }
+
   Future<void> _next() async {
     final detail = _detail;
     if (detail == null || _submitting || _answers[_step] == null) return;
@@ -146,30 +171,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
       setState(() => _step++);
       return;
     }
-    setState(() {
-      _submitting = true;
-      _error = null;
-    });
-    final answers = <String, String>{
-      for (var i = 0; i < detail.questions.length; i++)
-        if (_answers[i] != null) detail.questions[i].code: _answers[i]!,
-    };
-    final result = await SurveyService.submit(widget.code, answers, entry: widget.entry);
-    if (!mounted) return;
-    if (!result.ok) {
-      setState(() {
-        _submitting = false;
-        _error = result.message ?? '보내지 못했어요. 다시 시도해 주세요.';
-        if (result.code == 'closed') _phase = _Phase.closed;
-      });
-      return;
-    }
+    // 마지막 문항 — 답은 아직 보내지 않는다. 쿠폰을 고를 때 같이 저장한다.
     AnalyticsLogger.logEvent(
       AnalyticsEvents.surveySubmit,
-      parameters: {'survey_code': widget.code, 'entry': widget.entry, ...answers},
+      parameters: {'survey_code': widget.code, 'entry': widget.entry, ..._answerMap},
     );
-    // 이미 쿠폰까지 받은 상태면(다른 기기에서 참여 등) 쿠폰 고르기를 띄울 필요가 없다.
-    Navigator.of(context).pop(result.status != SurveyStatus.claimed);
+    if (!await ApiClient.hasAccessToken()) {
+      if (mounted) setState(() => _phase = _Phase.login);
+      return;
+    }
+    await _pickCoupon();
   }
 
   Future<void> _login() async {
@@ -178,18 +189,97 @@ class _SurveyScreenState extends State<SurveyScreen> {
       arguments: const {'redirect': 'survey'},
     );
     if (!mounted) return;
-    if (result != null && result != false) await _load();
+    if (result == true && await ApiClient.hasAccessToken()) {
+      await _pickCoupon();
+    }
+  }
+
+  /// 보상 오퍼를 받아 쿠폰 고르기를 띄운다. 고르면 답과 쿠폰이 같이 저장되고,
+  /// 그냥 나가면 설문 화면도 닫는다(답 초기화).
+  Future<void> _pickCoupon({int depth = 0}) async {
+    setState(() {
+      _phase = _Phase.claiming;
+      _error = null;
+    });
+    final reward = await SurveyService.fetchReward(widget.code);
+    if (!mounted) return;
+    if (reward.code == 'ineligible') {
+      setState(_showIneligible);
+      return;
+    }
+    if (reward.code == 'closed') {
+      setState(() => _phase = _Phase.closed);
+      return;
+    }
+    if (reward.status == SurveyStatus.claimed) {
+      // 로그인한 계정이 이미 참여했다
+      setState(() => _phase = _Phase.done);
+      return;
+    }
+    final offer = reward.offer;
+    if (offer == null) {
+      setState(() {
+        _phase = _Phase.question;
+        _error = reward.message ?? '쿠폰을 불러오지 못했어요. 다시 시도해 주세요.';
+      });
+      return;
+    }
+    if (offer.needsCampusRegistration) {
+      if (depth > 0) return _close();
+      final registered = await LimitedCouponOfferFlow.presentCampusRequiredPrompt(context);
+      if (!mounted) return;
+      if (!registered) return _close();
+      return _pickCoupon(depth: depth + 1);
+    }
+    if (offer.restaurants.isEmpty) {
+      setState(() {
+        _noticeTitle = '지금은 고를 수 있는\n식당이 없어요';
+        _noticeBody = '내 대학가에 쿠폰을 받을 식당이 아직 없어요.';
+        _phase = _Phase.notice;
+      });
+      return;
+    }
+    final answers = _answerMap;
+    final result = await showLimitedCouponPickSheet(
+      context,
+      offer: offer,
+      claim: (ids) => SurveyService.complete(
+        widget.code,
+        answers: answers,
+        restaurantId: ids.first,
+        entry: widget.entry,
+        elapsedSeconds: DateTime.now().difference(_openedAt).inSeconds,
+      ),
+    );
+    if (!mounted) return;
+    if (result?.claimed != true) {
+      // 쿠폰을 안 고르고 나갔다 — 아무것도 저장되지 않았으니 설문도 닫는다.
+      return _close();
+    }
+    AnalyticsLogger.logEvent(
+      AnalyticsEvents.surveyCouponClaim,
+      parameters: {'survey_code': widget.code, 'entry': widget.entry},
+    );
+    Navigator.of(context).pop(
+      SurveyOutcome(
+        tag: offer.tagLabel,
+        title: (result!.title != null && result.title!.isNotEmpty)
+            ? result.title!
+            : '${offer.tagLabel}을 받았어요',
+        issuedCodes: result.issuedCodes,
+      ),
+    );
   }
 
   void _openWallet() {
-    Navigator.of(context).pop(false);
+    Navigator.of(context).pop();
     DeepLinkService.instance.tryHandle(Uri.parse('wouldulike://wallet/coupons'));
   }
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !_submitting,
+      canPop: !_submitting && _phase != _Phase.claiming,
       child: Scaffold(
         backgroundColor: Colors.white,
         body: SafeArea(
@@ -254,6 +344,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   Widget _buildPhase() {
     switch (_phase) {
       case _Phase.loading:
+      case _Phase.claiming:
         return Column(
           children: [
             _topButton('닫기'),
@@ -275,11 +366,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
         );
       case _Phase.question:
         return _buildQuestion();
-      case _Phase.guest:
+      case _Phase.login:
         return _message(
           top: '다음에 할게요',
-          title: '로그인하면\n설문에 참여할 수 있어요',
-          subtitle: '답해 주시면 바로 쓸 쿠폰을 1장 드려요.',
+          title: '로그인하면\n바로 쿠폰을 받아요',
+          subtitle: '답은 로그인한 계정에 쿠폰과 함께 저장돼요.\n지금 나가면 처음부터 다시 답해야 해요.',
           hero: const SizedBox.shrink(),
           button: ElevatedButton(
             style: OnboardingStyle.kakaoButton(),
@@ -292,7 +383,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
                 const Flexible(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
-                    child: Text('카카오 로그인하고 참여하기'),
+                    child: Text('카카오 로그인하고 쿠폰 받기'),
                   ),
                 ),
               ],
@@ -312,6 +403,14 @@ class _SurveyScreenState extends State<SurveyScreen> {
           top: '닫기',
           title: '지금은 참여할 수\n없는 설문이에요',
           subtitle: '설문 기간이 끝났어요.',
+          hero: const SizedBox.shrink(),
+          button: _primary('확인', _close),
+        );
+      case _Phase.notice:
+        return _message(
+          top: '닫기',
+          title: _noticeTitle,
+          subtitle: _noticeBody,
           hero: const SizedBox.shrink(),
           button: _primary('확인', _close),
         );
@@ -399,7 +498,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
         SizedBox(
           width: double.infinity,
           child: _primary(
-            _submitting ? '보내는 중…' : (last ? '제출하기' : '다음'),
+            _submitting ? '보내는 중…' : (last ? '제출하고 쿠폰 받기' : '다음'),
             selected == null || _submitting ? null : _next,
           ),
         ),

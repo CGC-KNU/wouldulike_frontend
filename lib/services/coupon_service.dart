@@ -1863,17 +1863,26 @@ class CouponService {
     required String couponTypeCode,
     required int restaurantId,
     List<int>? restaurantIds,
-  }) async {
+  }) {
+    return postLimitedClaim(
+      '/api/coupons/limited/claim/',
+      {
+        'coupon_type_code': couponTypeCode,
+        'restaurant_id': restaurantId,
+        if (restaurantIds != null && restaurantIds.isNotEmpty)
+          'restaurant_ids': restaurantIds,
+      },
+    );
+  }
+
+  /// 골라 받는 쿠폰 수령 응답({coupon_code, issued_coupons} 또는 {detail, code})을 해석한다.
+  /// 한정쿠폰 수령과 설문 완료(/api/surveys/<code>/complete/)가 같이 쓴다.
+  static Future<LimitedCouponClaimResult> postLimitedClaim(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
     try {
-      final response = await ApiClient.postWithoutThrow(
-        '/api/coupons/limited/claim/',
-        body: {
-          'coupon_type_code': couponTypeCode,
-          'restaurant_id': restaurantId,
-          if (restaurantIds != null && restaurantIds.isNotEmpty)
-            'restaurant_ids': restaurantIds,
-        },
-      );
+      final response = await ApiClient.postWithoutThrow(path, body: body);
       if (response.statusCode >= 400) {
         final error = _extractApiErrorFromBody(response.body);
         return LimitedCouponClaimResult.failure(
