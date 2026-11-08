@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/coupon/limited_coupon_offer_flow.dart';
@@ -28,7 +27,8 @@ class SurveyOutcome {
 ///
 /// 11/8: 답은 화면에만 들고 있다가 쿠폰을 고르는 순간 쿠폰과 같이 저장한다.
 /// 중간에 닫거나 쿠폰 고르기에서 나가면 아무것도 남지 않고, 다음에 처음부터 다시 답한다.
-/// 로그인 안 한 사람도 답할 수 있고, 다 답하면 로그인 → 쿠폰 고르기로 이어진다.
+/// 로그인은 기존 방식 그대로 먼저 한다 — 설문 링크도 로그인 뒤 메인이 연다.
+/// 로그인 안 한 채로 이 화면에 오면 안내만 보인다.
 class SurveyScreen extends StatefulWidget {
   const SurveyScreen({super.key, required this.code, required this.entry});
 
@@ -65,7 +65,7 @@ class SurveyScreen extends StatefulWidget {
   State<SurveyScreen> createState() => _SurveyScreenState();
 }
 
-enum _Phase { loading, start, question, login, claiming, done, closed, notice, error }
+enum _Phase { loading, start, question, claiming, done, closed, notice, error }
 
 // 온보딩 첫 화면 헤드라인과 같은 값
 const TextStyle _headline = TextStyle(
@@ -106,6 +106,15 @@ class _SurveyScreenState extends State<SurveyScreen> {
       _phase = _Phase.loading;
       _error = null;
     });
+    if (!await ApiClient.hasAccessToken()) {
+      if (!mounted) return;
+      setState(() {
+        _noticeTitle = '로그인하면\n설문에 참여할 수 있어요';
+        _noticeBody = '로그인한 뒤 다시 열어 주세요.';
+        _phase = _Phase.notice;
+      });
+      return;
+    }
     try {
       final detail = await SurveyService.fetchDetail(widget.code);
       if (!mounted) return;
@@ -176,22 +185,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
       AnalyticsEvents.surveySubmit,
       parameters: {'survey_code': widget.code, 'entry': widget.entry, ..._answerMap},
     );
-    if (!await ApiClient.hasAccessToken()) {
-      if (mounted) setState(() => _phase = _Phase.login);
-      return;
-    }
     await _pickCoupon();
-  }
-
-  Future<void> _login() async {
-    final result = await Navigator.of(context).pushNamed(
-      '/login',
-      arguments: const {'redirect': 'survey'},
-    );
-    if (!mounted) return;
-    if (result == true && await ApiClient.hasAccessToken()) {
-      await _pickCoupon();
-    }
   }
 
   /// 보상 오퍼를 받아 쿠폰 고르기를 띄운다. 고르면 답과 쿠폰이 같이 저장되고,
@@ -366,30 +360,6 @@ class _SurveyScreenState extends State<SurveyScreen> {
         );
       case _Phase.question:
         return _buildQuestion();
-      case _Phase.login:
-        return _message(
-          top: '다음에 할게요',
-          title: '로그인하면\n바로 쿠폰을 받아요',
-          subtitle: '답은 로그인한 계정에 쿠폰과 함께 저장돼요.\n지금 나가면 처음부터 다시 답해야 해요.',
-          hero: const SizedBox.shrink(),
-          button: ElevatedButton(
-            style: OnboardingStyle.kakaoButton(),
-            onPressed: _login,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                SvgPicture.asset('assets/icons/kakaotalk.svg', width: 22, height: 20),
-                const SizedBox(width: 8),
-                const Flexible(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('카카오 로그인하고 쿠폰 받기'),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
       case _Phase.done:
         return _message(
           top: '닫기',
