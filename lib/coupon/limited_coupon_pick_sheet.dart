@@ -23,23 +23,31 @@ class LimitedCouponPickResult {
 }
 
 /// 기획전 한정쿠폰 식당 선택. 온보딩 튜토리얼과 같은 전체 화면 선택 UI.
+/// 고른 식당으로 쿠폰을 받는 호출. 없으면 /api/coupons/limited/claim/.
+typedef LimitedCouponClaimCall = Future<LimitedCouponClaimResult> Function(
+    List<int> restaurantIds);
+
 Future<LimitedCouponPickResult?> showLimitedCouponPickSheet(
   BuildContext context, {
   required LimitedCouponOffer offer,
+  LimitedCouponClaimCall? claim,
 }) {
   return Navigator.of(context, rootNavigator: true).push<LimitedCouponPickResult>(
     MaterialPageRoute(
       settings: const RouteSettings(name: ScreenIds.couponLimitedPick),
       fullscreenDialog: true,
-      builder: (_) => LimitedCouponPickSheet(offer: offer),
+      builder: (_) => LimitedCouponPickSheet(offer: offer, claim: claim),
     ),
   );
 }
 
 class LimitedCouponPickSheet extends StatefulWidget {
-  const LimitedCouponPickSheet({super.key, required this.offer});
+  const LimitedCouponPickSheet({super.key, required this.offer, this.claim});
 
   final LimitedCouponOffer offer;
+
+  /// 설문 보상처럼 답과 함께 받아야 하는 쿠폰은 수령 호출을 바꿔 끼운다.
+  final LimitedCouponClaimCall? claim;
 
   @override
   State<LimitedCouponPickSheet> createState() => _LimitedCouponPickSheetState();
@@ -160,11 +168,14 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
       _error = null;
       _submitting = true;
     });
-    final result = await CouponService.claimLimitedCoupon(
-      couponTypeCode: offer.couponTypeCode,
-      restaurantId: ids.first,
-      restaurantIds: offer.isMultiPick ? ids : null,
-    );
+    final customClaim = widget.claim;
+    final result = customClaim != null
+        ? await customClaim(ids)
+        : await CouponService.claimLimitedCoupon(
+            couponTypeCode: offer.couponTypeCode,
+            restaurantId: ids.first,
+            restaurantIds: offer.isMultiPick ? ids : null,
+          );
     if (!mounted) return;
     if (!result.isSuccess) {
       setState(() {

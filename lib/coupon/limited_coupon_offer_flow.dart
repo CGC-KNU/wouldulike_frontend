@@ -52,7 +52,7 @@ class LimitedCouponOfferFlow {
     for (final offer in offers) {
       if (offer.needsCampusRegistration) {
         if (!context.mounted) return;
-        final registered = await _presentCampusRequiredPrompt(context, offer);
+        final registered = await presentCampusRequiredPrompt(context);
         if (registered) {
           return _presentLoop(context, onIssued: onIssued, depth: depth + 1);
         }
@@ -82,10 +82,7 @@ class LimitedCouponOfferFlow {
   /// 대학가 미등록으로 후보 식당이 비어 있는 오퍼용 안내. 쿠폰 선택 화면을
   /// 벗어나지 않고 바텀시트에서 바로 대학가를 골라 등록한다. 등록되면
   /// true를 반환해 offers를 다시 치게 한다.
-  static Future<bool> _presentCampusRequiredPrompt(
-    BuildContext context,
-    LimitedCouponOffer offer,
-  ) async {
+  static Future<bool> presentCampusRequiredPrompt(BuildContext context) async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
