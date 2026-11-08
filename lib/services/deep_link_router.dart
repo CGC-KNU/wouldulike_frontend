@@ -75,10 +75,6 @@ class DeepLinkRouter {
     }
   }
 
-  /// 로그인 화면도 쓴다 — 로그인 안 한 사람이 설문 링크로 들어온 경우.
-  static Future<void> openSurvey(BuildContext context, DeepLinkTarget target) =>
-      _openSurvey(context, target);
-
   static Future<void> _openSurvey(
     BuildContext context,
     DeepLinkTarget target,
