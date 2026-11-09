@@ -24,7 +24,11 @@ void main() {
       ..userId = 1
       ..stores = const [PartnerStore(1, '매장 A'), PartnerStore(2, '매장 B')];
   });
-  Widget app() => MaterialApp(
+  Widget app({double scale = 1}) => MaterialApp(
+      builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!),
       home: Builder(
           builder: (context) => Scaffold(
               body: TextButton(
@@ -59,6 +63,24 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('일반 화면'), findsOneWidget);
     expect(find.byType(PartnerShell), findsNothing);
+    access.dispose();
+  });
+  testWidgets('작은 화면·글자 2배에서도 매장 선택과 파트너 헤더가 넘치지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(320, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(app(scale: 2));
+    await tester.tap(find.text('일반 화면'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.text('매장 A'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('매장 변경'));
+    await tester.pumpAndSettle();
+    expect(find.text('내 매장 선택'), findsOneWidget);
+    expect(tester.takeException(), isNull);
     access.dispose();
   });
 }

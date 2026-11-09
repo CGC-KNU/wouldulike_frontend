@@ -27,3 +27,10 @@
 - `flutter test --no-pub test/partner_access_test.dart test/partner_mode_test.dart test/partner_transport_test.dart test/partner_pages_test.dart test/partner_preview_test.dart test/partner_shell_test.dart`: 22개 통과. 권한·제스처·계정 경계·업무 화면·뒤로가기·로그아웃 정리와 홈·손잡이 렌더링을 포함한다.
 - `dart analyze lib/partner lib/services/api_client.dart lib/services/auth_service.dart lib/services/app_session.dart`: 지적 없음. 전체 analyze의 기존 지적과 전체 Flutter 테스트 실패는 상위 명세 §16에서 구분한다.
 - 실제 점주 계정으로 Django/BFF 왕복, 사진 업로드·저장 실패, PIN 잠금·최초 설정, 신청 저장/Slack, 웹 리포트 복귀, Android/iOS 시스템 제스처·스크린리더 실기기는 아직 확인하지 않았다. 앱·서버 배포와 커밋은 수행하지 않았다.
+
+## 파트너 디자인 반영
+
+- 웹의 `globals.css`, `PartnerHome.tsx`, `BottomNav.tsx`, 매장·리포트·플랜 화면을 기준으로 네이비 `#050072`, 페리윙클 `#6366E0`, 배경 `#F4F4F9`, Pretendard, 18px 카드와 얇은 테두리·그림자를 반영했다.
+- `partner/partner_design.dart`의 전용 테마·패널·배지·빈 상태·아이콘 메뉴를 파트너 화면에 적용했다. 홈은 매장 헤더, PIN, 반응형 지표 격자, 전월 비교, 활동 배지로 구성한다. 매장·혜택에는 둥근 입력 필드, 스탬프 보상 표시를, 리포트에는 준비 진행률을, 플랜에는 앰버·보라 그라데이션과 현재 이용 표시를 적용했다.
+- `partner_preview_test.dart`는 6개 화면을 390px, 320px/글자 2배, 1024px에서 끝까지 스크롤하며 검사한다. `build/castor_shots/partner.design.0.png`부터 `.5.png`까지 화면 캡처를 생성하며 혜택·플랜 하단은 `.2.bottom.png`, `.5.bottom.png`로 저장한다. 캡처는 예시 데이터를 사용한다.
+- 실기기에서의 최종 시각 확인은 별도로 필요하다.

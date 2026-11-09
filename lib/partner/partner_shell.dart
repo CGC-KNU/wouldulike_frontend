@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'partner_access_controller.dart';
 import 'partner_api_client.dart';
 import 'partner_pages.dart';
+import 'partner_design.dart';
 
 class PartnerShell extends StatefulWidget {
   const PartnerShell({super.key, required this.access});
@@ -19,7 +20,6 @@ class _PartnerShellState extends State<PartnerShell> {
   bool _leaving = false;
   bool _closing = false;
   final _pageKey = GlobalKey<PartnerPageState>();
-  static const labels = ['홈', '매장', '혜택', '콘텐츠', '리포트', '플랜'];
   @override
   void initState() {
     super.initState();
@@ -151,7 +151,10 @@ class _PartnerShellState extends State<PartnerShell> {
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      Theme(data: PartnerDesign.theme, child: Builder(builder: _buildShell));
+
+  Widget _buildShell(BuildContext context) {
     final access = widget.access;
     return PopScope(
       canPop: _closing,
@@ -164,15 +167,26 @@ class _PartnerShellState extends State<PartnerShell> {
           toolbarHeight: 56 +
               (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0, 40) *
                   2,
-          leadingWidth: 124,
+          leadingWidth: 112,
           leading: TextButton.icon(
               onPressed: _leave,
               icon: const Icon(Icons.arrow_back, size: 16),
               label: const Text('일반 모드로')),
-          title: Text(_store?.name ?? '내 매장 선택',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 17)),
+          titleSpacing: 4,
+          title:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('우주라이크 파트너',
+                style: TextStyle(
+                    fontSize: 10,
+                    color: PartnerDesign.muted,
+                    fontWeight: FontWeight.w600)),
+            Text(_store?.name ?? '내 매장 선택',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style:
+                    const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          ]),
+          shape: const Border(bottom: BorderSide(color: PartnerDesign.border)),
           actions: [
             if (_store != null && access.stores.length > 1)
               IconButton(
@@ -198,16 +212,39 @@ class _PartnerShellState extends State<PartnerShell> {
               child: IgnorePointer(
                 ignoring: !access.isOwner,
                 child: _store == null
-                    ? ListView(children: [
-                        const Padding(
-                            padding: EdgeInsets.all(20),
-                            child: Text('관리할 매장을 선택해 주세요.')),
-                        ...access.stores.map((s) => ListTile(
-                            title: Text(s.name),
-                            subtitle: Text('매장 ${s.id}'),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => _choose(s)))
-                      ])
+                    ? Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 600),
+                            child: ListView(
+                                padding: const EdgeInsets.all(20),
+                                children: [
+                                  const Padding(
+                                      padding:
+                                          EdgeInsets.only(top: 12, bottom: 24),
+                                      child: Text('관리할 매장을 선택해 주세요.',
+                                          style: TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.w700,
+                                              color: PartnerDesign.navy))),
+                                  ...access.stores.map((s) => Padding(
+                                      padding:
+                                          const EdgeInsets.only(bottom: 12),
+                                      child: PartnerPanel(
+                                          child: ListTile(
+                                              leading: const CircleAvatar(
+                                                  backgroundColor:
+                                                      PartnerDesign.tint,
+                                                  child: Icon(
+                                                      Icons.storefront_outlined,
+                                                      color:
+                                                          PartnerDesign.navy)),
+                                              title: Text(s.name),
+                                              subtitle: Text('매장 ${s.id}'),
+                                              trailing: const Icon(
+                                                  Icons.chevron_right),
+                                              onTap: () => _choose(s)))))
+                                ])))
                     : PartnerPage(
                         key: _pageKey,
                         tab: _tab,
@@ -224,23 +261,8 @@ class _PartnerShellState extends State<PartnerShell> {
         ]),
         bottomNavigationBar: _store == null
             ? null
-            : SafeArea(
-                top: false,
-                child: SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                        children: List.generate(
-                            labels.length,
-                            (i) => TextButton(
-                                  onPressed: access.isOwner
-                                      ? () => _selectTab(i)
-                                      : null,
-                                  style: TextButton.styleFrom(
-                                      foregroundColor: i == _tab
-                                          ? const Color(0xFF312E81)
-                                          : Colors.grey),
-                                  child: Text(labels[i]),
-                                ))))),
+            : PartnerNavigation(
+                selected: _tab, onSelected: access.isOwner ? _selectTab : null),
       ),
     );
   }
