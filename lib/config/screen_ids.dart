@@ -5,6 +5,12 @@
 /// 새 화면에 이름을 붙일 때는 Castor › 화면 지도의 ID와 맞춘다.
 class ScreenIds {
   ScreenIds._();
+  static const String partnerHome = 'partner.home';
+  static const String partnerRestaurant = 'partner.restaurant';
+  static const String partnerBenefits = 'partner.benefits';
+  static const String partnerContent = 'partner.content';
+  static const String partnerReports = 'partner.reports';
+  static const String partnerPlan = 'partner.plan';
 
   static const String home = 'home';
   static const String homeMission = 'home.mission';

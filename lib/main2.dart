@@ -1,3 +1,6 @@
+import 'partner/partner_access_controller.dart';
+import 'partner/partner_shell.dart';
+import 'services/app_session.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -23,10 +26,41 @@ class MainAppScreen extends StatefulWidget {
   State<MainAppScreen> createState() => _MainAppScreenState();
 }
 
-class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserver {
+class _MainAppScreenState extends State<MainAppScreen>
+    with WidgetsBindingObserver {
+  final _partnerAccess = PartnerAccessController();
+  bool _enteringPartner = false;
+  bool _partnerRouteOpen = false;
+  void _partnerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _enterPartner() async {
+    if (_enteringPartner || _partnerRouteOpen) return;
+    _enteringPartner = true;
+    final revision = AppSession.revision.value;
+    try {
+      if (!await _partnerAccess.check() ||
+          !mounted ||
+          revision != AppSession.revision.value) return;
+      _partnerRouteOpen = true;
+      AnalyticsLogger.logEvent(AnalyticsEvents.partnerModeEnter);
+      await Navigator.of(context).push(MaterialPageRoute<void>(
+          builder: (_) => PartnerShell(access: _partnerAccess)));
+    } finally {
+      _enteringPartner = false;
+      _partnerRouteOpen = false;
+    }
+  }
+
   // 시연 빌드에서 시작 탭 지정: --dart-define=DEMO_NAV=2 (0 홈/1 식당/2 내 지갑/3 마이페이지)
   int _selectedIndex = const int.fromEnvironment('DEMO_NAV');
-  static const List<String> _tabNames = <String>['home', 'affiliate', 'wallet', 'my'];
+  static const List<String> _tabNames = <String>[
+    'home',
+    'affiliate',
+    'wallet',
+    'my'
+  ];
   StreamSubscription<int>? _deepLinkTabSub;
   StreamSubscription<DeepLinkTarget>? _deepLinkTargetSub;
 
@@ -34,6 +68,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _partnerAccess.addListener(_partnerChanged);
+    _partnerAccess.start();
     final pending = DeepLinkService.instance.consumePendingTarget();
     if (pending != null) _selectedIndex = pending.tabIndex;
     _deepLinkTabSub = DeepLinkService.instance.tabStream.listen((tabIndex) {
@@ -54,6 +90,8 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
 
   @override
   void dispose() {
+    _partnerAccess.removeListener(_partnerChanged);
+    _partnerAccess.dispose();
     _deepLinkTabSub?.cancel();
     _deepLinkTargetSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -191,6 +229,7 @@ class _MainAppScreenState extends State<MainAppScreen> with WidgetsBindingObserv
         child: _buildCurrentScreen(),
       ),
       bottomNavigationBar: LiquidGlassBottomBar(
+        onOwnerMode: _partnerAccess.isOwner ? _enterPartner : null,
         tabs: const [
           LiquidGlassTab(
             label: '홈',

@@ -21,6 +21,10 @@ class AnalyticsEvent {
 /// Firebase Analytics 이벤트명 및 파라미터 키 상수
 class AnalyticsEvents {
   AnalyticsEvents._();
+  static const AnalyticsEvent partnerAccessFailed = AnalyticsEvent._('partner_access_failed');
+  static const AnalyticsEvent partnerModeEnter = AnalyticsEvent._('partner_mode_enter');
+  static const AnalyticsEvent partnerRequestFailed = AnalyticsEvent._('partner_request_failed');
+  static const AnalyticsEvent partnerReportOpenFailed = AnalyticsEvent._('partner_report_open_failed');
 
   // ========== 이벤트명 ==========
   static const AnalyticsEvent couponRedeemed = AnalyticsEvent._('coupon_redeemed');

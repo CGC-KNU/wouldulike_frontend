@@ -148,23 +148,6 @@ class _LoginScreenState extends State<LoginScreen> {
         guestUuid: guestUuid,
       );
 
-      await prefs.setString('kakao_access_token', token.accessToken);
-      await prefs.setBool('kakao_logged_in', true);
-      await prefs.setBool('apple_logged_in', false);
-      await prefs.setString('jwt_access_token', data['token']['access']);
-      await prefs.setString('jwt_refresh_token', data['token']['refresh']);
-      await prefs.setInt('user_id', data['user']['id']);
-      await prefs.setString('user_nickname', data['user']['nickname'] ?? '');
-      await prefs.setString(
-        'user_profile_image_url',
-        data['user']['profile_image_url'] ?? '',
-      );
-      // 카카오 ID 저장 (BigInteger이므로 String으로 저장)
-      if (data['user']['kakao_id'] != null) {
-        await prefs.setString(
-            'user_kakao_id', data['user']['kakao_id'].toString());
-      }
-
       // 로그인 후 토큰 갱신 타이머 설정
       try {
         await ApiClient.scheduleTokenRefresh();

@@ -5,6 +5,7 @@ import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/jwt_helper.dart';
+import 'app_session.dart';
 
 class ApiAuthException implements Exception {
   const ApiAuthException(this.message);
@@ -40,6 +41,44 @@ class ApiClient {
   static final http.Client _http = http.Client();
   static Completer<bool>? _refreshCompleter;
 
+  /// Only the canonical owner BFF receives the existing app JWT. No redirects.
+  static Future<http.Response> ownerRequest(Uri uri,
+      {String method = 'GET',
+      Map<String, dynamic>? body,
+      http.Client? transport}) async {
+    if (uri.scheme != 'https' ||
+        uri.host != 'app.wouldulike.kr' ||
+        uri.port != 443 ||
+        uri.userInfo.isNotEmpty ||
+        !uri.path.startsWith('/api/app/owner/')) {
+      throw ArgumentError('Unsupported owner origin');
+    }
+    final revision = AppSession.revision.value;
+    Future<http.Response> send() async {
+      if (AppSession.changing || revision != AppSession.revision.value) {
+        throw StateError('세션이 변경되었습니다.');
+      }
+      final headers = await _headers();
+      if (AppSession.changing || revision != AppSession.revision.value) {
+        throw StateError('세션이 변경되었습니다.');
+      }
+      final req = http.Request(method, uri)
+        ..followRedirects = false
+        ..headers.addAll(headers);
+      if (body != null) req.body = jsonEncode(body);
+      final result =
+          await http.Response.fromStream(await (transport ?? _http).send(req))
+              .timeout(const Duration(seconds: 35));
+      if (revision != AppSession.revision.value) {
+        throw StateError('세션이 변경되었습니다.');
+      }
+      return result;
+    }
+
+    return _sendWithAuthRetry(
+        authenticated: true, sendRequest: send, maxAuthRetries: 1);
+  }
+
   static Uri _resolve(String path, [Map<String, dynamic>? queryParameters]) {
     final normalizedPath = path.startsWith('/') ? path : '/$path';
     return Uri.parse('$baseUrl$normalizedPath').replace(
@@ -55,13 +94,14 @@ class ApiClient {
   static Future<bool> ensureTokenValid() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('jwt_access_token');
-    
+
     if (token == null || token.isEmpty) {
       return false;
     }
 
     // 서버에서 제공하는 만료 시간을 우선 사용하여 확인
-    final isExpiringSoon = await JwtHelper.isAccessTokenExpiringSoon(bufferMinutes: 5);
+    final isExpiringSoon =
+        await JwtHelper.isAccessTokenExpiringSoon(bufferMinutes: 5);
     if (isExpiringSoon) {
       return await _refreshAccessToken();
     }
@@ -209,6 +249,7 @@ class ApiClient {
         throw ApiNetworkException(e);
       }
     }
+
     return _sendWithAuthRetry(
       authenticated: authenticated,
       sendRequest: sendRequest,
@@ -297,11 +338,13 @@ class ApiClient {
   static Future<http.Response> _sendWithAuthRetry({
     required bool authenticated,
     required Future<http.Response> Function() sendRequest,
+    int maxAuthRetries = 2,
   }) async {
     if (!authenticated) {
       return sendRequest();
     }
 
+    final sessionRevision = AppSession.revision.value;
     // 요청 전에 토큰이 유효한지 확인하고 필요시 갱신
     await _ensureTokenValid();
 
@@ -322,17 +365,26 @@ class ApiClient {
       );
     }
 
-    const maxRetries = 2;
+    final maxRetries = maxAuthRetries;
     var retryCount = 0;
-    
+
     while (retryCount <= maxRetries) {
+      if (sessionRevision != AppSession.revision.value) {
+        throw StateError('세션이 변경되었습니다.');
+      }
       http.Response response;
       try {
         response = await sendRequest();
+        if (sessionRevision != AppSession.revision.value) {
+          throw StateError('세션이 변경되었습니다.');
+        }
       } on ApiAuthException {
+        if (sessionRevision != AppSession.revision.value) {
+          throw StateError('세션이 변경되었습니다.');
+        }
         // ApiAuthException이 발생한 경우 (토큰이 없는 경우)
         if (retryCount >= maxRetries) {
-          await _invalidateSession();
+          await _invalidateSession(expectedRevision: sessionRevision);
           rethrow;
         }
         // 토큰 갱신 시도
@@ -342,12 +394,12 @@ class ApiClient {
           final refreshToken = prefs.getString('jwt_refresh_token');
           // refresh token이 만료된 경우에만 로그아웃
           if (refreshToken == null || refreshToken.isEmpty) {
-            await _invalidateSession();
+            await _invalidateSession(expectedRevision: sessionRevision);
             rethrow;
           }
           final isRefreshExpired = await JwtHelper.isRefreshTokenExpired();
           if (isRefreshExpired) {
-            await _invalidateSession();
+            await _invalidateSession(expectedRevision: sessionRevision);
             rethrow;
           }
         }
@@ -362,12 +414,12 @@ class ApiClient {
           final refreshToken = prefs.getString('jwt_refresh_token');
           // refresh token이 만료되었는지 확인 (서버 제공 만료 시간 우선 사용)
           if (refreshToken == null || refreshToken.isEmpty) {
-            await _invalidateSession();
+            await _invalidateSession(expectedRevision: sessionRevision);
             throw const ApiAuthException('세션이 만료되었어요. 다시 로그인해 주세요.');
           }
           final isRefreshExpired = await JwtHelper.isRefreshTokenExpired();
           if (isRefreshExpired) {
-            await _invalidateSession();
+            await _invalidateSession(expectedRevision: sessionRevision);
             throw const ApiAuthException('세션이 만료되었어요. 다시 로그인해 주세요.');
           }
           // refresh token이 유효한데도 401이면 서버 문제일 수 있음
@@ -381,12 +433,12 @@ class ApiClient {
           final refreshToken = prefs.getString('jwt_refresh_token');
           // refresh token이 만료되었는지 확인 (서버 제공 만료 시간 우선 사용)
           if (refreshToken == null || refreshToken.isEmpty) {
-            await _invalidateSession();
+            await _invalidateSession(expectedRevision: sessionRevision);
             throw const ApiAuthException('세션이 만료되었어요. 다시 로그인해 주세요.');
           }
           final isRefreshExpired = await JwtHelper.isRefreshTokenExpired();
           if (isRefreshExpired) {
-            await _invalidateSession();
+            await _invalidateSession(expectedRevision: sessionRevision);
             throw const ApiAuthException('세션이 만료되었어요. 다시 로그인해 주세요.');
           }
           // 네트워크 문제일 수 있으므로 잠시 대기 후 재시도
@@ -425,6 +477,8 @@ class ApiClient {
   }
 
   static Future<bool> _performTokenRefresh() async {
+    final revision = AppSession.revision.value;
+    if (AppSession.changing) return false;
     final prefs = await SharedPreferences.getInstance();
     final refreshToken = prefs.getString('jwt_refresh_token');
     if (refreshToken == null || refreshToken.isEmpty) {
@@ -451,7 +505,8 @@ class ApiClient {
             .post(
               url,
               headers: const {
-                HttpHeaders.contentTypeHeader: 'application/json; charset=utf-8',
+                HttpHeaders.contentTypeHeader:
+                    'application/json; charset=utf-8',
                 HttpHeaders.acceptHeader: 'application/json',
               },
               body: jsonEncode({'refresh': refreshToken}),
@@ -459,7 +514,10 @@ class ApiClient {
             .timeout(const Duration(seconds: 10));
 
         if (response.statusCode == 200) {
-          return _storeRefreshedTokens(prefs, response.body);
+          if (AppSession.changing || revision != AppSession.revision.value) {
+            return false;
+          }
+          return _storeRefreshedTokens(prefs, response.body, revision);
         }
 
         if (response.statusCode == 401 || response.statusCode == 403) {
@@ -479,7 +537,7 @@ class ApiClient {
   }
 
   static Future<bool> _storeRefreshedTokens(
-      SharedPreferences prefs, String body) async {
+      SharedPreferences prefs, String body, int sessionRevision) async {
     try {
       final decoded = jsonDecode(body);
       if (decoded is! Map<String, dynamic>) {
@@ -523,20 +581,26 @@ class ApiClient {
         return false;
       }
 
+      if (sessionRevision != AppSession.revision.value) return false;
+
       await prefs.setString('jwt_access_token', accessToken);
       if (refreshToken != null && refreshToken.isNotEmpty) {
+        if (sessionRevision != AppSession.revision.value) return false;
         await prefs.setString('jwt_refresh_token', refreshToken);
       }
       // 토큰 만료 시간 저장
       if (accessExpiresAt != null) {
+        if (sessionRevision != AppSession.revision.value) return false;
         await prefs.setInt('access_expires_at', accessExpiresAt);
       }
       if (refreshExpiresAt != null) {
+        if (sessionRevision != AppSession.revision.value) return false;
         await prefs.setInt('refresh_expires_at', refreshExpiresAt);
       }
       // Apple 로그인 사용자는 kakao_logged_in을 덮어쓰지 않음
       final appleLoggedIn = prefs.getBool('apple_logged_in') ?? false;
       if (!appleLoggedIn) {
+        if (sessionRevision != AppSession.revision.value) return false;
         await prefs.setBool('kakao_logged_in', true);
       }
       return true;
@@ -545,19 +609,36 @@ class ApiClient {
     }
   }
 
-  static Future<void> _invalidateSession({SharedPreferences? prefs}) async {
+  static Future<void> _invalidateSession(
+      {SharedPreferences? prefs, int? expectedRevision}) async {
+    if (expectedRevision != null &&
+        expectedRevision != AppSession.revision.value) {
+      return;
+    }
+    final invalidatingRevision = AppSession.beginChange();
     final resolved = prefs ?? await SharedPreferences.getInstance();
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.remove('jwt_access_token');
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.remove('jwt_refresh_token');
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.remove('access_expires_at');
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.remove('refresh_expires_at');
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.setBool('kakao_logged_in', false);
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.setBool('apple_logged_in', false);
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.remove('kakao_access_token');
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.remove('user_kakao_id');
+    if (invalidatingRevision != AppSession.revision.value) return;
     await resolved.remove('user_apple_id');
+    if (invalidatingRevision != AppSession.revision.value) return;
     // 타이머 취소
     _cancelTokenRefreshTimer();
+    AppSession.endChange();
   }
 
   static void _throwIfFailed(http.Response response) {
@@ -608,16 +689,16 @@ class ApiClient {
         '/api/auth/verify',
         authenticated: true,
       );
-      
+
       if (response.statusCode == 200) {
         final decoded = jsonDecode(response.body) as Map<String, dynamic>;
-        
+
         // 서버에서 제공하는 만료 시간 업데이트
         if (decoded['expires_at'] != null) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setInt('access_expires_at', decoded['expires_at'] as int);
         }
-        
+
         return decoded;
       }
       return null;
@@ -683,5 +764,3 @@ class ApiClient {
     _cancelTokenRefreshTimer();
   }
 }
-
-

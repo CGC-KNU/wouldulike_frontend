@@ -223,7 +223,8 @@ class _MyScreenState extends State<MyScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(true),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF1C203C),
                             foregroundColor: Colors.white,
@@ -328,7 +329,8 @@ class _MyScreenState extends State<MyScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: ElevatedButton(
-                          onPressed: () => Navigator.of(dialogContext).pop(true),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFFB91C1C),
                             foregroundColor: Colors.white,
@@ -661,25 +663,6 @@ class _MyScreenState extends State<MyScreen> {
     }
   }
 
-  Future<void> _openOwnerDashboard() async {
-    final uri = Uri.parse(AppConfigService.dashboardUrl);
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      } else {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('사장님 대시보드를 열 수 없어요.')),
-        );
-      }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('링크를 열 수 없어요: $e')),
-      );
-    }
-  }
-
   Future<void> _openProfileSetup() async {
     final profile = await UserService.fetchCurrentUserProfile();
     if (!mounted) return;
@@ -698,7 +681,8 @@ class _MyScreenState extends State<MyScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildMenuRow(
-          leading: Text(isKakaoLoggedIn ? '로그아웃' : '로그인', style: _kItemTitleStyle),
+          leading:
+              Text(isKakaoLoggedIn ? '로그아웃' : '로그인', style: _kItemTitleStyle),
           trailing: _isKakaoLogoutInProgress
               ? const SizedBox(
                   height: 20,
@@ -1022,12 +1006,6 @@ class _MyScreenState extends State<MyScreen> {
             leading: const Text('카카오톡 1대1 문의', style: _kItemTitleStyle),
             trailing: _buildChevron(),
             onTap: _openKakaoTalkInquiry,
-            indent: _kItemIndent,
-          ),
-          _buildMenuRow(
-            leading: const Text('우주라이크 파트너 대시보드', style: _kItemTitleStyle),
-            trailing: _buildChevron(),
-            onTap: _openOwnerDashboard,
             indent: _kItemIndent,
           ),
           _buildMenuRow(

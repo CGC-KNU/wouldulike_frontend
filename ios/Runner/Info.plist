@@ -81,5 +81,7 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>파트너 매장에 등록할 사진을 선택합니다.</string>
 </dict>
 </plist>
