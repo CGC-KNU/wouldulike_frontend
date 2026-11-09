@@ -22,6 +22,19 @@ const ownerMe = {
   ],
 };
 
+class _EntryTransitionObserver extends NavigatorObserver {
+  _EntryTransitionObserver(this.mainRoute);
+  final MaterialPageRoute<void> mainRoute;
+  AnimationStatus? statusAtPartnerPush;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (previousRoute == mainRoute) {
+      statusAtPartnerPush = mainRoute.animation!.status;
+    }
+  }
+}
+
 void main() {
   final previousOverrides = HttpOverrides.current;
   setUpAll(() => HttpOverrides.global = CastorHttpOverrides());
@@ -119,6 +132,38 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       access.dispose();
     }
+  });
+
+  testWidgets('스플래시 교체 전환이 끝난 뒤에 점주 화면을 연다', (tester) async {
+    final access = PartnerAccessController(
+        loadUser: () async => 1,
+        loadMe: () async => ownerMe,
+        loadEnabled: () async => true);
+    final mainRoute = MaterialPageRoute<void>(
+        builder: (_) => MainAppScreen(partnerAccess: access));
+    final observer = _EntryTransitionObserver(mainRoute);
+    await tester.pumpWidget(MaterialApp(
+        navigatorObservers: [observer],
+        home: Builder(
+            builder: (context) => Scaffold(
+                body: TextButton(
+                    onPressed: () =>
+                        Navigator.of(context).pushReplacement(mainRoute),
+                    child: const Text('스플래시 완료'))))));
+    await tester.tap(find.text('스플래시 완료'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(mainRoute.animation!.status, AnimationStatus.forward);
+    expect(find.byType(PartnerShell), findsNothing);
+    await tester.pumpAndSettle();
+    expect(observer.statusAtPartnerPush, AnimationStatus.completed);
+    expect(find.byType(PartnerShell), findsOneWidget);
+    expect(find.byTooltip('일반 모드로 전환'), findsOneWidget);
+    await tester.tap(find.byTooltip('일반 모드로 전환'));
+    await tester.pumpAndSettle();
+    expect(find.byType(HomeContent), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    access.dispose();
   });
 
   testWidgets('권한 확인 중 받은 딥링크가 자동 진입보다 우선한다', (tester) async {

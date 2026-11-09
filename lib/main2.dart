@@ -43,6 +43,7 @@ class _MainAppScreenState extends State<MainAppScreen>
     if (_enteringPartner || _partnerRouteOpen) return;
     _enteringPartner = true;
     final revision = AppSession.revision.value;
+    final navigation = _navigationGeneration;
     try {
       final allowed = revalidate
           ? await _partnerAccess.check(quiet: true)
@@ -50,13 +51,26 @@ class _MainAppScreenState extends State<MainAppScreen>
       if (!allowed ||
           !mounted ||
           revision != AppSession.revision.value ||
-          ModalRoute.of(context)?.isCurrent != true) {
+          navigation != _navigationGeneration) {
+        return;
+      }
+      final route = ModalRoute.of(context);
+      if (route == null || !route.isCurrent) return;
+      // MainScreen replaces the splash route. A fast owner response can arrive
+      // during that route's zoom/snapshot transition; wait before pushing again.
+      await _waitForEntryTransition(route);
+      if (!mounted ||
+          !route.isCurrent ||
+          !_partnerAccess.isOwner ||
+          revision != AppSession.revision.value ||
+          navigation != _navigationGeneration) {
         return;
       }
       _partnerRouteOpen = true;
       _selectedIndex = 0;
       AnalyticsLogger.logEvent(AnalyticsEvents.partnerModeEnter);
       await Navigator.of(context).push(MaterialPageRoute<void>(
+          allowSnapshotting: false,
           builder: (_) => PartnerShell(access: _partnerAccess)));
     } finally {
       _enteringPartner = false;
@@ -66,6 +80,31 @@ class _MainAppScreenState extends State<MainAppScreen>
         _logTabView(_selectedIndex);
         _presentGeneralOffers();
       }
+    }
+  }
+
+  Future<void> _waitForEntryTransition(ModalRoute<dynamic> route) async {
+    final animation = route.animation;
+    if (animation == null || animation.status == AnimationStatus.completed) {
+      return;
+    }
+    final finished = Completer<void>();
+    void onStatus(AnimationStatus status) {
+      if ((status == AnimationStatus.completed ||
+              status == AnimationStatus.dismissed) &&
+          !finished.isCompleted) {
+        finished.complete();
+      }
+    }
+
+    animation.addStatusListener(onStatus);
+    try {
+      await Future.any<void>([
+        finished.future,
+        route.completed.then<void>((_) {}),
+      ]);
+    } finally {
+      animation.removeStatusListener(onStatus);
     }
   }
 
