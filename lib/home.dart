@@ -35,6 +35,7 @@ import 'services/promotion_service.dart';
 import 'services/trend_service.dart';
 import 'services/user_service.dart';
 import 'services/deep_link_service.dart';
+import 'partner/widgets/partner_mode_toggle.dart';
 
 bool _isValidHttpImageUrl(String? value) {
   if (value == null) return false;
@@ -77,7 +78,9 @@ class UrlLauncherUtil {
 }
 
 class HomeContent extends StatefulWidget {
-  const HomeContent({super.key});
+  const HomeContent({super.key, this.onEnterPartner});
+
+  final VoidCallback? onEnterPartner;
   @override
   _HomeContentState createState() => _HomeContentState();
 }
@@ -267,7 +270,7 @@ class _HomeContentState extends State<HomeContent> {
           .toList(growable: false);
       if (!mounted || candidates.isEmpty) return;
       final preloadedImages = await _preloadPopupImages(candidates);
-      if (!mounted) return;
+      if (!mounted || ModalRoute.of(context)?.isCurrent != true) return;
       await _showHomePopupDialog(candidates, preloadedImages);
     } catch (_) {
       // Ignore popup failures; main content should remain unaffected.
@@ -799,7 +802,9 @@ class _HomeContentState extends State<HomeContent> {
   }
 
   Future<void> _showWelcomeCouponDialog() async {
-    if (!mounted || _welcomeDialogVisible) {
+    if (!mounted ||
+        _welcomeDialogVisible ||
+        ModalRoute.of(context)?.isCurrent != true) {
       _welcomePromptScheduled = false;
       return;
     }
@@ -1722,6 +1727,15 @@ class _HomeContentState extends State<HomeContent> {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
+        bottom: widget.onEnterPartner == null
+            ? null
+            : PreferredSize(
+                preferredSize: const Size.fromHeight(56),
+                child: PartnerModeToggle(
+                  partnerMode: false,
+                  onChanged: (_) => widget.onEnterPartner?.call(),
+                ),
+              ),
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white, // 스크롤 시 붉은/보라 tint 제거
         scrolledUnderElevation: 0, // 스크롤해도 그림자/색 변화 없도록

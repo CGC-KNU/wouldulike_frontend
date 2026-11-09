@@ -20,7 +20,9 @@ import 'package:new1/coupon/limited_coupon_offer_flow.dart';
 import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
 
 class MainAppScreen extends StatefulWidget {
-  const MainAppScreen({super.key});
+  const MainAppScreen({super.key, this.partnerAccess});
+
+  final PartnerAccessController? partnerAccess;
 
   @override
   State<MainAppScreen> createState() => _MainAppScreenState();
@@ -28,29 +30,74 @@ class MainAppScreen extends StatefulWidget {
 
 class _MainAppScreenState extends State<MainAppScreen>
     with WidgetsBindingObserver {
-  final _partnerAccess = PartnerAccessController();
+  late final _partnerAccess = widget.partnerAccess ?? PartnerAccessController();
   bool _enteringPartner = false;
   bool _partnerRouteOpen = false;
+  bool _initializingMode = true;
+  int _navigationGeneration = 0;
   void _partnerChanged() {
     if (mounted) setState(() {});
   }
 
-  Future<void> _enterPartner() async {
+  Future<void> _enterPartner({bool revalidate = true}) async {
     if (_enteringPartner || _partnerRouteOpen) return;
     _enteringPartner = true;
     final revision = AppSession.revision.value;
     try {
-      if (!await _partnerAccess.check() ||
+      final allowed = revalidate
+          ? await _partnerAccess.check(quiet: true)
+          : _partnerAccess.isOwner;
+      if (!allowed ||
           !mounted ||
-          revision != AppSession.revision.value) return;
+          revision != AppSession.revision.value ||
+          ModalRoute.of(context)?.isCurrent != true) {
+        return;
+      }
       _partnerRouteOpen = true;
+      _selectedIndex = 0;
       AnalyticsLogger.logEvent(AnalyticsEvents.partnerModeEnter);
       await Navigator.of(context).push(MaterialPageRoute<void>(
           builder: (_) => PartnerShell(access: _partnerAccess)));
     } finally {
       _enteringPartner = false;
       _partnerRouteOpen = false;
+      if (mounted && !_initializingMode) {
+        setState(() {});
+        _logTabView(_selectedIndex);
+        _presentGeneralOffers();
+      }
     }
+  }
+
+  Future<void> _initializeMode(DeepLinkTarget? pending) async {
+    final navigation = _navigationGeneration;
+    final owner = _partnerAccess.isOwner || await _partnerAccess.check();
+    if (!mounted || navigation != _navigationGeneration) return;
+    // An explicit destination keeps its existing deep-link behavior. Otherwise
+    // enter once per app screen; periodic checks must not undo a manual switch.
+    if (owner && pending == null) {
+      await _enterPartner(revalidate: false);
+    }
+    if (!mounted || navigation != _navigationGeneration) return;
+    setState(() => _initializingMode = false);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || navigation != _navigationGeneration) return;
+      _logTabView(_selectedIndex);
+      if (pending != null) await _openDeepLink(pending);
+      _presentGeneralOffers();
+    });
+  }
+
+  void _presentGeneralOffers() {
+    if (!mounted || _initializingMode || _partnerRouteOpen) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted &&
+          !_initializingMode &&
+          !_partnerRouteOpen &&
+          ModalRoute.of(context)?.isCurrent == true) {
+        LimitedCouponOfferFlow.maybePresent(context);
+      }
+    });
   }
 
   // 시연 빌드에서 시작 탭 지정: --dart-define=DEMO_NAV=2 (0 홈/1 식당/2 내 지갑/3 마이페이지)
@@ -81,17 +128,16 @@ class _MainAppScreenState extends State<MainAppScreen>
     _deepLinkTargetSub =
         DeepLinkService.instance.targetStream.listen(_onDeepLinkTarget);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _checkTokenIfNeeded();
-      _logTabView(_selectedIndex);
-      if (pending != null) _openDeepLink(pending);
-      LimitedCouponOfferFlow.maybePresent(context);
+      if (!mounted) return;
+      unawaited(_checkTokenIfNeeded());
+      unawaited(_initializeMode(pending));
     });
   }
 
   @override
   void dispose() {
     _partnerAccess.removeListener(_partnerChanged);
-    _partnerAccess.dispose();
+    if (widget.partnerAccess == null) _partnerAccess.dispose();
     _deepLinkTabSub?.cancel();
     _deepLinkTargetSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
@@ -105,7 +151,7 @@ class _MainAppScreenState extends State<MainAppScreen>
     if (state == AppLifecycleState.resumed) {
       // 앱이 포그라운드로 돌아올 때 토큰 상태 확인 및 타이머 재설정
       _checkTokenIfNeeded();
-      LimitedCouponOfferFlow.maybePresent(context);
+      _presentGeneralOffers();
     } else if (state == AppLifecycleState.paused) {
       // 백그라운드로 갈 때 타이머 취소 (배터리 절약)
       ApiClient.cancelTokenRefreshTimer();
@@ -126,8 +172,12 @@ class _MainAppScreenState extends State<MainAppScreen>
 
   void _onDeepLinkTarget(DeepLinkTarget target) {
     if (!mounted) return;
+    _navigationGeneration++;
     _popToThisRoute();
-    setState(() => _selectedIndex = target.tabIndex);
+    setState(() {
+      _initializingMode = false;
+      _selectedIndex = target.tabIndex;
+    });
     _logTabView(target.tabIndex);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
@@ -135,7 +185,7 @@ class _MainAppScreenState extends State<MainAppScreen>
       // 앱이 이미 포그라운드인 채로 딥링크(푸시 탭 등)를 받은 경우.
       // 화·목 골라받기처럼 쿠폰 탭 진입 시 바로 보여야 하는 오퍼를 놓치지 않게
       // 콜드 스타트·앱 재개 때와 같이 여기서도 다시 확인한다.
-      if (mounted) LimitedCouponOfferFlow.maybePresent(context);
+      _presentGeneralOffers();
     });
   }
 
@@ -180,7 +230,10 @@ class _MainAppScreenState extends State<MainAppScreen>
   Widget _buildCurrentScreen() {
     switch (_selectedIndex) {
       case 0:
-        return const HomeContent();
+        return HomeContent(
+            onEnterPartner: _partnerAccess.isOwner
+                ? () => unawaited(_enterPartner())
+                : null);
       case 1:
         return const AffiliateBenefitsScreen();
       case 2:
@@ -188,7 +241,10 @@ class _MainAppScreenState extends State<MainAppScreen>
       case 3:
         return const MyScreen();
       default:
-        return const HomeContent();
+        return HomeContent(
+            onEnterPartner: _partnerAccess.isOwner
+                ? () => unawaited(_enterPartner())
+                : null);
     }
   }
 
@@ -203,6 +259,9 @@ class _MainAppScreenState extends State<MainAppScreen>
 
   @override
   Widget build(BuildContext context) {
+    if (_initializingMode) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
     // 선택된 탭: 기존 남색 유지, 미선택 탭: 좀 더 투명하게 표시
     const Color selectedColor = Color(0xFF312E81);
     const Color unselectedColor = Color(0x999CA3AF); // 기존 색상에서 알파(투명도)만 낮춤
@@ -229,7 +288,6 @@ class _MainAppScreenState extends State<MainAppScreen>
         child: _buildCurrentScreen(),
       ),
       bottomNavigationBar: LiquidGlassBottomBar(
-        onOwnerMode: _partnerAccess.isOwner ? _enterPartner : null,
         tabs: const [
           LiquidGlassTab(
             label: '홈',

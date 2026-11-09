@@ -6,7 +6,8 @@
 - `services/app_session.dart`: 로그인 시작·완료, 명시적 로그아웃, 연결 해제, ApiClient 만료 처리의 동기 신호다. 이전 세션의 요청·토큰 갱신·로그인 응답은 새 계정에 반영하지 않는다. 로그인 화면의 중복 JWT 저장을 제거했다.
 - `partner/partner_api_client.dart`: AppConfigService.dashboardUrl을 검증하고 legacy Vercel 주소를 canonical HTTPS 주소로 정규화한다. 앱 JWT 갱신은 기존 ApiClient를 공유한다. 일반 API의 Django baseUrl은 유지한다. 인증 헤더 redirect를 금지하고, 결과가 불명확한 쓰기는 통신 실패만으로 재전송하지 않는다.
 - `partner/partner_shell.dart`, `partner/partner_pages.dart`: 일반 4탭과 분리된 6메뉴(홈·매장·혜택·콘텐츠·리포트·플랜). 매장·계정 문맥 변경 시 늦은 응답을 폐기한다. 일반 모드 복귀, 편집 폐기 확인, 권한 해제 강제 정리, 다매장 재선택을 제공한다.
-- `widgets/liquid_glass_bottom_bar.dart`: optional onOwnerMode가 있을 때만 손잡이·세로 인식기를 생성한다. 마이페이지 위 8px 노출, 별도 48×44 접근 영역, 위로 48px/가로의 1.5배 조건. 기존 탭·가로 드래그와 일반 딥링크 리스너를 유지한다. my.dart의 무조건 외부 dashboard 메뉴는 제거했다.
+- `main2.dart`: 앱 진입 시 점주 권한과 BFF 활성화 설정을 확인하고 점주이면 파트너 모드를 자동으로 연다. 확인 중에는 로딩 화면을 표시해 일반 홈 팝업이 먼저 뜨지 않게 한다. 일반 모드로 전환한 뒤에는 주기적 권한 검사나 앱 재개만으로 자동 복귀하지 않는다. 앱을 새로 열면 점주 기본 진입을 다시 적용한다. 명시적 딥링크는 지정한 일반 앱 화면을 우선한다.
+- `partner/widgets/partner_mode_toggle.dart`: 점주에게만 일반 홈 상단과 파트너 홈·매장 선택 상단에 사장님 모드 토글을 표시한다. 일반 모드에서 다시 들어갈 때도 권한을 재검증하고, 파트너에서 나올 때는 편집 폐기 확인을 거친다. 마이페이지는 기존 탭 기능을 사용하며 하단 바의 손잡이·세로 전환 제스처는 제거했다.
 - 리포트는 BFF가 돌려준 허용 출처·정확한 `/r/<40자리 hex>`만 기존 url_launcher로 연다. JWT URL·웹 쿠키·새 읽음 배지는 없다.
 
 ## 의존성·플랫폼 변경
@@ -23,8 +24,8 @@
 
 ## 설정·검증·미검증
 
-- Next.js 서버 전용 `APP_OWNER_MODE_ENABLED`는 기본 false이며 true/1만 활성이다. 인증된 config 조회가 성공하고 enabled=true일 때만 트리거를 표시한다. 설정 변경에는 Next.js 재배포·반영 확인이 필요하다. 실제 운영 설정은 변경하지 않았다.
-- `flutter test --no-pub test/partner_access_test.dart test/partner_mode_test.dart test/partner_transport_test.dart test/partner_pages_test.dart test/partner_preview_test.dart test/partner_shell_test.dart`: 22개 통과. 권한·제스처·계정 경계·업무 화면·뒤로가기·로그아웃 정리와 홈·손잡이 렌더링을 포함한다.
+- Next.js 서버 전용 `APP_OWNER_MODE_ENABLED`는 기본 false이며 true/1만 활성이다. 점주 권한 및 인증된 config 조회가 성공하고 enabled=true일 때만 자동 진입과 홈 토글을 제공한다. 비로그인·비점주·설정 비활성·조회 실패 시에는 일반 모드를 사용한다. 설정 변경에는 Next.js 재배포·반영 확인이 필요하다. 실제 운영 설정은 변경하지 않았다.
+- 파트너 테스트는 권한·계정 경계·업무 화면·뒤로가기·로그아웃 정리와 반응형 렌더링을 포함한다. `test/partner_entry_test.dart`에서 점주 자동 진입, 일반 홈 토글 왕복, 수동 전환 후 유지, 비점주·설정 비활성·오류 시 일반 모드, 앱 재진입과 딥링크 우선을 검증한다.
 - `dart analyze lib/partner lib/services/api_client.dart lib/services/auth_service.dart lib/services/app_session.dart`: 지적 없음. 전체 analyze의 기존 지적과 전체 Flutter 테스트 실패는 상위 명세 §16에서 구분한다.
 - 실제 점주 계정으로 Django/BFF 왕복, 사진 업로드·저장 실패, PIN 잠금·최초 설정, 신청 저장/Slack, 웹 리포트 복귀, Android/iOS 시스템 제스처·스크린리더 실기기는 아직 확인하지 않았다. 앱·서버 배포와 커밋은 수행하지 않았다.
 

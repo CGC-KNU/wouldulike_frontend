@@ -4,6 +4,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:new1/partner/partner_access_controller.dart';
 import 'package:new1/partner/partner_pages.dart';
 import 'package:new1/partner/partner_design.dart';
+import 'package:new1/partner/widgets/partner_mode_toggle.dart';
 import 'package:new1/widgets/liquid_glass_bottom_bar.dart';
 import 'castor/harness.dart';
 
@@ -200,7 +201,7 @@ void main() {
       }
     }
   });
-  testWidgets('사장님 홈과 전환 손잡이는 작은 화면·큰 글자에서 overflow 없이 렌더링된다', (tester) async {
+  testWidgets('사장님 홈과 전환 토글은 작은 화면·큰 글자에서 overflow 없이 렌더링된다', (tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -250,7 +251,12 @@ void main() {
                 child: w!),
             home: child));
     await tester.pumpWidget(app(Scaffold(
-        appBar: AppBar(title: const Text('우주식당 · 사장님 모드')),
+        appBar: AppBar(
+            title: const Text('우주식당 · 사장님 모드'),
+            bottom: PreferredSize(
+                preferredSize: const Size.fromHeight(56),
+                child: PartnerModeToggle(
+                    partnerMode: true, onChanged: (_) {}))),
         body: PartnerPage(
             tab: 0,
             scope: '1:1',
@@ -264,6 +270,12 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(app(
         Scaffold(
+            appBar: AppBar(
+                title: const Text('일반 홈'),
+                bottom: PreferredSize(
+                    preferredSize: const Size.fromHeight(56),
+                    child: PartnerModeToggle(
+                        partnerMode: false, onChanged: (_) {}))),
             body: const Center(child: Text('일반 모드')),
             bottomNavigationBar: LiquidGlassBottomBar(
               tabs: const [
@@ -277,7 +289,6 @@ void main() {
               ],
               selectedIndex: 0,
               onTap: (_) {},
-              onOwnerMode: () {},
               iconBuilder: (p, c) => SvgPicture.asset(p,
                   width: 20,
                   height: 20,
@@ -289,7 +300,7 @@ void main() {
             )),
         scale: 1.5));
     await tester.pumpAndSettle();
-    await captureScreen(tester, 'partner.handle');
+    await captureScreen(tester, 'partner.toggle');
     expect(tester.takeException(), isNull);
   });
 }

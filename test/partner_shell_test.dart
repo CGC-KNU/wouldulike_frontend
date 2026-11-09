@@ -65,6 +65,20 @@ void main() {
     expect(find.byType(PartnerShell), findsNothing);
     access.dispose();
   });
+  testWidgets('매장 선택과 점주 홈 상단의 토글은 일반 모드로 복귀한다', (tester) async {
+    await tester.pumpWidget(app());
+    await tester.tap(find.text('일반 화면'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('일반 모드로 전환'), findsOneWidget);
+    await tester.tap(find.text('매장 A'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('일반 모드로 전환'), findsOneWidget);
+    await tester.tap(find.byTooltip('일반 모드로 전환'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PartnerShell), findsNothing);
+    expect(find.text('일반 화면'), findsOneWidget);
+    access.dispose();
+  });
   testWidgets('작은 화면·글자 2배에서도 매장 선택과 파트너 헤더가 넘치지 않는다', (tester) async {
     tester.view.physicalSize = const Size(320, 740);
     tester.view.devicePixelRatio = 1;

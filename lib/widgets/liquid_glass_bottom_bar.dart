@@ -1,4 +1,3 @@
-import '../partner/widgets/partner_mode_handle.dart';
 import 'dart:math';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -31,7 +30,6 @@ class LiquidGlassBottomBar extends StatefulWidget {
     this.widthFactor = 0.9,
     this.bottomInset = 0,
     this.blurSigma = 30,
-    this.onOwnerMode,
   });
 
   final List<LiquidGlassTab> tabs;
@@ -47,7 +45,6 @@ class LiquidGlassBottomBar extends StatefulWidget {
   final double widthFactor;
   final double bottomInset;
   final double blurSigma;
-  final VoidCallback? onOwnerMode;
 
   @override
   State<LiquidGlassBottomBar> createState() => _LiquidGlassBottomBarState();
@@ -66,7 +63,6 @@ class _LiquidGlassBottomBarState extends State<LiquidGlassBottomBar>
   double _dragWobble = 0;
   bool _justEndedDrag = false;
   bool _isPressed = false;
-  double _ownerLift = 0;
 
   @override
   void initState() {
@@ -87,7 +83,6 @@ class _LiquidGlassBottomBarState extends State<LiquidGlassBottomBar>
   @override
   void didUpdateWidget(LiquidGlassBottomBar oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.onOwnerMode == null) _ownerLift = 0;
     if (_isDragging) return;
 
     if (widget.selectedIndex != _toIndex) {
@@ -113,15 +108,6 @@ class _LiquidGlassBottomBarState extends State<LiquidGlassBottomBar>
   void dispose() {
     _controller.dispose();
     super.dispose();
-  }
-
-  Widget _ownerSwipe(int index, Widget child) {
-    if (index != 3 || widget.onOwnerMode == null) return child;
-    return PartnerModeSwipe(
-      onActivate: () => widget.onOwnerMode?.call(),
-      onProgress: (v) { if (mounted) setState(() => _ownerLift = v); },
-      child: child,
-    );
   }
 
   @override
@@ -182,11 +168,8 @@ class _LiquidGlassBottomBarState extends State<LiquidGlassBottomBar>
                     child: child,
                   );
                 },
-                child: PartnerBarFrame(
-                  barHeight: widget.barHeight,
-                  onActivate: widget.onOwnerMode,
-                  lift: _ownerLift,
-                  onProgress: (v) { if (mounted) setState(() => _ownerLift = v); },
+                child: SizedBox(
+                  height: widget.barHeight,
                   child: DecoratedBox(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(radius),
@@ -580,7 +563,7 @@ class _LiquidGlassBottomBarState extends State<LiquidGlassBottomBar>
                                       );
 
                                 return Expanded(
-                                  child: _ownerSwipe(index, InkWell(
+                                  child: InkWell(
                                     onTapDown: (_) {
                                       // 현재 탭을 누르고 있는 동안에는 선택영역이 커지도록 플래그 설정
                                       if (!_isDragging &&
@@ -638,7 +621,7 @@ class _LiquidGlassBottomBarState extends State<LiquidGlassBottomBar>
                                         ],
                                       ),
                                     ),
-                                  )),
+                                  ),
                                 );
                               }),
                             ),

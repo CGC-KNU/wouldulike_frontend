@@ -4,6 +4,7 @@ import 'partner_access_controller.dart';
 import 'partner_api_client.dart';
 import 'partner_pages.dart';
 import 'partner_design.dart';
+import 'widgets/partner_mode_toggle.dart';
 
 class PartnerShell extends StatefulWidget {
   const PartnerShell({super.key, required this.access});
@@ -167,12 +168,17 @@ class _PartnerShellState extends State<PartnerShell> {
           toolbarHeight: 56 +
               (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0, 40) *
                   2,
-          leadingWidth: 112,
-          leading: TextButton.icon(
-              onPressed: _leave,
-              icon: const Icon(Icons.arrow_back, size: 16),
-              label: const Text('일반 모드로')),
-          titleSpacing: 4,
+          titleSpacing: 16,
+          bottom: _tab == 0 || _store == null
+              ? PreferredSize(
+                  preferredSize: const Size.fromHeight(56),
+                  child: PartnerModeToggle(
+                    partnerMode: true,
+                    onChanged:
+                        access.isOwner ? (_) => unawaited(_leave()) : null,
+                  ),
+                )
+              : null,
           title:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const Text('우주라이크 파트너',
