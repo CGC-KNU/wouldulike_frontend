@@ -75,20 +75,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(HomeContent), findsOneWidget);
     expect(find.byType(PartnerShell), findsNothing);
-    expect(find.byTooltip('사장님 모드로 전환'), findsOneWidget);
+    expect(find.byTooltip('파트너 모드로 전환'), findsOneWidget);
 
     // A periodic permission refresh must preserve the user's general-mode choice.
     await tester.pump(const Duration(seconds: 26));
     await tester.pumpAndSettle();
     expect(find.byType(PartnerShell), findsNothing);
-    await tester.tap(find.byTooltip('사장님 모드로 전환'));
+    await tester.tap(find.byTooltip('파트너 모드로 전환'));
     await tester.pumpAndSettle();
     expect(find.byType(PartnerShell), findsOneWidget);
 
     await tester.tap(find.byTooltip('일반 모드로 전환'));
     await tester.pumpAndSettle();
     enabled = false;
-    await tester.tap(find.byTooltip('사장님 모드로 전환'));
+    await tester.tap(find.byTooltip('파트너 모드로 전환'));
     await tester.pumpAndSettle();
     expect(find.byType(PartnerShell), findsNothing);
     expect(find.byType(PartnerModeToggle), findsNothing);

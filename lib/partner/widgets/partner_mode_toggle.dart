@@ -17,11 +17,11 @@ class PartnerModeToggle extends StatelessWidget {
         child: MergeSemantics(
           child: Row(children: [
             const Expanded(
-              child: Text('사장님 모드',
+              child: Text('파트너 모드',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
             ),
             Tooltip(
-              message: partnerMode ? '일반 모드로 전환' : '사장님 모드로 전환',
+              message: partnerMode ? '일반 모드로 전환' : '파트너 모드로 전환',
               child: Switch.adaptive(
                 value: partnerMode,
                 activeTrackColor: const Color(0xFF050072),

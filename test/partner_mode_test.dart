@@ -27,7 +27,7 @@ void main() {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(bar());
     expect(find.byType(PartnerModeToggle), findsNothing);
-    expect(find.bySemanticsLabel('사장님 모드로 전환'), findsNothing);
+    expect(find.bySemanticsLabel('파트너 모드로 전환'), findsNothing);
     semantics.dispose();
   });
   testWidgets('마이페이지는 탭으로 열리고 위로 밀어도 모드를 전환하지 않는다', (tester) async {
@@ -57,7 +57,7 @@ void main() {
                 partnerMode: partner,
                 onChanged: enabled ? (value) => selected = value : null)));
     await tester.pumpWidget(toggle(false));
-    await tester.tap(find.byTooltip('사장님 모드로 전환'));
+    await tester.tap(find.byTooltip('파트너 모드로 전환'));
     expect(selected, true);
     await tester.pumpWidget(toggle(true));
     await tester.tap(find.byTooltip('일반 모드로 전환'));
