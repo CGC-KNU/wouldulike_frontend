@@ -214,10 +214,14 @@ class FakeResponse {
 typedef FakeRoute = Object? Function(FakeRequestInfo req);
 
 class FakeRequestInfo {
-  FakeRequestInfo(this.method, this.uri, this.body);
+  FakeRequestInfo(this.method, this.uri, this.body,
+      [this.headers = const {}]);
   final String method;
   final Uri uri;
   final String body;
+
+  /// 요청 헤더(이름은 소문자).
+  final Map<String, String> headers;
   Map<String, dynamic> get jsonBody {
     try {
       return (jsonDecode(body) as Map).cast<String, dynamic>();
@@ -240,7 +244,8 @@ class FakeBackend {
     misses.clear();
   }
 
-  static FakeResponse handle(String method, Uri uri, String body) {
+  static FakeResponse handle(String method, Uri uri, String body,
+      [Map<String, String> headers = const {}]) {
     final path = uri.path;
     log.add('$method $path${uri.hasQuery ? '?${uri.query}' : ''}');
     if (_isImage(uri)) {
@@ -252,7 +257,7 @@ class FakeBackend {
           ? (k == path || '$method $path' == k)
           : (k as RegExp).hasMatch('$method $path');
       if (hit) {
-        final r = e.value(FakeRequestInfo(method, uri, body));
+        final r = e.value(FakeRequestInfo(method, uri, body, headers));
         if (r is FakeResponse) return r;
         return FakeResponse.json(r);
       }
@@ -351,7 +356,10 @@ class _FakeHttpRequest implements HttpClientRequest {
   @override
   Future<HttpClientResponse> close() async {
     if (!_done.isCompleted) {
-      final r = FakeBackend.handle(method, uri, utf8.decode(_body.toBytes(), allowMalformed: true));
+      final sent = <String, String>{};
+      _headers.forEach((name, values) => sent[name] = values.join(','));
+      final r = FakeBackend.handle(
+          method, uri, utf8.decode(_body.toBytes(), allowMalformed: true), sent);
       if (r.hangs) return Completer<HttpClientResponse>().future;
       _done.complete(_FakeHttpResponse(r));
     }
