@@ -114,14 +114,24 @@ void main() {
     return result;
   }
 
-  testWidgets('F2 첫 방문: 쿠폰이 도착했어요 → 지금 쓰기', (tester) async {
+  testWidgets('F2 첫 방문(스탬프 없는 매장): 쿠폰이 도착했어요 → 지금 쓰기', (tester) async {
     final action = await scan(
       tester,
-      entryJson('coupon_arrived', coupon: 'C1'),
+      entryJson('coupon_arrived', coupon: 'C1', stamp: {'enabled': false, 'target': 0}),
       held: coupon(),
       tap: '지금 쓰기',
     );
     expect(action, QrEntryAction.useCoupon);
+  });
+
+  testWidgets('F2 첫 방문(스탬프 매장): 스탬프만 찍기 → PIN 입력으로 이어지는 행동', (tester) async {
+    final action = await scan(
+      tester,
+      entryJson('coupon_arrived', coupon: 'C1'),
+      held: coupon(),
+      tap: '스탬프만 찍기',
+    );
+    expect(action, QrEntryAction.addStamp);
   });
 
   testWidgets('F2 첫 방문 화면 문구', (tester) async {
@@ -130,8 +140,9 @@ void main() {
     expect(find.text('음료 1잔 무료'), findsOneWidget);
     expect(find.textContaining('라라더에서만'), findsOneWidget);
     expect(find.text('나중에 쓸게요'), findsOneWidget);
-    // 첫 방문에는 "쿠폰 쓰고 스탬프도 찍기"(재방문용)가 나오지 않는다
-    expect(find.text('쿠폰 쓰고 스탬프도 찍기'), findsNothing);
+    // 스탬프 매장은 첫 방문에도 PIN 입력으로 이어지는 스탬프 버튼이 있다
+    expect(find.text('쿠폰 쓰고 스탬프도 찍기'), findsOneWidget);
+    expect(find.text('스탬프만 찍기'), findsOneWidget);
   });
 
   testWidgets('두 번째 QR(쿠폰 안 씀): 스탬프 시트 + 쿠폰 함께 쓰기 유도', (tester) async {
