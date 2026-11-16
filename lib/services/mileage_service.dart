@@ -557,6 +557,9 @@ class MileageService {
         },
         headers: {
           'Idempotency-Key': idempotencyKey ?? generateQrVisitKey(restaurantId),
+          // 이 앱은 첫 방문(coupon_arrived) 시트에도 스탬프(PIN) 버튼이 있다. 이 표시가 없는 옛 앱에는
+          // 서버가 첫 방문도 스탬프 시트로 내려 PIN 입력 길을 열어 준다.
+          'X-Client-Caps': 'qr_stamp_buttons',
         },
       ).timeout(const Duration(seconds: 8));
       final decoded = _decode(response);

@@ -77,7 +77,7 @@ void main() {
     expect(QrEntrySheet.expiryText(DateTime(2026, 10, 14), now), '10월 14일까지');
   });
 
-  testWidgets('쿠폰 도착: 혜택·"지금 쓰기"·스탬프 안내, 누르면 useCoupon', (tester) async {
+  testWidgets('쿠폰 도착(스탬프 없는 매장): 혜택·"지금 쓰기", 누르면 useCoupon', (tester) async {
     final coupon = UserCoupon(
       code: 'C1',
       status: CouponStatus.issued,
@@ -87,15 +87,67 @@ void main() {
     );
     final result = await _open(
       tester,
-      _entry(QrEntryBranch.couponArrived,
-          stamp: const QrEntryStamp(enabled: true, current: 0, target: 3)),
+      _entry(QrEntryBranch.couponArrived),
       coupon: coupon,
       tap: '지금 쓰기',
     );
     expect(result, QrEntryAction.useCoupon);
   });
 
-  testWidgets('쿠폰 도착 화면 문구', (tester) async {
+  UserCoupon firstCoupon() => UserCoupon(
+        code: 'C1',
+        status: CouponStatus.issued,
+        restaurantId: 7,
+        expiresAt: DateTime.now().add(const Duration(hours: 3)),
+        benefit: const CouponBenefitInfo(title: '음료 1잔 무료'),
+      );
+
+  const firstStamp = QrEntryStamp(enabled: true, current: 0, target: 3);
+
+  testWidgets('쿠폰 도착(스탬프 있는 매장): 스탬프(PIN) 버튼이 함께 나온다', (tester) async {
+    await _open(
+      tester,
+      _entry(QrEntryBranch.couponArrived, stamp: firstStamp),
+      coupon: firstCoupon(),
+    );
+    expect(find.text('쿠폰이 도착했어요'), findsOneWidget);
+    expect(find.text('쿠폰 쓰고 스탬프도 찍기'), findsOneWidget);
+    expect(find.text('스탬프만 찍기'), findsOneWidget);
+    expect(find.text('나중에 쓸게요'), findsOneWidget);
+    expect(find.text('지금 쓰기'), findsNothing);
+  });
+
+  testWidgets('첫 방문: "스탬프만 찍기"는 스탬프만 처리한다 (PIN 입력으로 이어진다)', (tester) async {
+    final result = await _open(
+      tester,
+      _entry(QrEntryBranch.couponArrived, stamp: firstStamp),
+      coupon: firstCoupon(),
+      tap: '스탬프만 찍기',
+    );
+    expect(result, QrEntryAction.addStamp);
+  });
+
+  testWidgets('첫 방문: "쿠폰 쓰고 스탬프도 찍기"는 함께 처리 행동을 돌려준다', (tester) async {
+    final result = await _open(
+      tester,
+      _entry(QrEntryBranch.couponArrived, stamp: firstStamp),
+      coupon: firstCoupon(),
+      tap: '쿠폰 쓰고 스탬프도 찍기',
+    );
+    expect(result, QrEntryAction.useCouponWithStamp);
+  });
+
+  testWidgets('첫 방문: "나중에 쓸게요"로 닫을 수 있다', (tester) async {
+    final result = await _open(
+      tester,
+      _entry(QrEntryBranch.couponArrived, stamp: firstStamp),
+      coupon: firstCoupon(),
+      tap: '나중에 쓸게요',
+    );
+    expect(result, QrEntryAction.later);
+  });
+
+  testWidgets('쿠폰 도착(스탬프 있는 매장) 화면 문구', (tester) async {
     await _open(
       tester,
       _entry(QrEntryBranch.couponArrived,
@@ -111,6 +163,7 @@ void main() {
     expect(find.text('음료 1잔 무료'), findsOneWidget);
     expect(find.text('나중에 쓸게요'), findsOneWidget);
     expect(find.text('스탬프 0/3 · 계산하고 바로 적립'), findsOneWidget);
+    expect(find.text('직원이 PIN을 한 번만 누르면 같이 처리돼요'), findsOneWidget);
   });
 
   UserCoupon heldCoupon() => UserCoupon(

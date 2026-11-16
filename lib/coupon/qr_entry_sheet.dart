@@ -289,35 +289,54 @@ class QrEntrySheet extends StatelessWidget {
     );
   }
 
+  /// 이 매장에 스탬프가 있는가. 있으면 첫 방문·쿠폰 보유 시트에서도 PIN 입력(스탬프) 버튼을 보여 준다.
+  bool get _stampEnabled => entry.stamp.enabled && entry.stamp.target > 0;
+
+  /// 쿠폰 + 스탬프 버튼. 누르면 PIN·개수 입력 창이 열린다 (서버 PIN 검증 없이는 적립되지 않는다).
+  Widget _couponWithStampButtons(BuildContext context, {required _Btn closeBtn}) {
+    return Column(
+      children: [
+        _column(context, [
+          _Btn('쿠폰 쓰고 스탬프도 찍기', QrEntryAction.useCouponWithStamp,
+              primary: true),
+          _Btn('스탬프만 찍기', QrEntryAction.addStamp, outlined: true),
+          closeBtn,
+        ]),
+        const SizedBox(height: 4),
+        const Text(
+          '직원이 PIN을 한 번만 누르면 같이 처리돼요',
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: _sub,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buttons(BuildContext context) {
     switch (entry.branch) {
       case QrEntryBranch.couponArrived:
       case QrEntryBranch.couponHeld:
+        // 스탬프가 있는 매장은 첫 방문에도 스탬프(PIN) 길을 연다. 예전에는 쿠폰 버튼만 있어서
+        // 첫 방문 손님이 PIN 입력 화면에 갈 수 없었다.
+        if (_hasCoupon && _stampEnabled) {
+          return _couponWithStampButtons(
+            context,
+            closeBtn: _Btn('나중에 쓸게요', QrEntryAction.later),
+          );
+        }
         return _column(context, [
           _Btn('지금 쓰기', QrEntryAction.useCoupon, primary: true),
           _Btn('나중에 쓸게요', QrEntryAction.later),
         ]);
       case QrEntryBranch.stampProgress:
         if (_hasCoupon) {
-          return Column(
-            children: [
-              _column(context, [
-                _Btn('쿠폰 쓰고 스탬프도 찍기', QrEntryAction.useCouponWithStamp,
-                    primary: true),
-                _Btn('스탬프만 찍기', QrEntryAction.addStamp, outlined: true),
-                _Btn('매장 보기', QrEntryAction.viewStore),
-              ]),
-              const SizedBox(height: 4),
-              const Text(
-                '직원이 PIN을 한 번만 누르면 같이 처리돼요',
-                style: TextStyle(
-                  fontFamily: 'Pretendard',
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: _sub,
-                ),
-              ),
-            ],
+          return _couponWithStampButtons(
+            context,
+            closeBtn: _Btn('매장 보기', QrEntryAction.viewStore),
           );
         }
         return _column(context, [
