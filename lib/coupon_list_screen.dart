@@ -301,7 +301,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
       iconPath: 'assets/icons/category/all.svg',
       storeLabel: '우주라이크 설문',
       title: survey.rewardTitle ?? '설문 참여 감사 쿠폰',
-      subtitle: '3문항 답하면 바로 받아요',
+      subtitle: '간단히 답하면 바로 받아요',
       expiryText: days != null ? '받은 날부터 $days일간' : null,
       actionLabel: '참여하기',
       onAction: _openSurvey,
