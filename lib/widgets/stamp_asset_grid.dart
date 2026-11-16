@@ -10,6 +10,7 @@ class StampAssetGrid extends StatelessWidget {
     required this.current,
     required this.target,
     this.rewardSteps = const <int>{},
+    this.alignment = WrapAlignment.start,
   });
 
   static const int columns = 5;
@@ -18,6 +19,9 @@ class StampAssetGrid extends StatelessWidget {
   final int current;
   final int target;
   final Set<int> rewardSteps;
+
+  /// 마지막 줄이 덜 찼을 때의 가로 정렬. 상세 화면은 왼쪽(start), 가운데 정렬 시트는 center.
+  final WrapAlignment alignment;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +33,7 @@ class StampAssetGrid extends StatelessWidget {
         builder: (context, constraints) {
           final size = (constraints.maxWidth - gap * (columns - 1)) / columns;
           return Wrap(
+            alignment: alignment,
             spacing: gap,
             runSpacing: gap,
             children: [

@@ -3005,6 +3005,7 @@ class _AffiliateRestaurantDetailSheetState
         entry: entry,
         restaurantName: widget.restaurant.name,
         coupon: coupon,
+        restaurantCategory: widget.restaurant.category,
       );
       if (!mounted || action == null) return;
       AnalyticsLogger.logEvent(
@@ -3210,32 +3211,8 @@ class _AffiliateRestaurantDetailSheetState
     }
   }
 
-  String? _formatExpiryDate(DateTime? expiresAt) {
-    if (expiresAt == null) return null;
-
-    final now = AppConfigService.now();
-    final difference = expiresAt.difference(now);
-
-    if (difference.isNegative) {
-      return '만료됨';
-    }
-
-    if (difference.inHours < 24) {
-      if (difference.inHours > 0) {
-        return '${difference.inHours}시간 남음';
-      }
-      if (difference.inMinutes > 0) {
-        return '${difference.inMinutes}분 남음';
-      }
-      return '곧 만료';
-    }
-
-    if (difference.inDays < 7) {
-      return '${difference.inDays}일 남음';
-    }
-
-    return '${expiresAt.year}.${expiresAt.month.toString().padLeft(2, '0')}.${expiresAt.day.toString().padLeft(2, '0')}까지';
-  }
+  String? _formatExpiryDate(DateTime? expiresAt) =>
+      formatCouponExpiryLabel(expiresAt);
 
   Future<void> _applyStampAddSuccess(
     StampActionResult result,
@@ -3478,7 +3455,7 @@ class _AffiliateRestaurantDetailSheetState
   }
 
   Future<StampAddRequest?> _promptForStampAdd() {
-    return showStampAddDialog(context);
+    return showStampAddDialog(context, restaurantName: widget.restaurant.name);
   }
 
 

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import 'package:new1/config/analytics_events.dart';
 import 'package:new1/config/screen_ids.dart';
+import 'package:new1/coupon/pin_entry_widgets.dart';
 import 'package:new1/coupon/store_select_field.dart';
 import 'package:new1/services/affiliate_service.dart'
     show AffiliateRestaurantSummary;
@@ -782,7 +783,7 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
             ),
           ],
           const SizedBox(height: 16),
-          const _DashedDivider(),
+          const PinDashedDivider(),
           const SizedBox(height: 14),
           Text(
             RemoteText.string('coupon_use_show_staff'),
@@ -812,37 +813,12 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
     );
   }
 
-  Widget _pinBoxes() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(_pinLength, (i) {
-        final filled = i < _pin.length;
-        final active = i == _pin.length && !_isLoading && !_locked;
-        return Container(
-          width: 44,
-          height: 52,
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          alignment: Alignment.center,
-          decoration: BoxDecoration(
-            color: filled ? _lav : Colors.white,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: _error != null
-                  ? _red
-                  : (filled || active ? _primary : const Color(0xFFDADBE4)),
-              width: 1.5,
-            ),
-          ),
-          child: filled
-              ? const Text(
-                  '•',
-                  style: TextStyle(fontSize: 26, height: 1, color: _ink),
-                )
-              : null,
-        );
-      }),
-    );
-  }
+  Widget _pinBoxes() => PinBoxes(
+        length: _pinLength,
+        pin: _pin,
+        hasError: _error != null,
+        active: !_isLoading && !_locked,
+      );
 
   /// PIN 입력창 아래 한 줄: 처리 중 · 오류 · 잠금 경고 · 도움말 중 하나만 보여준다.
   Widget _statusLine() {
@@ -1026,75 +1002,9 @@ class _RedeemPinDialogState extends State<_RedeemPinDialog> {
   }
 
   /// 시스템 키보드 대신 화면 하단 숫자 패드. 계산대에서 직원이 바로 누른다.
-  Widget _keypad() {
-    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
-    final disabled = _isLoading || _locked;
-    return Container(
-      color: Colors.white,
-      padding: EdgeInsets.fromLTRB(
-        18,
-        6,
-        18,
-        MediaQuery.of(context).padding.bottom + 8,
-      ),
-      child: GridView.count(
-        crossAxisCount: 3,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 2.6,
-        children: keys.map((k) {
-          if (k.isEmpty) return const SizedBox.shrink();
-          final isBack = k == '⌫';
-          return InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap:
-                disabled ? null : (isBack ? _onBackspace : () => _onDigit(k)),
-            child: Center(
-              child: isBack
-                  ? Icon(
-                      Icons.backspace_outlined,
-                      size: 22,
-                      color: disabled ? _line : _ink,
-                    )
-                  : Text(
-                      k,
-                      style: TextStyle(
-                        fontFamily: 'Pretendard',
-                        fontSize: 24,
-                        fontWeight: FontWeight.w500,
-                        color: disabled ? _line : _ink,
-                      ),
-                    ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
-class _DashedDivider extends StatelessWidget {
-  const _DashedDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const dashW = 6.0;
-        const gap = 5.0;
-        final count = (constraints.maxWidth / (dashW + gap)).floor();
-        return Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: List.generate(
-            count,
-            (_) => Container(
-              width: dashW,
-              height: 1.5,
-              color: const Color(0xFFD9DAE4),
-            ),
-          ),
-        );
-      },
-    );
-  }
+  Widget _keypad() => PinKeypad(
+        disabled: _isLoading || _locked,
+        onDigit: _onDigit,
+        onBackspace: _onBackspace,
+      );
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'package:new1/coupon/pin_entry_widgets.dart';
 import 'package:new1/services/app_config_service.dart';
+import 'package:new1/services/remote_text_service.dart';
 
 const Color _stampCta = Color(0xFF312E81);
 
@@ -16,241 +18,256 @@ class StampAddRequest {
   final int count;
 }
 
-/// 매장 상세와 지갑 스탬프 탭이 같이 쓰는 적립 창.
-/// 개수를 고르고 직원이 매장 PIN을 입력한다. 취소하면 null.
-Future<StampAddRequest?> showStampAddDialog(BuildContext context) {
-  final controller = TextEditingController();
-  var selectedCount = 1;
-  String? error;
-  return showDialog<StampAddRequest>(
-    context: context,
-    builder: (dialogContext) {
-      return StatefulBuilder(builder: (context, setState) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: 360,
-              maxHeight: MediaQuery.sizeOf(dialogContext).height * 0.75,
-            ),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-              decoration: ShapeDecoration(
-                color: const Color(0xFFF2F2F2),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15),
-                ),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '스탬프 적립',
-                      style: TextStyle(
-                        color: Color(0xFF39393E),
-                        fontSize: 19,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w800,
-                        height: 1.21,
-                      ),
-                    ),
-                    const SizedBox(height: 22),
-                    Text(
-                      '스탬프를 적립하시겠습니까?\n\n적립 개수를 선택하고 직원이 매장 PIN을 입력하시면\n\n스탬프 $selectedCount개가 적립됩니다.',
-                      style: const TextStyle(
-                        color: Color(0xFF39393E),
-                        fontSize: 14,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w500,
-                        height: 0.70,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      '적립 개수',
-                      style: TextStyle(
-                        color: Color(0xFF797979),
-                        fontSize: 15,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: ShapeDecoration(
-                        color: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          side: const BorderSide(
-                            width: 2,
-                            color: Color(0xFFD9D9D9),
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: selectedCount,
-                          isExpanded: true,
-                          borderRadius: BorderRadius.circular(10),
-                          dropdownColor: Colors.white,
-                          style: const TextStyle(
-                            color: Color(0xFF39393E),
-                            fontSize: 16,
-                            fontFamily: 'Pretendard',
-                            fontWeight: FontWeight.w600,
-                          ),
-                          items: List.generate(
-                            AppConfigService.stampMaxPerScan,
-                            (index) => DropdownMenuItem<int>(
-                              value: index + 1,
-                              child: Text('${index + 1}개'),
-                            ),
-                          ),
-                          onChanged: (value) {
-                            if (value == null) return;
-                            setState(() => selectedCount = value);
-                          },
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 26),
-                    const Text(
-                      '매장 PIN',
-                      style: TextStyle(
-                        color: Color(0xFF797979),
-                        fontSize: 15,
-                        fontFamily: 'Pretendard',
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Container(
-                      width: double.infinity,
-                      height: 40,
-                      decoration: ShapeDecoration(
-                        color: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          side: const BorderSide(
-                            width: 2,
-                            color: Color(0xFFD9D9D9),
-                          ),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      alignment: Alignment.center,
-                      child: TextField(
-                        controller: controller,
-                        keyboardType: TextInputType.number,
-                        obscureText: true,
-                        maxLength: AppConfigService.pinLength,
-                        style: const TextStyle(
-                          color: Color(0xFF39393E),
-                          fontSize: 16,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                        ),
-                        decoration: const InputDecoration(
-                          isCollapsed: true,
-                          border: InputBorder.none,
-                          counterText: '',
-                        ),
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                          LengthLimitingTextInputFormatter(
-                            AppConfigService.pinLength,
-                          ),
-                        ],
-                      ),
-                    ),
-                    if (error != null) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        error!,
-                        style: const TextStyle(
-                          color: Color(0xFFEF4444),
-                          fontSize: 12,
-                          fontFamily: 'Pretendard',
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => Navigator.of(dialogContext).pop(),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              foregroundColor: const Color(0xFF39393E),
-                              side: const BorderSide(color: Color(0xFFBABAC0)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              textStyle: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 15,
-                              ),
-                            ),
-                            child: const Text('취소'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              final value = controller.text.trim();
-                              if (value.length != AppConfigService.pinLength) {
-                                setState(() {
-                                  error =
-                                      'PIN은 ${AppConfigService.pinLength}자리 숫자여야 합니다.';
-                                });
-                                return;
-                              }
-                              Navigator.of(dialogContext).pop(
-                                StampAddRequest(
-                                  pin: value,
-                                  count: selectedCount,
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _stampCta,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(vertical: 13),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(15),
-                              ),
-                              textStyle: const TextStyle(
-                                fontFamily: 'Pretendard',
-                                fontWeight: FontWeight.w700,
-                                fontSize: 16,
-                                letterSpacing: -0.32,
-                              ),
-                            ),
-                            child: const Text('적립하기'),
-                          ),
-                        ),
-                      ],
-                    ),
+/// 매장 상세·지갑 스탬프 탭·QR 시트가 같이 쓰는 스탬프 적립 화면.
+/// 쿠폰 사용 화면과 같은 디자인(티켓 카드 + 매장 PIN 칸 + 하단 숫자 패드)이다.
+/// 직원이 PIN을 모두 누르면 개수와 함께 돌려주고, 닫으면 null.
+Future<StampAddRequest?> showStampAddDialog(
+  BuildContext context, {
+  String? restaurantName,
+}) {
+  return Navigator.of(context, rootNavigator: true).push<StampAddRequest>(
+    MaterialPageRoute(
+      fullscreenDialog: true,
+      builder: (_) => StampAddScreen(restaurantName: restaurantName),
+    ),
+  );
+}
+
+class StampAddScreen extends StatefulWidget {
+  const StampAddScreen({super.key, this.restaurantName});
+
+  final String? restaurantName;
+
+  @override
+  State<StampAddScreen> createState() => _StampAddScreenState();
+}
+
+class _StampAddScreenState extends State<StampAddScreen> {
+  String _pin = '';
+  int _count = 1;
+
+  int get _pinLength => AppConfigService.pinLength;
+
+  void _onDigit(String d) {
+    if (_pin.length >= _pinLength) return;
+    HapticFeedback.selectionClick();
+    setState(() => _pin += d);
+    if (_pin.length == _pinLength) {
+      Navigator.of(context).pop(StampAddRequest(pin: _pin, count: _count));
+    }
+  }
+
+  void _onBackspace() {
+    if (_pin.isEmpty) return;
+    setState(() => _pin = _pin.substring(0, _pin.length - 1));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: PinEntryColors.bg,
+      appBar: AppBar(
+        backgroundColor: PinEntryColors.bg,
+        surfaceTintColor: PinEntryColors.bg,
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.close_rounded, color: PinEntryColors.ink),
+          onPressed: () => Navigator.of(context).maybePop(),
+        ),
+        title: const Text(
+          '스탬프 적립',
+          style: TextStyle(
+            fontFamily: 'Pretendard',
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: PinEntryColors.ink,
+          ),
+        ),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: Column(
+                children: [
+                  _ticket(),
+                  if (AppConfigService.stampMaxPerScan > 1) ...[
+                    const SizedBox(height: 18),
+                    _countSection(),
                   ],
-                ),
+                ],
               ),
             ),
           ),
-        );
-      });
-    },
-  ).whenComplete(controller.dispose);
+          PinKeypad(onDigit: _onDigit, onBackspace: _onBackspace),
+        ],
+      ),
+    );
+  }
+
+  Widget _ticket() {
+    final name = widget.restaurantName;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: PinEntryColors.ink.withOpacity(0.06),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          if (name != null && name.isNotEmpty)
+            Text(
+              name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: PinEntryColors.sub,
+              ),
+            ),
+          const SizedBox(height: 6),
+          Text(
+            '스탬프 $_count개 적립',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 26,
+              fontWeight: FontWeight.w800,
+              height: 1.25,
+              letterSpacing: -0.8,
+              color: PinEntryColors.ink,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            '직원이 매장 PIN을 입력하면 적립돼요',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: PinEntryColors.sub,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const PinDashedDivider(),
+          const SizedBox(height: 14),
+          Text(
+            RemoteText.string('coupon_use_show_staff'),
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+              color: PinEntryColors.ink,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            RemoteText.string('coupon_use_pin_label'),
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              color: PinEntryColors.sub,
+            ),
+          ),
+          const SizedBox(height: 8),
+          PinBoxes(length: _pinLength, pin: _pin),
+          const SizedBox(height: 8),
+          Text(
+            RemoteText.string('coupon_use_pin_help'),
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: PinEntryColors.sub,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 쿠폰 사용 화면의 "몇 명이 함께 결제했나요?"와 같은 인원 버튼.
+  Widget _countSection() {
+    final max = AppConfigService.stampMaxPerScan;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 10, 6),
+      decoration: BoxDecoration(
+        color: PinEntryColors.lav,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '몇 명이 함께 결제했나요?',
+            style: TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: PinEntryColors.sub,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: List.generate(max, (i) {
+              final n = i + 1;
+              final selected = n == _count;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i == max - 1 ? 4 : 8),
+                  child: GestureDetector(
+                    onTap: () => setState(() => _count = n),
+                    child: Container(
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: selected ? PinEntryColors.primary : Colors.white,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '$n명',
+                        style: TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: selected ? Colors.white : PinEntryColors.ink,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '스탬프 $_count개가 적립돼요.',
+            style: const TextStyle(
+              fontFamily: 'Pretendard',
+              fontSize: 12.5,
+              fontWeight: FontWeight.w600,
+              color: PinEntryColors.primary,
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
 }
 
 /// 적립 실패. 다시 시도를 고르면 true.
@@ -352,21 +369,77 @@ Future<bool?> showStampAddFailedDialog(
   );
 }
 
+/// 하루 적립 한도 안내. 실패·성공 창과 같은 흰 카드 모양이다.
 Future<void> showStampDailyLimitDialog(BuildContext context, String message) {
   return showDialog<void>(
     context: context,
-    builder: (dialogContext) {
-      return AlertDialog(
-        title: const Text('적립 한도 안내'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('확인'),
-          ),
-        ],
-      );
-    },
+    builder: (dialogContext) => Dialog(
+      backgroundColor: Colors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(24, 26, 24, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                color: PinEntryColors.lav,
+              ),
+              child: const Icon(
+                Icons.schedule_rounded,
+                size: 34,
+                color: PinEntryColors.primary,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              '적립 한도 안내',
+              style: TextStyle(
+                fontSize: 19,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.4,
+                color: Color(0xFF191F28),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w500,
+                height: 1.45,
+                color: Color(0xFF8B95A1),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _stampCta,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  textStyle: const TextStyle(
+                    fontSize: 14.5,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                child: const Text('확인'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 }
 

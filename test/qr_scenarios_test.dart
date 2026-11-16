@@ -138,7 +138,8 @@ void main() {
     await scan(tester, entryJson('coupon_arrived', coupon: 'C1'), held: coupon());
     expect(find.text('쿠폰이 도착했어요'), findsOneWidget);
     expect(find.text('음료 1잔 무료'), findsOneWidget);
-    expect(find.textContaining('라라더에서만'), findsOneWidget);
+    // 쿠폰 카드는 식당 상세와 같은 티켓 카드라 매장명이 라벨로 나온다
+    expect(find.text('라라더'), findsOneWidget);
     expect(find.text('나중에 쓸게요'), findsOneWidget);
     // 스탬프 매장은 첫 방문에도 PIN 입력으로 이어지는 스탬프 버튼이 있다
     expect(find.text('쿠폰 쓰고 스탬프도 찍기'), findsOneWidget);

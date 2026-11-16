@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import 'package:new1/config/screen_ids.dart';
 import 'package:new1/services/coupon_service.dart';
+import 'package:new1/services/master_content.dart';
 import 'package:new1/services/mileage_service.dart';
+import 'package:new1/widgets/coupon_ticket_card.dart';
+import 'package:new1/widgets/stamp_asset_grid.dart';
 
 /// QR 진입 시트에서 고른 행동.
 enum QrEntryAction {
@@ -30,6 +33,7 @@ Future<QrEntryAction?> showQrEntrySheet(
   required QrEntry entry,
   required String restaurantName,
   UserCoupon? coupon,
+  String? restaurantCategory,
 }) {
   return showModalBottomSheet<QrEntryAction>(
     context: context,
@@ -40,6 +44,7 @@ Future<QrEntryAction?> showQrEntrySheet(
       entry: entry,
       restaurantName: restaurantName,
       coupon: coupon,
+      restaurantCategory: restaurantCategory,
     ),
   );
 }
@@ -50,17 +55,19 @@ class QrEntrySheet extends StatelessWidget {
     required this.entry,
     required this.restaurantName,
     this.coupon,
+    this.restaurantCategory,
   });
 
   final QrEntry entry;
   final String restaurantName;
   final UserCoupon? coupon;
 
+  /// 쿠폰 카드의 카테고리 아이콘용 (식당 상세와 같은 아이콘).
+  final String? restaurantCategory;
+
   static const Color _primary = Color(0xFF4F46E5);
-  static const Color _lav = Color(0xFFEEEDFC);
   static const Color _ink = Color(0xFF191F28);
   static const Color _sub = Color(0xFF8B95A1);
-  static const Color _red = Color(0xFFE11D48);
 
   bool get _isStampBranch =>
       entry.branch == QrEntryBranch.stampProgress ||
@@ -140,45 +147,66 @@ class QrEntrySheet extends StatelessWidget {
         22,
         MediaQuery.of(context).padding.bottom + 18,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: const Color(0xFFE5E7EB),
-              borderRadius: BorderRadius.circular(99),
+      // 스탬프 판·쿠폰 카드가 커져서 작은 화면에서도 넘치지 않게 스크롤을 허용한다.
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFE5E7EB),
+                borderRadius: BorderRadius.circular(99),
+              ),
             ),
-          ),
-          const SizedBox(height: 20),
-          Text(
-            _eyebrow,
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: _sub,
+            const SizedBox(height: 20),
+            Text(
+              _eyebrow,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: _sub,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            _headline,
-            textAlign: TextAlign.center,
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              height: 1.3,
-              letterSpacing: -0.6,
-              color: _ink,
+            const SizedBox(height: 6),
+            Text(
+              _headline,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontFamily: 'Pretendard',
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                height: 1.3,
+                letterSpacing: -0.6,
+                color: _ink,
+              ),
             ),
-          ),
-          if (_isStampBranch && entry.stamp.target > 0) ...[
-            const SizedBox(height: 14),
-            _progress(),
-            if (stampLine.isNotEmpty) ...[
-              const SizedBox(height: 8),
+            if (_isStampBranch && entry.stamp.target > 0) ...[
+              const SizedBox(height: 14),
+              _progress(),
+              if (stampLine.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  stampLine,
+                  style: const TextStyle(
+                    fontFamily: 'Pretendard',
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w500,
+                    color: _sub,
+                  ),
+                ),
+              ],
+            ],
+            if (_hasCoupon) ...[
+              const SizedBox(height: 16),
+              _couponCard(DateTime.now()),
+            ],
+            const SizedBox(height: 18),
+            _buttons(context),
+            if (!_isStampBranch && stampLine.isNotEmpty) ...[
+              const SizedBox(height: 12),
               Text(
                 stampLine,
                 style: const TextStyle(
@@ -190,102 +218,69 @@ class QrEntrySheet extends StatelessWidget {
               ),
             ],
           ],
-          if (_hasCoupon) ...[
-            const SizedBox(height: 16),
-            _couponCard(DateTime.now()),
-          ],
-          const SizedBox(height: 18),
-          _buttons(context),
-          if (!_isStampBranch && stampLine.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            Text(
-              stampLine,
-              style: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 12.5,
-                fontWeight: FontWeight.w500,
-                color: _sub,
-              ),
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 
-  /// 쿠폰 카드. 재방문이면 "갖고 계신 쿠폰"으로 함께 쓰도록 유도한다.
+  /// 쿠폰 카드. 식당 상세·쿠폰함과 같은 티켓 카드(CouponTicketCard)를 쓴다.
+  /// 재방문이면 위에 "갖고 계신 쿠폰"으로 함께 쓰도록 유도한다. 사용 버튼은 아래 시트 버튼이 맡는다.
   Widget _couponCard(DateTime now) {
     final c = coupon!;
     final revisit = _isStampBranch;
     final label = !revisit
         ? null
         : (entry.couponIsReward ? '스탬프 보상 쿠폰이 도착해 있어요' : '갖고 계신 쿠폰');
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-      decoration: BoxDecoration(
-        color: _lav,
-        borderRadius: BorderRadius.circular(18),
-        border: revisit ? Border.all(color: _primary.withOpacity(0.35)) : null,
-      ),
-      child: Column(
-        children: [
-          if (label != null) ...[
-            Text(
-              label,
-              style: const TextStyle(
-                fontFamily: 'Pretendard',
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: _primary,
-              ),
-            ),
-            const SizedBox(height: 4),
-          ],
+    final benefit = c.benefit;
+    final categoryKey = MasterContent.normalize(
+      benefit?.restaurantCategory ?? restaurantCategory ?? '',
+      unknownAsEtc: false,
+    );
+    final storeLabel = benefit?.allStores == true
+        ? '전 매장 사용 가능'
+        : (benefit?.restaurantNameText ?? restaurantName);
+    return Column(
+      children: [
+        if (label != null) ...[
           Text(
-            c.benefit?.resolvedTitle ?? '쿠폰',
-            textAlign: TextAlign.center,
+            label,
             style: const TextStyle(
               fontFamily: 'Pretendard',
-              fontSize: 20,
+              fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: _ink,
+              color: _primary,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            [
-              expiryText(c.expiresAt, now),
-              '$restaurantName에서만',
-            ].where((e) => e.isNotEmpty).join(' · '),
-            style: const TextStyle(
-              fontFamily: 'Pretendard',
-              fontSize: 12.5,
-              fontWeight: FontWeight.w600,
-              color: _red,
-            ),
-          ),
+          const SizedBox(height: 8),
         ],
-      ),
+        CouponTicketCard(
+          iconPath: MasterContent.svgOf(categoryKey),
+          storeLabel: storeLabel,
+          title: benefit?.resolvedTitle ?? kCouponBenefitFallbackTitle,
+          subtitle: benefit?.resolvedSubtitle ?? kCouponBenefitFallbackSubtitle,
+          notes: benefit?.notesText,
+          expiryText: formatCouponExpiryLabel(c.expiresAt),
+          expiryUrgent: isCouponExpiringSoon(c),
+          showAction: false,
+          margin: EdgeInsets.zero,
+        ),
+      ],
     );
   }
 
+  /// 제휴식당 상세의 스탬프 판과 같은 위젯(StampAssetGrid)·같은 도장 이미지.
+  /// 선물 도장은 상세와 마찬가지로 "다음 보상 칸" 하나만 단다.
   Widget _progress() {
     final s = entry.stamp;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        for (var i = 0; i < s.target && i < 10; i++)
-          Container(
-            width: 22,
-            height: 22,
-            margin: const EdgeInsets.symmetric(horizontal: 3),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: i < s.current ? _primary : _lav,
-            ),
-          ),
-      ],
+    final nextRewardStep = s.remaining > 0 ? s.current + s.remaining : null;
+    return StampAssetGrid(
+      current: s.current,
+      target: s.target,
+      rewardSteps: {
+        if (nextRewardStep != null && nextRewardStep <= s.target)
+          nextRewardStep,
+      },
+      alignment: WrapAlignment.center,
     );
   }
 
@@ -293,7 +288,8 @@ class QrEntrySheet extends StatelessWidget {
   bool get _stampEnabled => entry.stamp.enabled && entry.stamp.target > 0;
 
   /// 쿠폰 + 스탬프 버튼. 누르면 PIN·개수 입력 창이 열린다 (서버 PIN 검증 없이는 적립되지 않는다).
-  Widget _couponWithStampButtons(BuildContext context, {required _Btn closeBtn}) {
+  Widget _couponWithStampButtons(BuildContext context,
+      {required _Btn closeBtn}) {
     return Column(
       children: [
         _column(context, [

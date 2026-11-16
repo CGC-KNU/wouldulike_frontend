@@ -1,7 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import 'package:new1/services/app_config_service.dart';
+
 import 'ticket_shell.dart';
+
+/// 쿠폰 만료 라벨 ("3시간 남음", "2일 남음", "2026.11.30까지"). 식당 상세와 QR 시트가 같이 쓴다.
+String? formatCouponExpiryLabel(DateTime? expiresAt) {
+  if (expiresAt == null) return null;
+
+  final now = AppConfigService.now();
+  final difference = expiresAt.difference(now);
+
+  if (difference.isNegative) {
+    return '만료됨';
+  }
+
+  if (difference.inHours < 24) {
+    if (difference.inHours > 0) {
+      return '${difference.inHours}시간 남음';
+    }
+    if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}분 남음';
+    }
+    return '곧 만료';
+  }
+
+  if (difference.inDays < 7) {
+    return '${difference.inDays}일 남음';
+  }
+
+  return '${expiresAt.year}.${expiresAt.month.toString().padLeft(2, '0')}.${expiresAt.day.toString().padLeft(2, '0')}까지';
+}
 
 /// 쿠폰 티켓 카드. 지갑 쿠폰함과 식당 상세가 같은 디자인을 쓰도록 공용화한 위젯.
 /// 표시 전용 — 라벨 계산과 사용 처리는 호출부가 한다.

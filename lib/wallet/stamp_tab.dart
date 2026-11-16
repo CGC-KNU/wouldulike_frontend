@@ -472,7 +472,7 @@ class _StampTabState extends State<StampTab> {
   ) async {
     final request = kDemoWallet
         ? const StampAddRequest(pin: 'demo', count: 1)
-        : await showStampAddDialog(context);
+        : await showStampAddDialog(context, restaurantName: restaurant.name);
     if (request == null || !mounted) return;
 
     final addResult = await CouponService.addStamp(
