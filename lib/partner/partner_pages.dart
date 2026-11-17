@@ -12,6 +12,7 @@ import 'partner_access_controller.dart';
 import 'partner_api_client.dart';
 import 'partner_report_launcher.dart';
 import 'partner_design.dart';
+import 'widgets/home_metrics.dart';
 
 typedef PartnerRequest = Future<Map<String, dynamic>> Function(String route,
     {String method, Map<String, dynamic>? body});
@@ -510,89 +511,6 @@ class PartnerPageState extends State<PartnerPage> {
       const {'FREE': 'Free', 'BOOST': 'Boost', 'CONTENT': 'Premium'}[tier] ??
       _text(tier, '플랜 미확인');
 
-  Widget _metric(String label, dynamic value, String unit,
-      {dynamic previous, bool enabled = true, bool loyal = false}) {
-    final now = num.tryParse('$value'), prev = num.tryParse('$previous');
-    String comparison = '전월 비교 미확인';
-    Color color = PartnerDesign.muted;
-    if (loyal) {
-      comparison = '지금까지 3일 이상 오신 분';
-    } else if (now != null && prev != null) {
-      if (prev == 0) {
-        comparison = now == 0 ? '지난달에도 없었습니다' : '지난달 같은 기간에는 없었습니다';
-      } else if (now == prev) {
-        comparison = '전월과 같음';
-      } else {
-        final diff = now - prev;
-        comparison = '${diff > 0 ? '▲' : '▼'} 전월 ${diff > 0 ? '+' : ''}$diff';
-        color = diff > 0 ? PartnerDesign.green : PartnerDesign.red;
-      }
-    }
-    return PartnerPanel(
-        padding: const EdgeInsets.all(14),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label,
-              style: const TextStyle(fontSize: 12, color: PartnerDesign.muted)),
-          const SizedBox(height: 7),
-          Text.rich(TextSpan(children: [
-            TextSpan(
-                text: enabled ? _text(value) : '—',
-                style: const TextStyle(
-                    fontSize: 26,
-                    height: 1.2,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: -.5)),
-            if (enabled)
-              TextSpan(
-                  text: ' $unit',
-                  style: const TextStyle(
-                      fontSize: 12, color: PartnerDesign.muted)),
-          ])),
-          const SizedBox(height: 9),
-          Text(enabled ? comparison : '스탬프를 쓰지 않는 매장입니다',
-              style: TextStyle(fontSize: 11.5, height: 1.45, color: color)),
-        ]));
-  }
-
-  Widget _metrics(Map<String, dynamic> data) {
-    final stats = _map(data['stats']),
-        now = _map(stats['this']),
-        prev = _map(stats['prev']);
-    final stamp = _map(data['store'])['stamp_enabled'] != false;
-    final items = [
-      _metric('쿠폰 사용', now['coupon_used'], '장', previous: prev['coupon_used']),
-      _metric('스탬프 적립', now['stamp'], '개',
-          previous: prev['stamp'], enabled: stamp),
-      _metric('재방문', now['revisit'], '명',
-          previous: prev['revisit'], enabled: stamp),
-      _metric('단골 누적', stats['loyal_total'], '명', enabled: stamp, loyal: true),
-    ];
-    return LayoutBuilder(builder: (context, box) {
-      final scale = MediaQuery.textScalerOf(context).scale(13) / 13;
-      final columns = box.maxWidth >= 650 && scale < 1.5
-          ? 4
-          : box.maxWidth < 330 && scale > 1.5
-              ? 1
-              : 2;
-      return Column(children: [
-        for (var start = 0; start < items.length; start += columns)
-          Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: IntrinsicHeight(
-                  child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                    for (var i = start;
-                        i < start + columns && i < items.length;
-                        i++) ...[
-                      if (i > start) const SizedBox(width: 10),
-                      Expanded(child: items[i]),
-                    ],
-                  ]))),
-      ]);
-    });
-  }
-
   Widget _pinCard(Map<String, dynamic> store) => Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: PartnerPanel(child: LayoutBuilder(builder: (context, box) {
@@ -631,6 +549,9 @@ class PartnerPageState extends State<PartnerPage> {
 
   List<Widget> _home(Map<String, dynamic> data) {
     final store = _map(data['store']);
+    final monthLabel = _text(data['month']).replaceFirstMapped(
+        RegExp(r'^(\d{4})-(\d{2})$'),
+        (match) => '${match[1]} ${int.parse(match[2]!)}월');
     final billing = _map(data['billing']),
         invoice = _map(billing['invoice']),
         manager = _map(data['manager']),
@@ -686,15 +607,10 @@ class PartnerPageState extends State<PartnerPage> {
       _pinCard(store),
       Padding(
           padding: const EdgeInsets.only(top: 6, bottom: 10),
-          child: Text('${_text(data['month'])} 이번 달 지표',
+          child: Text('$monthLabel 매장 지표',
               style:
                   const TextStyle(fontSize: 14, fontWeight: FontWeight.w700))),
-      _metrics(data),
-      const Padding(
-          padding: EdgeInsets.only(bottom: 18),
-          child: Text(
-              '앞의 셋은 이번 달 1일부터 오늘까지, 전월 비교도 지난달 같은 기간 기준입니다. 앱에서 실제로 찍힌 것만 셉니다.',
-              style: TextStyle(fontSize: 11.5, color: PartnerDesign.muted))),
+      PartnerHomeMetrics(data: data),
       _card('최근에 있었던 일', _feed(data), color: PartnerDesign.tint),
       _card('월간 리포트', [_reportState(_map(data['report_status']))]),
       _card('내 매장', [
@@ -772,6 +688,7 @@ class PartnerPageState extends State<PartnerPage> {
         if ((data['partial_errors'] as List? ?? []).contains('promo'))
           const Text('홍보물을 읽지 못했습니다. 새로고침해 주세요.'),
       ]),
+      PartnerInstagramSummary(data: data),
     ];
   }
 

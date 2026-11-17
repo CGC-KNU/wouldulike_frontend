@@ -29,6 +29,33 @@ void main() {
         'main_menu': '정성 가득한 한 끼',
       },
       'month': '2026-11',
+      'metrics': {
+        'since': '2026-10-15',
+        'coupon_used': {'month': 12, 'total': 35},
+        'stamp': {'month': 36, 'total': 92},
+        'promotion': {
+          'month': {
+            'views': 12840,
+            'reach': 9360,
+            'status': 'ok',
+            'captured_at': '2026-11-11T09:00:00+09:00'
+          },
+          'total': {'views': 28650, 'reach': 19480, 'status': 'ok'},
+        },
+        'store_views': {
+          'month': 186,
+          'total': 492,
+          'month_status': 'ok',
+          'total_status': 'ok',
+          'through': '2026-11-10'
+        },
+        'instagram': {
+          'views': 1286340,
+          'reach': 842650,
+          'status': 'ok',
+          'captured_at': '2026-11-11T09:00:00+09:00'
+        },
+      },
       'stats': {
         'this': {'coupon_used': 12, 'stamp': 36, 'revisit': 8},
         'prev': {'coupon_used': 10, 'stamp': 30, 'revisit': 7},
@@ -255,8 +282,8 @@ void main() {
             title: const Text('우주식당 · 사장님 모드'),
             bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(56),
-                child: PartnerModeToggle(
-                    partnerMode: true, onChanged: (_) {}))),
+                child:
+                    PartnerModeToggle(partnerMode: true, onChanged: (_) {}))),
         body: PartnerPage(
             tab: 0,
             scope: '1:1',
