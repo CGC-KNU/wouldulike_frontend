@@ -79,6 +79,8 @@ int? _restaurantIdOf(
 /// https 스킴만 통과시킨다 (mission_service.dart의 PromoBlock 검증 패턴과 동일).
 bool _isSafeBannerUrl(String? raw) {
   if (raw == null || raw.trim().isEmpty) return false;
+  // 실험실 빌드는 맥 안 서버(http://10.0.2.2:8000)의 static 이미지를 쓴다. 릴리스는 isLab 이 false.
+  if (ApiClient.isLab && raw.trim().startsWith(ApiClient.baseUrl)) return true;
   final uri = Uri.tryParse(raw.trim());
   return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
 }

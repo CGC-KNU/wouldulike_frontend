@@ -56,6 +56,8 @@ enum DeepLinkScreen {
   favorites,
   profile,
   login,
+  /// 앱 내 설문 (wouldulike://survey/<code>)
+  survey,
 }
 
 /// 브릿지·커스텀 스킴이 가리키는 화면.
@@ -65,6 +67,8 @@ class DeepLinkTarget {
     this.restaurantId,
     this.walletTabIndex,
     this.campaignCode,
+    this.surveyCode,
+    this.entry,
   });
 
   final DeepLinkScreen screen;
@@ -76,12 +80,19 @@ class DeepLinkTarget {
   /// 기획전 코드. 없으면 현재 진행 중 첫 기획전.
   final String? campaignCode;
 
+  /// 설문 코드. 없으면 지금 열린 설문.
+  final String? surveyCode;
+
+  /// 설문 들어온 길(GA4 survey_view.entry) — 알림 탭이면 push.
+  final String? entry;
+
   int get tabIndex {
     switch (screen) {
       case DeepLinkScreen.home:
       case DeepLinkScreen.featured:
       case DeepLinkScreen.mission:
       case DeepLinkScreen.invite:
+      case DeepLinkScreen.survey:
         return 0;
       case DeepLinkScreen.restaurants:
       case DeepLinkScreen.restaurantDetail:
@@ -112,6 +123,7 @@ class DeepLinkTarget {
       case DeepLinkScreen.favorites:
       case DeepLinkScreen.profile:
       case DeepLinkScreen.login:
+      case DeepLinkScreen.survey:
         return true;
       case DeepLinkScreen.home:
       case DeepLinkScreen.restaurants:
@@ -237,6 +249,13 @@ DeepLinkTarget? _resolveDestination(String dest, List<String> rest) {
       return DeepLinkTarget(
         screen: DeepLinkScreen.featured,
         campaignCode: code.isEmpty ? null : code,
+      );
+    case 'survey':
+    case 'surveys':
+      final surveyCode = rest.isNotEmpty ? rest.first.trim() : '';
+      return DeepLinkTarget(
+        screen: DeepLinkScreen.survey,
+        surveyCode: surveyCode.isEmpty ? null : surveyCode,
       );
     case 'mission':
     case 'missions':
@@ -388,6 +407,10 @@ Uri _customSchemeFromBridgeQuery(Map<String, String> params) {
       return id.isEmpty
           ? Uri.parse('wouldulike://featured')
           : Uri.parse('wouldulike://featured/$id');
+    case 'survey':
+      return id.isEmpty
+          ? Uri.parse('wouldulike://survey')
+          : Uri.parse('wouldulike://survey/$id');
     case 'mission':
     case 'missions':
     case 'welcome':
@@ -473,9 +496,16 @@ class DeepLinkService {
     DeepLinkChannel channel = DeepLinkChannel.linkStream,
   }) {
     debugPrint('[DeepLink] Handling URI: $uri');
-    final target = resolveWouldUlikeDeepLink(uri);
+    var target = resolveWouldUlikeDeepLink(uri);
     // 해석 못 한 링크(카카오 로그인 리다이렉트 등)는 화면 이동이 아니므로 남기지 않는다.
     if (target == null) return;
+    if (target.screen == DeepLinkScreen.survey) {
+      target = DeepLinkTarget(
+        screen: DeepLinkScreen.survey,
+        surveyCode: target.surveyCode,
+        entry: channel == DeepLinkChannel.pushTap ? 'push' : 'deeplink',
+      );
+    }
     final linkSource = resolveDeepLinkSource(uri);
     AnalyticsLogger.logEvent(
       AnalyticsEvents.deepLinkOpen,

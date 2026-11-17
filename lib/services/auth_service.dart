@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../onboarding/onboarding_prefs.dart';
 import '../utils/analytics_logger.dart';
+import 'api_client.dart';
 
 class ReloginRequiredException implements Exception {
   final String message;
@@ -22,8 +23,7 @@ class ReloginRequiredException implements Exception {
 }
 
 class AuthService {
-  static const String _baseUrl =
-      'https://deliberate-lenette-coggiri-5ee7b85e.koyeb.app';
+  static const String _baseUrl = ApiClient.baseUrl;
 
   static Future<Map<String, dynamic>> loginWithKakao(String kakaoAccessToken,
       {String? guestUuid}) async {

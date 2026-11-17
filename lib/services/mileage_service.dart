@@ -593,6 +593,125 @@ class MileageService {
   }
 }
 
+/// 스탬프 없는 매장의 방문 적립 카드 값 (GET /api/mileage/visit/).
+class StoreVisitStatus {
+  const StoreVisitStatus({
+    required this.available,
+    required this.points,
+    required this.doubled,
+    required this.creditedToday,
+    required this.dailyLimit,
+    required this.balance,
+  });
+
+  factory StoreVisitStatus.fromJson(Map<String, dynamic> json) =>
+      StoreVisitStatus(
+        available: json['available'] == true,
+        points: _asInt(json['points']),
+        doubled: json['doubled'] == true,
+        creditedToday: json['credited_today'] == true,
+        dailyLimit: _asInt(json['daily_limit']),
+        balance: _asInt(json['balance']),
+      );
+
+  /// 이 매장이 방문 적립 대상인지(스탬프를 꺼 둔 매장).
+  final bool available;
+
+  /// 이번에 받을 점수(2배 주간이면 이미 곱한 값).
+  final int points;
+  final bool doubled;
+  final bool creditedToday;
+  final int dailyLimit;
+  final int balance;
+
+  StoreVisitStatus copyWith({bool? creditedToday, int? balance}) =>
+      StoreVisitStatus(
+        available: available,
+        points: points,
+        doubled: doubled,
+        creditedToday: creditedToday ?? this.creditedToday,
+        dailyLimit: dailyLimit,
+        balance: balance ?? this.balance,
+      );
+}
+
+/// 방문 적립 결과 (POST /api/mileage/visit/).
+class StoreVisitResult {
+  const StoreVisitResult({
+    required this.ok,
+    this.delta = 0,
+    this.balance,
+    this.code,
+    this.message,
+    this.statusCode,
+  });
+
+  final bool ok;
+  final int delta;
+  final int? balance;
+
+  /// invalid_pin · pin_locked · visit_daily_limit_reached · network_error 등
+  final String? code;
+  final String? message;
+  final int? statusCode;
+}
+
+class StoreVisitService {
+  static Future<StoreVisitStatus?> fetchStatus(int restaurantId) async {
+    try {
+      final response = await ApiClient.get(
+        '/api/mileage/visit/',
+        queryParameters: {'restaurant_id': restaurantId},
+      ).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) return null;
+      final decoded = _decode(response);
+      return decoded is Map<String, dynamic>
+          ? StoreVisitStatus.fromJson(decoded)
+          : null;
+    } catch (e) {
+      debugPrint('[Mileage] store visit status failed: $e');
+      return null;
+    }
+  }
+
+  static Future<StoreVisitResult> credit(int restaurantId, String pin) async {
+    final key =
+        'visit-$restaurantId-${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(1 << 20)}';
+    try {
+      final response = await ApiClient.postWithoutThrow(
+        '/api/mileage/visit/',
+        body: {'restaurant_id': restaurantId, 'pin': pin},
+        headers: {'Idempotency-Key': key},
+      ).timeout(const Duration(seconds: 8));
+      final decoded = _decode(response);
+      final map =
+          decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+      if (response.statusCode >= 400) {
+        return StoreVisitResult(
+          ok: false,
+          code: map['code']?.toString() ?? 'http_${response.statusCode}',
+          message: map['detail']?.toString(),
+          statusCode: response.statusCode,
+          balance: map['balance'] == null ? null : _asInt(map['balance']),
+        );
+      }
+      return StoreVisitResult(
+        ok: true,
+        delta: _asInt(map['delta']),
+        balance: map['balance'] == null ? null : _asInt(map['balance']),
+        statusCode: response.statusCode,
+      );
+    } catch (e) {
+      debugPrint('[Mileage] store visit credit failed: $e');
+      return const StoreVisitResult(
+        ok: false,
+        code: 'network_error',
+        message: '네트워크 오류로 적립하지 못했어요.',
+      );
+    }
+  }
+}
+
 /// QR 진입 후 보여 줄 화면 분기 (서버 coupons/qr_entry.py 와 같은 값).
 enum QrEntryBranch {
   couponArrived('coupon_arrived'),

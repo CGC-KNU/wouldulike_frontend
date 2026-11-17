@@ -956,8 +956,12 @@ class LimitedCouponOffer {
   bool get isMultiPick => picksNeeded > 1;
 
   /// 발급 팝업·선택 화면 태그.
+  /// 앱 내 설문 보상(설문 참여 감사 쿠폰). 설문을 마친 사람에게만 오퍼가 내려온다.
+  bool get isSurveyReward => couponTypeCode == 'SURVEY_GENERAL_SELECT';
+
   String get tagLabel {
     if (isTueThuGeneralSelect) return '화·목 골라받기 쿠폰';
+    if (isSurveyReward) return '설문 참여 쿠폰';
     if (isStudentCouncil) return '학생회 쿠폰';
     if (source?.toUpperCase() == 'CODE') return '이벤트 쿠폰';
     return '한정쿠폰';
@@ -1859,17 +1863,26 @@ class CouponService {
     required String couponTypeCode,
     required int restaurantId,
     List<int>? restaurantIds,
-  }) async {
+  }) {
+    return postLimitedClaim(
+      '/api/coupons/limited/claim/',
+      {
+        'coupon_type_code': couponTypeCode,
+        'restaurant_id': restaurantId,
+        if (restaurantIds != null && restaurantIds.isNotEmpty)
+          'restaurant_ids': restaurantIds,
+      },
+    );
+  }
+
+  /// 골라 받는 쿠폰 수령 응답({coupon_code, issued_coupons} 또는 {detail, code})을 해석한다.
+  /// 한정쿠폰 수령과 설문 완료(/api/surveys/<code>/complete/)가 같이 쓴다.
+  static Future<LimitedCouponClaimResult> postLimitedClaim(
+    String path,
+    Map<String, dynamic> body,
+  ) async {
     try {
-      final response = await ApiClient.postWithoutThrow(
-        '/api/coupons/limited/claim/',
-        body: {
-          'coupon_type_code': couponTypeCode,
-          'restaurant_id': restaurantId,
-          if (restaurantIds != null && restaurantIds.isNotEmpty)
-            'restaurant_ids': restaurantIds,
-        },
-      );
+      final response = await ApiClient.postWithoutThrow(path, body: body);
       if (response.statusCode >= 400) {
         final error = _extractApiErrorFromBody(response.body);
         return LimitedCouponClaimResult.failure(

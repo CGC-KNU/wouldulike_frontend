@@ -11,6 +11,8 @@ import 'package:new1/widgets/coupon_ticket_card.dart';
 import 'package:new1/widgets/referral_code_sheet.dart';
 
 import 'services/api_client.dart';
+import 'services/survey_service.dart';
+import 'survey/survey_screen.dart';
 import 'services/app_config_service.dart';
 import 'services/master_content.dart';
 import 'services/coupon_service.dart'
@@ -139,6 +141,9 @@ class _CouponListScreenState extends State<CouponListScreen> {
   List<String> _categories = const ['ALL'];
   bool _expiringOnly = false;
 
+  /// 지금 열린 설문. 참여 전(open)일 때만 목록 맨 위에 설문 카드를 둔다(목업 ③).
+  ActiveSurvey? _survey;
+
   int _statusPriority(CouponStatus status) {
     switch (status) {
       case CouponStatus.issued:
@@ -256,10 +261,55 @@ class _CouponListScreenState extends State<CouponListScreen> {
         if (widget.source != null) 'source': widget.source!,
       },
     );
+    SurveyService.changes.addListener(_loadSurvey);
     _bootstrap();
   }
 
+  @override
+  void dispose() {
+    SurveyService.changes.removeListener(_loadSurvey);
+    super.dispose();
+  }
+
+  Future<void> _loadSurvey() async {
+    final survey = await SurveyService.fetchActive();
+    if (mounted) setState(() => _survey = survey);
+  }
+
+  Future<void> _openSurvey() async {
+    final code = _survey?.code;
+    if (code == null) return;
+    await SurveyScreen.open(
+      context,
+      code: code,
+      entry: 'wallet_card',
+      onCouponsChanged: () {
+        if (mounted) _loadCoupons();
+      },
+    );
+    if (mounted) _loadSurvey();
+  }
+
+  /// 가진 쿠폰과 같은 카드, 버튼만 「참여하기」.
+  Widget _buildSurveyCard() {
+    final survey = _survey;
+    if (_requiresLogin || survey == null || !survey.showEntry) {
+      return const SizedBox.shrink();
+    }
+    final days = survey.rewardValidDays;
+    return CouponTicketCard(
+      iconPath: 'assets/icons/category/all.svg',
+      storeLabel: '우주라이크 설문',
+      title: survey.rewardTitle ?? '설문 참여 감사 쿠폰',
+      subtitle: '3문항 답하면 바로 받아요',
+      expiryText: days != null ? '받은 날부터 $days일간' : null,
+      actionLabel: '참여하기',
+      onAction: _openSurvey,
+    );
+  }
+
   Future<void> _bootstrap() async {
+    _loadSurvey();
     await _loadCoupons();
     if (!mounted) return;
     await LimitedCouponOfferFlow.maybePresent(
@@ -867,6 +917,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 140),
         children: [
+          _buildSurveyCard(),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 44, 16, 40),
             child: Column(
@@ -960,6 +1011,7 @@ class _CouponListScreenState extends State<CouponListScreen> {
             child: _buildCouponCodeButton(),
           ),
         const SizedBox(height: 12),
+        _buildSurveyCard(),
         if (filtered.isEmpty)
           SizedBox(
             height: MediaQuery.of(context).size.height * 0.25,
