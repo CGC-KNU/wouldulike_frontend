@@ -90,6 +90,10 @@ class PartnerAccessController extends ChangeNotifier
   }
 
   Future<bool> check({bool quiet = false}) {
+    if (ApiClient.isLab) {
+      clear();
+      return Future.value(false);
+    }
     if (!_foreground || AppSession.changing || _disposed) {
       return Future.value(false);
     }

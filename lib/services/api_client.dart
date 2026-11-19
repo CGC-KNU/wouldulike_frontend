@@ -57,6 +57,9 @@ class ApiClient {
       {String method = 'GET',
       Map<String, dynamic>? body,
       http.Client? transport}) async {
+    if (isLab) {
+      throw StateError('LAB 환경에서는 파트너 서비스를 사용할 수 없습니다.');
+    }
     if (uri.scheme != 'https' ||
         uri.host != 'app.wouldulike.kr' ||
         uri.port != 443 ||

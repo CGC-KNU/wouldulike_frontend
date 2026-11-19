@@ -116,6 +116,20 @@ class SurveyDetail {
   final bool loggedIn;
   final String? rewardTitle;
   final int? rewardValidDays;
+
+  bool get hasValidQuestions {
+    if (questions.isEmpty ||
+        questions.map((q) => q.code).toSet().length != questions.length) {
+      return false;
+    }
+    return questions.every((q) =>
+        q.code.trim().isNotEmpty &&
+        q.text.trim().isNotEmpty &&
+        q.options.isNotEmpty &&
+        q.options.map((o) => o.value).toSet().length == q.options.length &&
+        q.options.every(
+            (o) => o.value.trim().isNotEmpty && o.label.trim().isNotEmpty));
+  }
 }
 
 /// 지금 열린 설문 (GET /api/surveys/active/). 홈 배너·쿠폰함 카드가 쓴다.
@@ -171,8 +185,9 @@ class SurveyService {
       final survey = map['survey'];
       if (survey is! Map) return null;
       final s = Map<String, dynamic>.from(survey);
-      final reward =
-          s['reward'] is Map ? Map<String, dynamic>.from(s['reward'] as Map) : const {};
+      final reward = s['reward'] is Map
+          ? Map<String, dynamic>.from(s['reward'] as Map)
+          : const {};
       return ActiveSurvey(
         code: s['code']?.toString() ?? '',
         title: s['title']?.toString() ?? '',
@@ -205,10 +220,12 @@ class SurveyService {
   /// 쿠폰 고르기에 넘길 보상 오퍼. 답은 아직 저장하지 않는다.
   static Future<SurveyRewardResult> fetchReward(String code) async {
     try {
-      final response = await ApiClient.getWithoutThrow('/api/surveys/$code/reward/')
-          .timeout(const Duration(seconds: 10));
+      final response =
+          await ApiClient.getWithoutThrow('/api/surveys/$code/reward/')
+              .timeout(const Duration(seconds: 10));
       final map = _decode(response);
-      final body = map is Map<String, dynamic> ? map : const <String, dynamic>{};
+      final body =
+          map is Map<String, dynamic> ? map : const <String, dynamic>{};
       if (response.statusCode >= 400) {
         return SurveyRewardResult(
           code: body['code']?.toString() ?? 'http_${response.statusCode}',
@@ -250,6 +267,21 @@ class SurveyService {
     );
     if (result.isSuccess) changes.value++;
     return result;
+  }
+
+  /// A timed-out POST may still finish. Recheck status without posting again.
+  static Future<bool?> checkCompleted(String code) async {
+    try {
+      final detail = await fetchDetail(code);
+      if (detail == null) return null;
+      if (detail.status == SurveyStatus.claimed) {
+        changes.value++;
+        return true;
+      }
+      return false;
+    } catch (_) {
+      return null;
+    }
   }
 }
 

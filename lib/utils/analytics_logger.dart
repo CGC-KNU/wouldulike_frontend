@@ -7,6 +7,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AnalyticsLogger {
   AnalyticsLogger._();
 
+  /// Firebase persists this setting, so apply the current policy on every boot.
+  static Future<void> configureCollection({
+    required bool isLab,
+    bool collectionAllowed = true,
+    Future<void> Function(bool)? setEnabled,
+  }) =>
+      (setEnabled ?? FirebaseAnalytics.instance.setAnalyticsCollectionEnabled)(
+          collectionAllowed && !isLab);
+
   static int? _lastRestaurantDetailId;
   static String? _lastRestaurantDetailSource;
   static DateTime? _lastRestaurantDetailClosedAt;
@@ -41,7 +50,8 @@ class AnalyticsLogger {
   }
 
   /// Firebase Analytics는 String, int, double만 허용. bool 등은 변환 필요.
-  static Map<String, Object>? _sanitizeParameters(Map<String, Object?>? params) {
+  static Map<String, Object>? _sanitizeParameters(
+      Map<String, Object?>? params) {
     if (params == null || params.isEmpty) return null;
     final sanitized = <String, Object>{};
     for (final e in params.entries) {
@@ -129,4 +139,3 @@ class AnalyticsLogger {
     } catch (_) {}
   }
 }
-

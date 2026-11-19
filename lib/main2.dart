@@ -34,6 +34,9 @@ class _MainAppScreenState extends State<MainAppScreen>
   bool _enteringPartner = false;
   bool _partnerRouteOpen = false;
   bool _initializingMode = true;
+  final _partnerShellKey = GlobalKey<PartnerShellState>();
+  DeepLinkTarget? _queuedDeepLink;
+  bool _handlingDeepLink = false;
   int _navigationGeneration = 0;
   void _partnerChanged() {
     if (mounted) setState(() {});
@@ -71,12 +74,16 @@ class _MainAppScreenState extends State<MainAppScreen>
       AnalyticsLogger.logEvent(AnalyticsEvents.partnerModeEnter);
       await Navigator.of(context).push(MaterialPageRoute<void>(
           allowSnapshotting: false,
-          builder: (_) => PartnerShell(access: _partnerAccess)));
+          builder: (_) =>
+              PartnerShell(key: _partnerShellKey, access: _partnerAccess)));
     } finally {
+      final wasOpen = _partnerRouteOpen;
       _enteringPartner = false;
       _partnerRouteOpen = false;
-      if (mounted && !_initializingMode) {
-        setState(() {});
+      if (mounted && (wasOpen || !_initializingMode)) {
+        // A cancelled link can supersede _initializeMode while this route is
+        // open. Returning from partner mode must still finish initialization.
+        setState(() => _initializingMode = false);
         _logTabView(_selectedIndex);
         _presentGeneralOffers();
       }
@@ -160,6 +167,19 @@ class _MainAppScreenState extends State<MainAppScreen>
     if (pending != null) _selectedIndex = pending.tabIndex;
     _deepLinkTabSub = DeepLinkService.instance.tabStream.listen((tabIndex) {
       if (!mounted) return;
+      DeepLinkService.instance.acknowledgeTab(tabIndex);
+      if (_partnerRouteOpen) {
+        const screens = [
+          DeepLinkScreen.home,
+          DeepLinkScreen.restaurants,
+          DeepLinkScreen.wallet,
+          DeepLinkScreen.my
+        ];
+        if (tabIndex >= 0 && tabIndex < screens.length) {
+          _onDeepLinkTarget(DeepLinkTarget(screen: screens[tabIndex]));
+        }
+        return;
+      }
       setState(() => _selectedIndex = tabIndex);
       // 딥링크·QR 로 탭이 바뀌어도 탭 화면 기록을 남긴다(Castor QR 흐름).
       _logTabView(tabIndex);
@@ -212,20 +232,41 @@ class _MainAppScreenState extends State<MainAppScreen>
   void _onDeepLinkTarget(DeepLinkTarget target) {
     if (!mounted) return;
     _navigationGeneration++;
-    _popToThisRoute();
-    setState(() {
-      _initializingMode = false;
-      _selectedIndex = target.tabIndex;
-    });
-    _logTabView(target.tabIndex);
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      await _openDeepLink(target);
-      // 앱이 이미 포그라운드인 채로 딥링크(푸시 탭 등)를 받은 경우.
-      // 화·목 골라받기처럼 쿠폰 탭 진입 시 바로 보여야 하는 오퍼를 놓치지 않게
-      // 콜드 스타트·앱 재개 때와 같이 여기서도 다시 확인한다.
-      _presentGeneralOffers();
-    });
+    _queuedDeepLink = target;
+    if (!_handlingDeepLink) unawaited(_handleQueuedDeepLinks());
+  }
+
+  Future<void> _handleQueuedDeepLinks() async {
+    _handlingDeepLink = true;
+    try {
+      while (mounted && _queuedDeepLink != null) {
+        var target = _queuedDeepLink!;
+        _queuedDeepLink = null;
+        final allowed = await (_partnerShellKey.currentState?.confirmExit() ??
+            Future.value(true));
+        if (!mounted) return;
+        // Coalesce links received while the same discard dialog is open.
+        target = _queuedDeepLink ?? target;
+        _queuedDeepLink = null;
+        DeepLinkService.instance.acknowledgeTarget(target, cancelled: !allowed);
+        if (!allowed) continue;
+        final navigation = _navigationGeneration;
+        _popToThisRoute();
+        setState(() {
+          _initializingMode = false;
+          _selectedIndex = target.tabIndex;
+        });
+        DeepLinkService.instance.activateTarget(target);
+        _logTabView(target.tabIndex);
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          if (!mounted || navigation != _navigationGeneration) return;
+          await _openDeepLink(target);
+          _presentGeneralOffers();
+        });
+      }
+    } finally {
+      _handlingDeepLink = false;
+    }
   }
 
   void _popToThisRoute() {

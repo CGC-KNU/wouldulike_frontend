@@ -10,16 +10,17 @@ class PartnerShell extends StatefulWidget {
   const PartnerShell({super.key, required this.access});
   final PartnerAccessController access;
   @override
-  State<PartnerShell> createState() => _PartnerShellState();
+  State<PartnerShell> createState() => PartnerShellState();
 }
 
-class _PartnerShellState extends State<PartnerShell> {
+class PartnerShellState extends State<PartnerShell> {
   PartnerStore? _store;
   PartnerStore? _previousStore;
   int _tab = 0;
   int _storeGeneration = 0;
   bool _leaving = false;
   bool _closing = false;
+  Future<bool>? _exitConfirmation;
   final _pageKey = GlobalKey<PartnerPageState>();
   @override
   void initState() {
@@ -81,12 +82,24 @@ class _PartnerShellState extends State<PartnerShell> {
   Future<void> _leave() async {
     if (_leaving) return;
     _leaving = true;
-    final ok =
-        await (_pageKey.currentState?.confirmDiscard() ?? Future.value(true));
+    final ok = await confirmExit();
     _leaving = false;
     if (ok && mounted) {
       setState(() => _closing = true);
       Navigator.of(context).pop();
+    }
+  }
+
+  Future<bool> confirmExit() async {
+    final pending = _exitConfirmation;
+    if (pending != null) return pending;
+    final confirmation =
+        _pageKey.currentState?.confirmDiscard() ?? Future.value(true);
+    _exitConfirmation = confirmation;
+    try {
+      return await confirmation;
+    } finally {
+      if (identical(_exitConfirmation, confirmation)) _exitConfirmation = null;
     }
   }
 

@@ -11,7 +11,8 @@ class AppSession {
     return next;
   }
 
-  static void endChange() {
+  static void endChange({int? expectedRevision}) {
+    if (expectedRevision != null && expectedRevision != revision.value) return;
     changing = false;
     revision.value++;
   }

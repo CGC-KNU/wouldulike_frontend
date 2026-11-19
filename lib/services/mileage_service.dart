@@ -347,7 +347,8 @@ class MileageService {
       }
     } catch (_) {}
     // API 미배포 구간의 UI 확인용. 릴리스 빌드에서는 동작하지 않는다. (배포 후 삭제)
-    if (kDebugMode) return const MileageSummary(balance: 12400, monthEarned: 1800);
+    if (kDebugMode)
+      return const MileageSummary(balance: 12400, monthEarned: 1800);
     return null;
   }
 
@@ -400,10 +401,11 @@ class MileageService {
   /// 진행 중인 응모가 없을 때 "다음 응모 ○시 시작"을 보여주는 데 쓴다.
   static Future<RaffleBoard> fetchRaffleBoard() async {
     try {
-      final response =
-          await ApiClient.get('/api/raffles/').timeout(const Duration(seconds: 8));
+      final response = await ApiClient.get('/api/raffles/')
+          .timeout(const Duration(seconds: 8));
       final decoded = _decode(response);
-      final raw = decoded is Map<String, dynamic> ? decoded['results'] : decoded;
+      final raw =
+          decoded is Map<String, dynamic> ? decoded['results'] : decoded;
       if (raw is List) {
         final nextRaw =
             decoded is Map<String, dynamic> ? decoded['next_opens_at'] : null;
@@ -426,7 +428,8 @@ class MileageService {
       final response = await ApiClient.get('/api/raffles/my/')
           .timeout(const Duration(seconds: 8));
       final decoded = _decode(response);
-      final raw = decoded is Map<String, dynamic> ? decoded['results'] : decoded;
+      final raw =
+          decoded is Map<String, dynamic> ? decoded['results'] : decoded;
       if (raw is List) {
         return raw
             .whereType<Map>()
@@ -443,7 +446,8 @@ class MileageService {
       final response = await ApiClient.get('/api/raffles/win-popups/')
           .timeout(const Duration(seconds: 8));
       final decoded = _decode(response);
-      final raw = decoded is Map<String, dynamic> ? decoded['results'] : decoded;
+      final raw =
+          decoded is Map<String, dynamic> ? decoded['results'] : decoded;
       if (raw is List) {
         return raw
             .whereType<Map>()
@@ -466,12 +470,14 @@ class MileageService {
       debugPrint('[Raffle] mark win popups failed: $e');
     }
   }
+
   static Future<List<RaffleWinner>> fetchWinners() async {
     try {
       final response = await ApiClient.get('/api/raffles/winners/')
           .timeout(const Duration(seconds: 8));
       final decoded = _decode(response);
-      final raw = decoded is Map<String, dynamic> ? decoded['results'] : decoded;
+      final raw =
+          decoded is Map<String, dynamic> ? decoded['results'] : decoded;
       if (raw is List) {
         return raw
             .whereType<Map>()
@@ -509,8 +515,9 @@ class MileageService {
           balance: map['balance'] == null ? null : _asInt(map['balance']),
         );
       }
-      final raffle =
-          map['raffle'] is Map ? Map<String, dynamic>.from(map['raffle']) : null;
+      final raffle = map['raffle'] is Map
+          ? Map<String, dynamic>.from(map['raffle'])
+          : null;
       return RaffleEnterResult(
         ok: true,
         balanceAfter: _asInt(map['balance']),
@@ -560,7 +567,8 @@ class MileageService {
         },
       ).timeout(const Duration(seconds: 8));
       final decoded = _decode(response);
-      final map = decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
+      final map =
+          decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
       if (response.statusCode >= 400) {
         // 코드 없는 에러(401 등)도 qr_visit_credit 에서 사유가 보이게 상태코드를 남긴다.
         return QrVisitResult(
@@ -686,19 +694,34 @@ class StoreVisitService {
       final decoded = _decode(response);
       final map =
           decoded is Map<String, dynamic> ? decoded : <String, dynamic>{};
-      if (response.statusCode >= 400) {
+      if (response.statusCode >= 400 || map['ok'] == false) {
         return StoreVisitResult(
           ok: false,
           code: map['code']?.toString() ?? 'http_${response.statusCode}',
-          message: map['detail']?.toString(),
+          message: map['detail']?.toString() ?? '적립하지 못했어요. 다시 확인해 주세요.',
           statusCode: response.statusCode,
           balance: map['balance'] == null ? null : _asInt(map['balance']),
         );
       }
+      final delta = map['delta'];
+      final balance = map['balance'];
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          map['ok'] != true ||
+          map['credited'] != true ||
+          delta is! int ||
+          delta <= 0 ||
+          balance is! int ||
+          balance < 0) {
+        return const StoreVisitResult(
+            ok: false,
+            code: 'invalid_response',
+            message: '적립 결과를 확인하지 못했어요. 잔액을 확인해 주세요.');
+      }
       return StoreVisitResult(
         ok: true,
-        delta: _asInt(map['delta']),
-        balance: map['balance'] == null ? null : _asInt(map['balance']),
+        delta: delta,
+        balance: balance,
         statusCode: response.statusCode,
       );
     } catch (e) {
@@ -782,6 +805,7 @@ class QrEntry {
 
   final QrEntryBranch branch;
   final int restaurantId;
+
   /// 함께 쓰도록 유도할 쿠폰 (첫 방문이면 방금 발급된 것, 재방문이면 아직 안 쓴 것).
   final String? couponCode;
 
@@ -848,7 +872,8 @@ String generateQrVisitKey(int restaurantId) {
 List<MileageEvent> _devEvents() {
   final now = DateTime.now();
   return [
-    MileageEvent(delta: 500, reason: 'VISIT', memo: '고니식탁 방문 적립', createdAt: now),
+    MileageEvent(
+        delta: 500, reason: 'VISIT', memo: '고니식탁 방문 적립', createdAt: now),
     MileageEvent(
         delta: -500,
         reason: 'RAFFLE',
