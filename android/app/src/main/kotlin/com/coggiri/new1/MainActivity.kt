@@ -14,6 +14,13 @@ import java.security.MessageDigest
 
 class MainActivity: FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            // Dart draws the app's loading screens. Do not leave Android's
+            // splash reveal animation covering an already rendered Flutter UI.
+            splashScreen.setOnExitAnimationListener { splashScreenView ->
+                splashScreenView.remove()
+            }
+        }
         super.onCreate(savedInstanceState)
         logKakaoKeyHash()
         logIntent("onCreate", intent)

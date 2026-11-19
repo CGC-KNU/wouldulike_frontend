@@ -13,7 +13,8 @@ import 'package:new1/widgets/coupon_ticket_card.dart';
 
 /// 쿠폰까지 받고 설문을 끝냈을 때 화면이 돌려주는 값. 발급 팝업은 설문 화면을 닫은 뒤 띄운다.
 class SurveyOutcome {
-  const SurveyOutcome({required this.tag, required this.title, required this.issuedCodes});
+  const SurveyOutcome(
+      {required this.tag, required this.title, required this.issuedCodes});
 
   final String tag;
   final String title;
@@ -82,7 +83,7 @@ class _SurveyScreenState extends State<SurveyScreen> {
   SurveyDetail? _detail;
   int _step = 0;
   late List<String?> _answers = const [];
-  bool _submitting = false;
+  bool get _submitting => _phase == _Phase.claiming;
   String? _error;
   final DateTime _openedAt = DateTime.now();
 
@@ -118,7 +119,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
     try {
       final detail = await SurveyService.fetchDetail(widget.code);
       if (!mounted) return;
-      if (detail == null) {
+      if (detail == null ||
+          (detail.status == SurveyStatus.open && !detail.hasValidQuestions)) {
         setState(() => _phase = _Phase.error);
         return;
       }
@@ -140,7 +142,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
       });
     } on ApiHttpException catch (e) {
       if (!mounted) return;
-      setState(() => _phase = e.statusCode == 404 ? _Phase.closed : _Phase.error);
+      setState(
+          () => _phase = e.statusCode == 404 ? _Phase.closed : _Phase.error);
     } catch (_) {
       if (mounted) setState(() => _phase = _Phase.error);
     }
@@ -183,7 +186,11 @@ class _SurveyScreenState extends State<SurveyScreen> {
     // 마지막 문항 — 답은 아직 보내지 않는다. 쿠폰을 고를 때 같이 저장한다.
     AnalyticsLogger.logEvent(
       AnalyticsEvents.surveySubmit,
-      parameters: {'survey_code': widget.code, 'entry': widget.entry, ..._answerMap},
+      parameters: {
+        'survey_code': widget.code,
+        'entry': widget.entry,
+        ..._answerMap
+      },
     );
     await _pickCoupon();
   }
@@ -220,7 +227,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
     }
     if (offer.needsCampusRegistration) {
       if (depth > 0) return _close();
-      final registered = await LimitedCouponOfferFlow.presentCampusRequiredPrompt(context);
+      final registered =
+          await LimitedCouponOfferFlow.presentCampusRequiredPrompt(context);
       if (!mounted) return;
       if (!registered) return _close();
       return _pickCoupon(depth: depth + 1);
@@ -244,10 +252,16 @@ class _SurveyScreenState extends State<SurveyScreen> {
         entry: widget.entry,
         elapsedSeconds: DateTime.now().difference(_openedAt).inSeconds,
       ),
+      checkClaimed: () => SurveyService.checkCompleted(widget.code),
     );
     if (!mounted) return;
+    if (result?.alreadyClaimed == true) {
+      setState(() => _phase = _Phase.done);
+      return;
+    }
     if (result?.claimed != true) {
-      // 쿠폰을 안 고르고 나갔다 — 아무것도 저장되지 않았으니 설문도 닫는다.
+      // A request with an unknown result may finish after this screen closes.
+      // The next entry checks server status before allowing another response.
       return _close();
     }
     AnalyticsLogger.logEvent(
@@ -267,7 +281,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
 
   void _openWallet() {
     Navigator.of(context).pop();
-    DeepLinkService.instance.tryHandle(Uri.parse('wouldulike://wallet/coupons'));
+    DeepLinkService.instance
+        .tryHandle(Uri.parse('wouldulike://wallet/coupons'));
   }
 
   @override
@@ -344,7 +359,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
             _topButton('닫기'),
             const Expanded(
               child: Center(
-                child: CircularProgressIndicator(color: OnboardingStyle.primary),
+                child:
+                    CircularProgressIndicator(color: OnboardingStyle.primary),
               ),
             ),
           ],
@@ -459,7 +475,8 @@ class _SurveyScreenState extends State<SurveyScreen> {
               child: Text(
                 _error!,
                 textAlign: TextAlign.center,
-                style: OnboardingStyle.caption.copyWith(color: OnboardingStyle.danger),
+                style: OnboardingStyle.caption
+                    .copyWith(color: OnboardingStyle.danger),
               ),
             ),
           ),
@@ -510,7 +527,9 @@ class _SurveyScreenState extends State<SurveyScreen> {
                     fontFamily: 'Pretendard',
                     fontSize: 15.5,
                     fontWeight: FontWeight.w700,
-                    color: selected ? OnboardingStyle.primary : OnboardingStyle.ink,
+                    color: selected
+                        ? OnboardingStyle.primary
+                        : OnboardingStyle.ink,
                   ),
                 ),
               ),

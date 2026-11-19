@@ -56,6 +56,7 @@ enum DeepLinkScreen {
   favorites,
   profile,
   login,
+
   /// 앱 내 설문 (wouldulike://survey/<code>)
   survey,
 }
@@ -143,7 +144,8 @@ class PendingQrEntry {
   final DateTime at;
 
   /// 상세가 한참 뒤에 열렸을 때 낡은 시트가 뜨지 않게 한다.
-  bool isFresh(DateTime now) => now.difference(at) < const Duration(seconds: 45);
+  bool isFresh(DateTime now) =>
+      now.difference(at) < const Duration(seconds: 45);
 }
 
 /// QR 방문으로 새로 발급된 쿠폰. 어느 식당(restaurantId) 쿠폰인지 알아야
@@ -174,9 +176,12 @@ DeepLinkTarget? resolveWouldUlikeDeepLink(Uri uri) {
   if (uri.scheme != 'wouldulike') return null;
 
   final host = uri.host.toLowerCase();
-  final segments =
-      uri.pathSegments.where((s) => s.isNotEmpty).map((s) => s.toLowerCase()).toList();
-  final dest = host.isNotEmpty ? host : (segments.isNotEmpty ? segments.first : '');
+  final segments = uri.pathSegments
+      .where((s) => s.isNotEmpty)
+      .map((s) => s.toLowerCase())
+      .toList();
+  final dest =
+      host.isNotEmpty ? host : (segments.isNotEmpty ? segments.first : '');
   final rest = host.isNotEmpty
       ? uri.pathSegments.where((s) => s.isNotEmpty).toList()
       : (uri.pathSegments.length > 1
@@ -446,6 +451,7 @@ class DeepLinkService {
   /// QR 방문으로 방금 새로 발급된 쿠폰. 화면단에서 소비 후 null로 되돌린다.
   final ValueNotifier<QrVisitCouponIssued?> pendingQrVisitCoupon =
       ValueNotifier(null);
+
   /// QR 진입 분기(쿠폰 도착/스탬프 안내 등). 식당 상세 시트가 소비하고 null로 되돌린다.
   /// 상세가 열리기 전에 도착할 수 있어 시각을 함께 둔다(오래된 값은 버린다).
   final ValueNotifier<PendingQrEntry?> pendingQrEntry = ValueNotifier(null);
@@ -460,8 +466,15 @@ class DeepLinkService {
   /// 하단 탭을 유지한 채 해당 탭으로 이동한다.
   /// 쿠폰 발급 팝업의 '내 지갑 바로가기'처럼 새 라우트를 쌓지 않을 때 쓴다.
   void openTab(int tabIndex) {
+    _pendingTarget = null;
     _pendingTabIndex = tabIndex;
     _tabController.add(tabIndex);
+  }
+
+  void acknowledgeTab(int tabIndex) {
+    if (_pendingTarget == null && _pendingTabIndex == tabIndex) {
+      _pendingTabIndex = null;
+    }
   }
 
   /// MainAppScreen.initState에서 한 번 호출 — 앱 최초 실행 시의 딥링크 탭 인덱스를 소비
@@ -477,6 +490,23 @@ class DeepLinkService {
     _pendingTarget = null;
     _pendingTabIndex = null;
     return target;
+  }
+
+  /// A rejected live navigation must not reopen on the next main-screen mount.
+  void acknowledgeTarget(DeepLinkTarget target, {bool cancelled = false}) {
+    if (!identical(_pendingTarget, target)) return;
+    _pendingTarget = null;
+    _pendingTabIndex = null;
+    if (cancelled) {
+      pendingRestaurantId.value = null;
+      pendingWalletTab.value = null;
+    }
+  }
+
+  /// Publish tab-specific hints only after the main screen accepts navigation.
+  void activateTarget(DeepLinkTarget target) {
+    pendingRestaurantId.value = target.restaurantId;
+    pendingWalletTab.value = target.walletTabIndex;
   }
 
   /// 브릿지 HTTPS면 브라우저를 열지 않고 앱 화면만 연다.
@@ -517,7 +547,8 @@ class DeepLinkService {
       },
     );
     _apply(target);
-    _creditQrVisitIfRestaurant(target, channel: channel, linkSource: linkSource);
+    _creditQrVisitIfRestaurant(target,
+        channel: channel, linkSource: linkSource);
   }
 
   /// 외부 딥링크로 식당 상세 화면에 진입한 경우에만 방문 마일리지 적립과
@@ -583,8 +614,7 @@ class DeepLinkService {
           parameters: {
             AnalyticsEvents.paramRestaurantId: restaurantId,
             AnalyticsEvents.paramCouponCode: c.code,
-            AnalyticsEvents.paramCouponIssueSource:
-                resolveCouponIssueSourceFor(
+            AnalyticsEvents.paramCouponIssueSource: resolveCouponIssueSourceFor(
               campaignCode: c.campaignCode,
               issueKey: c.issueKey,
             ),
@@ -615,13 +645,9 @@ class DeepLinkService {
   }
 
   void _apply(DeepLinkTarget target) {
-    pendingRestaurantId.value = target.restaurantId;
-    if (target.walletTabIndex != null) {
-      pendingWalletTab.value = target.walletTabIndex;
-    }
+    if (!_targetController.hasListener) activateTarget(target);
     _pendingTabIndex = target.tabIndex;
     _pendingTarget = target;
-    _tabController.add(target.tabIndex);
     _targetController.add(target);
   }
 }

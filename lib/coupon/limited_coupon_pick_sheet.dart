@@ -15,11 +15,13 @@ class LimitedCouponPickResult {
     required this.claimed,
     this.issuedCodes = const [],
     this.title,
+    this.alreadyClaimed = false,
   });
 
   final bool claimed;
   final List<String> issuedCodes;
   final String? title;
+  final bool alreadyClaimed;
 }
 
 /// 기획전 한정쿠폰 식당 선택. 온보딩 튜토리얼과 같은 전체 화면 선택 UI.
@@ -31,23 +33,28 @@ Future<LimitedCouponPickResult?> showLimitedCouponPickSheet(
   BuildContext context, {
   required LimitedCouponOffer offer,
   LimitedCouponClaimCall? claim,
+  Future<bool?> Function()? checkClaimed,
 }) {
-  return Navigator.of(context, rootNavigator: true).push<LimitedCouponPickResult>(
+  return Navigator.of(context, rootNavigator: true)
+      .push<LimitedCouponPickResult>(
     MaterialPageRoute(
       settings: const RouteSettings(name: ScreenIds.couponLimitedPick),
       fullscreenDialog: true,
-      builder: (_) => LimitedCouponPickSheet(offer: offer, claim: claim),
+      builder: (_) => LimitedCouponPickSheet(
+          offer: offer, claim: claim, checkClaimed: checkClaimed),
     ),
   );
 }
 
 class LimitedCouponPickSheet extends StatefulWidget {
-  const LimitedCouponPickSheet({super.key, required this.offer, this.claim});
+  const LimitedCouponPickSheet(
+      {super.key, required this.offer, this.claim, this.checkClaimed});
 
   final LimitedCouponOffer offer;
 
   /// 설문 보상처럼 답과 함께 받아야 하는 쿠폰은 수령 호출을 바꿔 끼운다.
   final LimitedCouponClaimCall? claim;
+  final Future<bool?> Function()? checkClaimed;
 
   @override
   State<LimitedCouponPickSheet> createState() => _LimitedCouponPickSheetState();
@@ -61,6 +68,7 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
   bool _submitting = false;
+  bool _resultUncertain = false;
   String? _error;
 
   LimitedCouponOffer get offer => widget.offer;
@@ -70,6 +78,7 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
   bool get _selectionComplete => _selectedIds.length == _picksNeeded;
 
   void _toggle(int restaurantId) {
+    if (_submitting || _resultUncertain) return;
     setState(() {
       _error = null;
       if (!offer.isMultiPick) {
@@ -151,15 +160,15 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
   }
 
   Future<void> _claim() async {
+    if (_submitting || _resultUncertain) return;
     if (!_selectionComplete) {
-      setState(() => _error = offer.isMultiPick
-          ? '식당 $_picksNeeded곳을 골라 주세요.'
-          : '식당을 선택해 주세요.');
+      setState(() => _error =
+          offer.isMultiPick ? '식당 $_picksNeeded곳을 골라 주세요.' : '식당을 선택해 주세요.');
       return;
     }
     final ids = List<int>.of(_selectedIds);
-    final allowed = ids.every(
-        (id) => offer.restaurants.any((r) => r.restaurantId == id));
+    final allowed =
+        ids.every((id) => offer.restaurants.any((r) => r.restaurantId == id));
     if (!allowed) {
       setState(() => _error = '이 식당은 한정쿠폰 대상이 아니에요.');
       return;
@@ -169,17 +178,25 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
       _submitting = true;
     });
     final customClaim = widget.claim;
-    final result = customClaim != null
-        ? await customClaim(ids)
-        : await CouponService.claimLimitedCoupon(
-            couponTypeCode: offer.couponTypeCode,
-            restaurantId: ids.first,
-            restaurantIds: offer.isMultiPick ? ids : null,
-          );
+    LimitedCouponClaimResult result;
+    try {
+      result = customClaim != null
+          ? await customClaim(ids)
+          : await CouponService.claimLimitedCoupon(
+              couponTypeCode: offer.couponTypeCode,
+              restaurantId: ids.first,
+              restaurantIds: offer.isMultiPick ? ids : null,
+            );
+    } catch (_) {
+      result = LimitedCouponClaimResult.failure(
+          '처리 결과를 확인하지 못했어요. 쿠폰함을 확인해 주세요.',
+          code: 'uncertain');
+    }
     if (!mounted) return;
     if (!result.isSuccess) {
       setState(() {
         _submitting = false;
+        _resultUncertain = result.errorCode == 'uncertain';
         _error = result.errorMessage ?? '쿠폰을 받지 못했어요.';
       });
       return;
@@ -238,8 +255,34 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
     );
   }
 
+  Future<void> _checkResult() async {
+    if (_submitting || !_canCheckResult) return;
+    setState(() => _submitting = true);
+    bool? claimed;
+    try {
+      claimed = await (widget.checkClaimed?.call() ??
+          CouponService.checkLimitedClaimed(offer));
+    } catch (_) {
+      claimed = null;
+    }
+    if (!mounted) return;
+    if (claimed == true) {
+      Navigator.of(context).pop(
+          const LimitedCouponPickResult(claimed: true, alreadyClaimed: true));
+      return;
+    }
+    setState(() {
+      _submitting = false;
+      _error = '아직 완료 여부를 확인하지 못했어요. 잠시 후 다시 확인하거나 쿠폰함을 확인해 주세요.';
+    });
+  }
+
+  bool get _canCheckResult =>
+      widget.checkClaimed != null || widget.claim == null;
+
   String get _buttonLabel {
     if (_submitting) return '받는 중…';
+    if (_resultUncertain) return '결과 확인';
     if (!offer.isMultiPick) return '이 식당 쿠폰 받기';
     if (_selectionComplete) return '$_picksNeeded곳 쿠폰 받기';
     return '식당 고르기 (${_selectedIds.length}/$_picksNeeded)';
@@ -249,122 +292,131 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
   Widget build(BuildContext context) {
     final title = offer.couponTypeTitle?.trim();
     final visible = _visibleRestaurants;
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                (title != null && title.isNotEmpty) ? title : '어디서 쓸까요?',
-                style: OnboardingStyle.title,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                offer.isMultiPick
-                    ? '쿠폰을 받을 식당 $_picksNeeded곳을 골라 주세요.'
-                    : '원하는 식당을 선택해 주세요.',
-                style: OnboardingStyle.subtitle,
-              ),
-              if (offer.pickCount > offer.remainingCount &&
-                  offer.remainingCount > 0) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '${offer.pickCount}곳 중 ${offer.pickCount - offer.remainingCount}곳은 이미 받았어요.',
-                  style: OnboardingStyle.caption,
-                ),
-              ],
-              if (offer.validHours != null && offer.validHours! > 0) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '받은 시각부터 ${offer.validHours}시간 동안 쓸 수 있어요.',
-                  style: OnboardingStyle.caption,
-                ),
-              ] else if (offer.validDays != null && offer.validDays! > 0) ...[
-                const SizedBox(height: 6),
-                Text(
-                  '받은 날부터 ${offer.validDays}일 동안 쓸 수 있어요.',
-                  style: OnboardingStyle.caption,
-                ),
-              ],
-              if (offer.redeemBonus) ...[
-                const SizedBox(height: 6),
-                const Text(
-                  '이 쿠폰을 사용하면 한정쿠폰이 한 장 더 지급됩니다.',
-                  style: TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    height: 1.5,
-                    color: OnboardingStyle.primary,
+    final canAct = !_submitting &&
+        (_resultUncertain ? _canCheckResult : _selectionComplete);
+    return PopScope(
+        canPop: !_submitting,
+        child: Scaffold(
+          backgroundColor: Colors.white,
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (title != null && title.isNotEmpty) ? title : '어디서 쓸까요?',
+                    style: OnboardingStyle.title,
                   ),
-                ),
-              ],
-              const SizedBox(height: 16),
-              if (_campusOptions.isNotEmpty) ...[
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: _buildCampusFilter(),
-                ),
-                const SizedBox(height: 8),
-              ],
-              _buildSearchBar(),
-              const SizedBox(height: 4),
-              CategoryStrip(
-                selected: _categoryKey,
-                onSelect: (key) => setState(() {
-                  _categoryKey = key;
-                  _resetSingleSelection();
-                  _error = null;
-                }),
-              ),
-              const SizedBox(height: 8),
-              Expanded(child: _buildRestaurantList(visible)),
-              if (_error != null) ...[
-                const SizedBox(height: 8),
-                Text(
-                  _error!,
-                  style: const TextStyle(
-                    fontFamily: 'Pretendard',
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: OnboardingStyle.danger,
+                  const SizedBox(height: 8),
+                  Text(
+                    offer.isMultiPick
+                        ? '쿠폰을 받을 식당 $_picksNeeded곳을 골라 주세요.'
+                        : '원하는 식당을 선택해 주세요.',
+                    style: OnboardingStyle.subtitle,
                   ),
-                ),
-              ],
-              const SizedBox(height: 12),
-              ElevatedButton(
-                style: OnboardingStyle.primaryButton(
-                  enabled: !_submitting && _selectionComplete,
-                ),
-                onPressed: _submitting || !_selectionComplete ? null : _claim,
-                child: Text(_buttonLabel),
-              ),
-              Center(
-                child: TextButton(
-                  onPressed: _submitting
-                      ? null
-                      : () => Navigator.of(context).pop(
-                            const LimitedCouponPickResult(claimed: false),
-                          ),
-                  style: TextButton.styleFrom(
-                    foregroundColor: OnboardingStyle.muted,
-                    textStyle: const TextStyle(
-                      fontFamily: 'Pretendard',
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
+                  if (offer.pickCount > offer.remainingCount &&
+                      offer.remainingCount > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '${offer.pickCount}곳 중 ${offer.pickCount - offer.remainingCount}곳은 이미 받았어요.',
+                      style: OnboardingStyle.caption,
+                    ),
+                  ],
+                  if (offer.validHours != null && offer.validHours! > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '받은 시각부터 ${offer.validHours}시간 동안 쓸 수 있어요.',
+                      style: OnboardingStyle.caption,
+                    ),
+                  ] else if (offer.validDays != null &&
+                      offer.validDays! > 0) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '받은 날부터 ${offer.validDays}일 동안 쓸 수 있어요.',
+                      style: OnboardingStyle.caption,
+                    ),
+                  ],
+                  if (offer.redeemBonus) ...[
+                    const SizedBox(height: 6),
+                    const Text(
+                      '이 쿠폰을 사용하면 한정쿠폰이 한 장 더 지급됩니다.',
+                      style: TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        height: 1.5,
+                        color: OnboardingStyle.primary,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  if (_campusOptions.isNotEmpty) ...[
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: _buildCampusFilter(),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                  _buildSearchBar(),
+                  const SizedBox(height: 4),
+                  CategoryStrip(
+                    selected: _categoryKey,
+                    onSelect: (key) => setState(() {
+                      _categoryKey = key;
+                      _resetSingleSelection();
+                      _error = null;
+                    }),
+                  ),
+                  const SizedBox(height: 8),
+                  Expanded(child: _buildRestaurantList(visible)),
+                  if (_error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        fontFamily: 'Pretendard',
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: OnboardingStyle.danger,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    style: OnboardingStyle.primaryButton(
+                      enabled: canAct,
+                    ),
+                    onPressed: !canAct
+                        ? null
+                        : _resultUncertain
+                            ? _checkResult
+                            : _claim,
+                    child: Text(_buttonLabel),
+                  ),
+                  Center(
+                    child: TextButton(
+                      onPressed: _submitting
+                          ? null
+                          : () => Navigator.of(context).pop(
+                                const LimitedCouponPickResult(claimed: false),
+                              ),
+                      style: TextButton.styleFrom(
+                        foregroundColor: OnboardingStyle.muted,
+                        textStyle: const TextStyle(
+                          fontFamily: 'Pretendard',
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      child: Text(_resultUncertain ? '닫기' : '나중에'),
                     ),
                   ),
-                  child: const Text('나중에'),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 
   String _campusFilterLabel(String value) =>
@@ -425,8 +477,7 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
           shape: RoundedRectangleBorder(
             side: BorderSide(
               width: 1,
-              color:
-                  isFiltered ? OnboardingStyle.accent : OnboardingStyle.line,
+              color: isFiltered ? OnboardingStyle.accent : OnboardingStyle.line,
             ),
             borderRadius: BorderRadius.circular(999),
           ),
@@ -439,9 +490,8 @@ class _LimitedCouponPickSheetState extends State<LimitedCouponPickSheet> {
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w600,
-                color: isFiltered
-                    ? OnboardingStyle.primary
-                    : OnboardingStyle.body,
+                color:
+                    isFiltered ? OnboardingStyle.primary : OnboardingStyle.body,
               ),
             ),
             Icon(

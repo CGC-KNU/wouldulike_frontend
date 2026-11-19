@@ -23,12 +23,18 @@ void main() {
 
   group('환영 미션', () {
     test('큰 타이머는 남은 전체 시간을 HH:MM:SS로 표시한다', () {
-      final end = DateTime.now().add(
-        const Duration(hours: 27, minutes: 4, seconds: 5),
-      );
+      final started = DateTime.now();
+      const remaining = Duration(hours: 27, minutes: 4, seconds: 5);
+      final end = started.add(remaining);
       final label = welcomeCountdownLabel(end, Duration.zero)!;
-      // 실행 중 1초가 지날 수 있으므로 초만 한 칸 차이를 허용한다.
-      expect(label, matches(RegExp(r'^27:04:0[34]$')));
+      final elapsed = DateTime.now().difference(started);
+      final parts = label.split(':').map(int.parse).toList();
+      final shown =
+          Duration(hours: parts[0], minutes: parts[1], seconds: parts[2]);
+      expect(
+          shown.inSeconds,
+          inInclusiveRange(remaining.inSeconds - elapsed.inSeconds - 1,
+              remaining.inSeconds));
     });
 
     Map<String, dynamic> item(String code, String status,

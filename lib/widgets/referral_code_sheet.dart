@@ -72,10 +72,15 @@ Future<ReferralSheetResult?> presentReferralCodeSheet(
         await showLimitedCouponPickSheet(context, offer: selectOffer);
     if (!context.mounted) return result;
     if (picked?.claimed == true) {
+      if (picked!.alreadyClaimed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('쿠폰 수령이 확인됐어요. 쿠폰함에서 확인해 주세요.')));
+        return result;
+      }
       await showCouponIssuedDialog(
         context,
         tag: selectOffer.tagLabel,
-        title: (picked!.title != null && picked.title!.isNotEmpty)
+        title: (picked.title != null && picked.title!.isNotEmpty)
             ? picked.title!
             : result.title,
         issuedCodes: picked.issuedCodes,

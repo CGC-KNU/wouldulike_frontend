@@ -173,9 +173,11 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   static const String _kFavoriteGeneralRestaurantItemsKey =
       'general_favorite_restaurant_items';
   static const int _kGeneralRestaurantPageSize = 20;
+
   /// 사용자가 드롭다운에서 직접 고른 대학가. 한 번 고르면 다음 접속 때도
   /// 이 값이 우선 적용된다(기기별 저장, 프로필의 campus와는 별개).
-  static const String _kSelectedCampusKey = 'affiliate_selected_campus_override';
+  static const String _kSelectedCampusKey =
+      'affiliate_selected_campus_override';
 
   List<AffiliateRestaurantSummary> _affiliateRestaurants = [];
   List<GeneralRestaurantSummary> _generalRestaurants = [];
@@ -190,6 +192,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   String? _error;
   bool _requiresLogin = false;
   String _selectedCategory = 'ALL';
+
   /// 대학가(상권) 필터. 로그인 사용자는 저장된 campus로 기본 선택된다.
   String _selectedCampus = kCampusFilterAll;
   // 필터/정렬: 거리·영업시간 데이터가 API에 없어 쿠폰·스탬프 보유 여부로만 거른다.
@@ -445,9 +448,7 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
         prefs.getStringList(_kFavoriteGeneralRestaurantKeysKey) ??
             const <String>[];
     final affiliateIds = {
-      ...rawAffiliate
-          .map((value) => int.tryParse(value))
-          .whereType<int>(),
+      ...rawAffiliate.map((value) => int.tryParse(value)).whereType<int>(),
       ...remoteIds,
     };
     final generalKeys = rawGeneral
@@ -796,7 +797,8 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
   /// 스탬프 제도를 운영하는 매장 전체가 아니라, 실제로 사용자가 적립을
   /// 시작한 매장만 골라야 "스탬프" 필터가 의미가 있다.
   bool _isEarningStamp(AffiliateRestaurantSummary restaurant) {
-    final current = _stampStatuses[restaurant.id]?.current ?? restaurant.stampCurrent;
+    final current =
+        _stampStatuses[restaurant.id]?.current ?? restaurant.stampCurrent;
     return current > 0;
   }
 
@@ -1752,7 +1754,9 @@ class _AffiliateBenefitsScreenState extends State<AffiliateBenefitsScreen> {
             child: Row(
               children: [
                 Icon(
-                  _favoriteOnly ? Icons.favorite_rounded : Icons.favorite_border,
+                  _favoriteOnly
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border,
                   size: 17,
                   color: _favoriteOnly
                       ? const Color(0xFF4F46E5)
@@ -2770,6 +2774,7 @@ class _AffiliateRestaurantDetailSheetState
   /// 스탬프 없는 매장의 마일리지 방문 적립 카드 (1018 목업). 스탬프 판이 0칸일 때만 불러온다.
   StoreVisitStatus? _visitStatus;
   bool _isVisitLoading = false;
+  String? _visitError;
   bool _isVisitProcessing = false;
   String? _processingCouponCode;
   final PageController _imagePageController = PageController();
@@ -2910,8 +2915,7 @@ class _AffiliateRestaurantDetailSheetState
     }
 
     _couponBenefitsSummary = widget.restaurant.couponBenefitsSummary;
-    if (widget.restaurant.id > 0 ||
-        widget.restaurant.name.trim().isNotEmpty) {
+    if (widget.restaurant.id > 0 || widget.restaurant.name.trim().isNotEmpty) {
       _isCouponBenefitsLoading = _couponBenefitsSummary == null;
       _loadRestaurantDetail();
     }
@@ -3438,7 +3442,8 @@ class _AffiliateRestaurantDetailSheetState
     }
   }
 
-  Future<void> _handleRedeem(UserCoupon coupon, {bool withStamp = false}) async {
+  Future<void> _handleRedeem(UserCoupon coupon,
+      {bool withStamp = false}) async {
     setState(() => _processingCouponCode = coupon.code);
     try {
       final outcome = await showCouponRedeemPinDialog(
@@ -3481,7 +3486,6 @@ class _AffiliateRestaurantDetailSheetState
     return showStampAddDialog(context);
   }
 
-
   void _showSnack(String message) {
     // 모달 시트 내 SnackBar → Scaffold 레이아웃 충돌 발생. 스탬프/쿠폰 에러는 _stampError 등으로 표시
     if (message.isEmpty || !mounted) return;
@@ -3520,7 +3524,6 @@ class _AffiliateRestaurantDetailSheetState
     if (!mounted) return Future.value();
     return showStampDailyLimitDialog(context, message);
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -4259,11 +4262,18 @@ class _AffiliateRestaurantDetailSheetState
   }
 
   Future<void> _loadVisitStatus() async {
-    _isVisitLoading = true;
+    if (_isVisitLoading || !mounted) return;
+    setState(() {
+      _isVisitLoading = true;
+      _visitError = null;
+    });
     final status = await StoreVisitService.fetchStatus(widget.restaurant.id);
-    _isVisitLoading = false;
-    if (!mounted || status == null) return;
-    setState(() => _visitStatus = status);
+    if (!mounted) return;
+    setState(() {
+      _isVisitLoading = false;
+      _visitStatus = status;
+      if (status == null) _visitError = '방문 적립 정보를 불러오지 못했어요.';
+    });
   }
 
   Future<void> _handleMileageVisit() async {
@@ -4316,6 +4326,19 @@ class _AffiliateRestaurantDetailSheetState
 
   /// 스탬프 카드와 같은 카드. 스탬프 판 대신 이번에 받을 마일리지와 내 잔액을 보여 준다.
   Widget _buildMileageVisitSection() {
+    if (_isVisitLoading || _visitError != null) {
+      return Card(
+          child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: _isVisitLoading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(mainAxisSize: MainAxisSize.min, children: [
+                Text(_visitError!),
+                TextButton(
+                    onPressed: _loadVisitStatus, child: const Text('다시 시도')),
+              ]),
+      ));
+    }
     final status = _visitStatus;
     if (status == null || !status.available) return const SizedBox.shrink();
     final done = status.creditedToday;
@@ -4567,13 +4590,9 @@ class _AffiliateRestaurantDetailSheetState
     final reward = _getNextReward() ?? _getCurrentReward();
     final name = reward != null ? _benefitTextFor(reward) : null;
     if (ready) {
-      return name != null
-          ? '리워드를 받을 수 있어요 · $name'
-          : '리워드 쿠폰을 받을 수 있어요';
+      return name != null ? '리워드를 받을 수 있어요 · $name' : '리워드 쿠폰을 받을 수 있어요';
     }
-    return name != null
-        ? '다음 보상까지 $remaining개 · $name'
-        : '다음 보상까지 $remaining개';
+    return name != null ? '다음 보상까지 $remaining개 · $name' : '다음 보상까지 $remaining개';
   }
 
   /// 적립하기 / 리워드 받기 버튼 (시안: 흰 배경 + 인디고 외곽선)

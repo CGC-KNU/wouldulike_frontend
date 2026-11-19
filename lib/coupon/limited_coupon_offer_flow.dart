@@ -67,11 +67,16 @@ class LimitedCouponOfferFlow {
       if (result?.claimed != true) continue;
       onIssued();
       if (!context.mounted) continue;
+      if (result!.alreadyClaimed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('쿠폰 수령이 확인됐어요. 쿠폰함에서 확인해 주세요.')));
+        continue;
+      }
       // 미션 완주와 같은 선물상자 팝업. 선택 화면을 닫은 뒤에만 띄운다.
       await showCouponIssuedDialog(
         context,
         tag: offer.tagLabel,
-        title: (result!.title != null && result.title!.isNotEmpty)
+        title: (result.title != null && result.title!.isNotEmpty)
             ? result.title!
             : '${offer.tagLabel}을 받았어요',
         issuedCodes: result.issuedCodes,
@@ -246,9 +251,8 @@ class _CampusRegisterSheetState extends State<_CampusRegisterSheet> {
               ),
               Center(
                 child: TextButton(
-                  onPressed: _saving
-                      ? null
-                      : () => Navigator.of(context).pop(false),
+                  onPressed:
+                      _saving ? null : () => Navigator.of(context).pop(false),
                   style: TextButton.styleFrom(
                     foregroundColor: OnboardingStyle.muted,
                     textStyle: const TextStyle(
