@@ -119,4 +119,84 @@ void main() {
     expect(find.text('게시물'), findsOneWidget);
     expect(find.text('영업 활동'), findsNothing);
   });
+
+  testWidgets('기존 홈 응답의 게시물별 인스타 성과를 콘텐츠에 표시한다', (tester) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(370, 1100);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+
+    const permalink = 'https://www.instagram.com/p/first/';
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: PartnerPage(
+          section: PartnerSection.content,
+          scope: '1:1',
+          access: access,
+          request: (route,
+              {String method = 'GET', Map<String, dynamic>? body}) async {
+            expect(route, 'home');
+            return {
+              'metrics': {
+                'promotion': {
+                  'posts': [
+                    {
+                      'title': '점심 큐레이션',
+                      'posted_at': '2026-11-06',
+                      'permalink': permalink,
+                      'format': 'reel',
+                      'views': 1250,
+                      'reach': 80,
+                      'likes': 0,
+                      'saved': 5,
+                      'shares': 2,
+                      'comments': 3,
+                      'captured_at': '2026-11-07T01:00:00+09:00',
+                      'status': 'stale',
+                      'report_sent': true,
+                    },
+                    {
+                      'title': '새 게시물',
+                      'posted_at': '2026-11-07',
+                      'views': null,
+                      'status': 'pending',
+                    },
+                  ],
+                },
+              },
+              'feed': [
+                {
+                  'kind': 'post',
+                  'title': '게시 일정',
+                  'date': '2026-11-05',
+                  'state': 'published',
+                  'permalink': permalink,
+                },
+                {
+                  'kind': 'campaign',
+                  'title': '캠페인',
+                  'date': '2026-11-07',
+                  'state': 'active',
+                },
+              ],
+            };
+          },
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('게시물별 성과'), findsOneWidget);
+    expect(find.text('11/6 · 릴스'), findsOneWidget);
+    for (final metric in ['조회', '도달', '좋아요', '저장', '공유', '댓글']) {
+      expect(find.text(metric), findsOneWidget);
+    }
+    expect(find.text('1,250'), findsOneWidget);
+    expect(find.text('0'), findsOneWidget);
+    expect(find.text('11/7 수집 · 수집이 늦어지고 있습니다'), findsOneWidget);
+    expect(find.text('집계 준비 중'), findsOneWidget);
+    expect(find.text('새 게시물'), findsOneWidget);
+    expect(find.text('게시 일정'), findsOneWidget);
+    expect(find.text('캠페인'), findsOneWidget);
+  });
 }
