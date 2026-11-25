@@ -12,6 +12,7 @@ import 'partner_access_controller.dart';
 import 'partner_api_client.dart';
 import 'partner_report_launcher.dart';
 import 'partner_design.dart';
+import 'widgets/content_post.dart';
 import 'widgets/home_metrics.dart';
 
 typedef PartnerRequest = Future<Map<String, dynamic>> Function(String route,
@@ -391,6 +392,33 @@ class PartnerPageState extends State<PartnerPage> {
     };
     return PartnerBadge(_states[state] ?? _text(state),
         color: color, background: color.withValues(alpha: .08));
+  }
+
+  List<Widget> _content(Map<String, dynamic> data) {
+    final promotion = _map(_map(data['metrics'])['promotion']);
+    final posts = _rows(promotion['posts']);
+    return [
+      if (posts.isNotEmpty) ...[
+        const Padding(
+          padding: EdgeInsets.only(bottom: 10),
+          child: Text('게시물별 성과',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+        ),
+        for (final post in posts)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: PartnerContentPost(post: post, openLink: _openExternal),
+          ),
+        const Padding(
+          padding: EdgeInsets.only(bottom: 16),
+          child: Text(
+            '인스타그램 게시물 전체의 최신 누적값입니다. 여러 매장이 함께 나온 게시물은 그 매장들이 같은 숫자를 봅니다.',
+            style: TextStyle(fontSize: 11.5, color: PartnerDesign.muted),
+          ),
+        ),
+      ],
+      _card('콘텐츠 · 운영 기록', _feed(data)),
+    ];
   }
 
   List<Widget> _feed(Map<String, dynamic> data) {
@@ -1288,7 +1316,7 @@ class PartnerPageState extends State<PartnerPage> {
             PartnerSection.home => _home(data),
             PartnerSection.restaurant => _restaurant(data),
             PartnerSection.benefits => _benefits(data),
-            PartnerSection.content => [_card('콘텐츠 · 운영 기록', _feed(data))],
+            PartnerSection.content => _content(data),
             PartnerSection.reports => _reports(data),
             PartnerSection.plan => _plan(data),
           };
