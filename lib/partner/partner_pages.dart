@@ -48,14 +48,16 @@ const _states = {
 class PartnerPage extends StatefulWidget {
   const PartnerPage(
       {super.key,
-      required this.tab,
+      required this.section,
       required this.scope,
       required this.request,
-      required this.access});
-  final int tab;
+      required this.access,
+      this.onStoreSectionChanged});
+  final PartnerSection section;
   final String scope;
   final PartnerRequest request;
   final PartnerAccessController access;
+  final ValueChanged<PartnerSection>? onStoreSectionChanged;
   @override
   State<PartnerPage> createState() => PartnerPageState();
 }
@@ -90,7 +92,8 @@ class PartnerPageState extends State<PartnerPage> {
   @override
   void didUpdateWidget(PartnerPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.scope != widget.scope || oldWidget.tab != widget.tab) {
+    if (oldWidget.scope != widget.scope ||
+        oldWidget.section != widget.section) {
       _data = null;
       _extra = {};
       _error = null;
@@ -158,34 +161,32 @@ class PartnerPageState extends State<PartnerPage> {
 
   Future<void> _load({bool preserveDraft = false}) async {
     final version = ++_loadVersion;
-    const screens = [
-      ScreenIds.partnerHome,
-      ScreenIds.partnerRestaurant,
-      ScreenIds.partnerBenefits,
-      ScreenIds.partnerContent,
-      ScreenIds.partnerReports,
-      ScreenIds.partnerPlan
-    ];
-    AnalyticsLogger.logScreen(screens[widget.tab]);
+    final section = widget.section;
+    final (route, screen) = switch (section) {
+      PartnerSection.home => ('home', ScreenIds.partnerHome),
+      PartnerSection.restaurant => ('restaurant', ScreenIds.partnerRestaurant),
+      PartnerSection.benefits => ('benefits', ScreenIds.partnerBenefits),
+      PartnerSection.content => ('home', ScreenIds.partnerContent),
+      PartnerSection.reports => ('reports', ScreenIds.partnerReports),
+      PartnerSection.plan => ('plan', ScreenIds.partnerPlan),
+    };
+    AnalyticsLogger.logScreen(screen);
     try {
-      final routes = [
-        'home',
-        'restaurant',
-        'benefits',
-        'home',
-        'reports',
-        'plan'
-      ];
-      final data = await widget.request(routes[widget.tab]);
+      final data = await widget.request(route);
+      if (!mounted || version != _loadVersion) return;
       Map<String, dynamic> extra = {};
-      if (widget.tab == 1) extra = await widget.request('categories');
-      if (widget.tab == 2) {
+      if (section == PartnerSection.restaurant) {
+        extra = await widget.request('categories');
+      }
+      if (section == PartnerSection.benefits) {
         extra = await widget.request('benefit-requests');
+        if (!mounted || version != _loadVersion) return;
         extra['stamp'] = await widget.request('stamp-rule');
       }
-      if (widget.tab == 4) extra = await widget.request('home');
+      if (section == PartnerSection.reports)
+        extra = await widget.request('home');
       if (!mounted || version != _loadVersion) return;
-      if (widget.tab == 1 && !preserveDraft) {
+      if (section == PartnerSection.restaurant && !preserveDraft) {
         for (final e in _edit.entries) {
           e.value.text = _text(data[e.key], '');
         }
@@ -395,7 +396,9 @@ class PartnerPageState extends State<PartnerPage> {
   List<Widget> _feed(Map<String, dynamic> data) {
     final rows = _rows(data['feed'])
         .where((f) =>
-            widget.tab != 3 || f['kind'] == 'post' || f['kind'] == 'campaign')
+            widget.section != PartnerSection.content ||
+            f['kind'] == 'post' ||
+            f['kind'] == 'campaign')
         .toList();
     if (rows.isEmpty) {
       return [
@@ -1222,46 +1225,81 @@ class PartnerPageState extends State<PartnerPage> {
   Widget build(BuildContext context) =>
       Theme(data: PartnerDesign.theme, child: Builder(builder: _buildPage));
 
+  Widget _loadStatus() => Center(
+        child: _error == null
+            ? const CircularProgressIndicator()
+            : Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  const Icon(Icons.cloud_off_outlined,
+                      size: 36, color: PartnerDesign.periwinkle),
+                  const SizedBox(height: 14),
+                  Text(_error!, textAlign: TextAlign.center),
+                  TextButton(
+                      onPressed: () {
+                        setState(() => _error = null);
+                        _load();
+                      },
+                      child: const Text('다시 시도'))
+                ])),
+      );
+
+  Widget _storeSwitcher() {
+    final onChanged = widget.onStoreSectionChanged;
+    return SegmentedButton<PartnerSection>(
+      expandedInsets: EdgeInsets.zero,
+      showSelectedIcon: false,
+      style: SegmentedButton.styleFrom(
+        selectedBackgroundColor: Colors.white,
+        selectedForegroundColor: PartnerDesign.navy,
+        backgroundColor: PartnerDesign.tint,
+        foregroundColor: PartnerDesign.muted,
+        side: const BorderSide(color: PartnerDesign.border),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+        textStyle: const TextStyle(
+          fontFamily: 'Pretendard',
+          fontSize: 13,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      segments: const [
+        ButtonSegment(
+            value: PartnerSection.restaurant,
+            label: Text('매장 관리', textAlign: TextAlign.center)),
+        ButtonSegment(
+            value: PartnerSection.benefits,
+            label: Text('쿠폰/스탬프 관리', textAlign: TextAlign.center)),
+      ],
+      selected: {widget.section},
+      onSelectionChanged:
+          onChanged == null ? null : (selected) => onChanged(selected.single),
+    );
+  }
+
   Widget _buildPage(BuildContext context) {
-    if (_data == null) {
-      return ColoredBox(
-          color: PartnerDesign.background,
-          child: Center(
-              child: _error == null
-                  ? const CircularProgressIndicator()
-                  : Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Column(mainAxisSize: MainAxisSize.min, children: [
-                        const Icon(Icons.cloud_off_outlined,
-                            size: 36, color: PartnerDesign.periwinkle),
-                        const SizedBox(height: 14),
-                        Text(_error!, textAlign: TextAlign.center),
-                        TextButton(
-                            onPressed: () {
-                              setState(() => _error = null);
-                              _load();
-                            },
-                            child: const Text('다시 시도'))
-                      ]))));
+    final data = _data;
+    final section = widget.section;
+    if (data == null && !section.isStoreManagement) {
+      return ColoredBox(color: PartnerDesign.background, child: _loadStatus());
     }
-    final data = _data!;
-    final content = switch (widget.tab) {
-      0 => _home(data),
-      1 => _restaurant(data),
-      2 => _benefits(data),
-      3 => [_card('콘텐츠 · 운영 기록', _feed(data))],
-      4 => _reports(data),
-      _ => _plan(data)
+    final content = data == null
+        ? [Padding(padding: const EdgeInsets.all(24), child: _loadStatus())]
+        : switch (section) {
+            PartnerSection.home => _home(data),
+            PartnerSection.restaurant => _restaurant(data),
+            PartnerSection.benefits => _benefits(data),
+            PartnerSection.content => [_card('콘텐츠 · 운영 기록', _feed(data))],
+            PartnerSection.reports => _reports(data),
+            PartnerSection.plan => _plan(data),
+          };
+    final (title, description) = switch (section) {
+      PartnerSection.home => ('', ''),
+      PartnerSection.restaurant => ('식당 관리', '손님에게 보이는 매장 정보와 사진을 관리해 주세요.'),
+      PartnerSection.benefits => ('식당 관리', '쿠폰·스탬프 혜택을 확인하고 변경을 신청하세요.'),
+      PartnerSection.content => ('콘텐츠', '우리 매장을 위해 진행한 콘텐츠와 캠페인입니다.'),
+      PartnerSection.reports => ('리포트', '매달 한 장으로 정리한 우리 매장의 활동과 변화를 확인하세요.'),
+      PartnerSection.plan => ('이용 플랜', '우리 매장에 맞는 플랜과 계약 정보를 확인하세요.'),
     };
-    const titles = ['', '식당 관리', '혜택 관리', '콘텐츠', '리포트', '이용 플랜'];
-    const descriptions = [
-      '',
-      '손님에게 보이는 매장 정보와 사진을 관리해 주세요.',
-      '쿠폰·스탬프 혜택을 확인하고 변경을 신청하세요.',
-      '우리 매장을 위해 진행한 콘텐츠와 캠페인입니다.',
-      '매달 한 장으로 정리한 우리 매장의 활동과 변화를 확인하세요.',
-      '우리 매장에 맞는 플랜과 계약 정보를 확인하세요.'
-    ];
     return ColoredBox(
         color: PartnerDesign.background,
         child: Column(children: [
@@ -1278,6 +1316,7 @@ class PartnerPageState extends State<PartnerPage> {
             },
             child: LayoutBuilder(
                 builder: (context, box) => ListView(
+                        key: ValueKey(section),
                         padding: EdgeInsets.symmetric(
                             vertical: 20,
                             horizontal: box.maxWidth > 800
@@ -1285,20 +1324,25 @@ class PartnerPageState extends State<PartnerPage> {
                                 : 16),
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: [
-                          if (widget.tab != 0)
+                          if (section != PartnerSection.home)
                             Padding(
                                 padding: const EdgeInsets.only(bottom: 20),
                                 child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(titles[widget.tab],
+                                      Text(title,
                                           style: const TextStyle(
                                               fontSize: 20,
                                               fontWeight: FontWeight.w700,
                                               color: PartnerDesign.navy)),
-                                      const SizedBox(height: 6),
-                                      Text(descriptions[widget.tab],
+                                      if (section.isStoreManagement) ...[
+                                        const SizedBox(height: 12),
+                                        _storeSwitcher(),
+                                        const SizedBox(height: 12),
+                                      ] else
+                                        const SizedBox(height: 6),
+                                      Text(description,
                                           style: const TextStyle(
                                               fontSize: 12.5,
                                               color: PartnerDesign.muted)),

@@ -16,7 +16,7 @@ class PartnerShell extends StatefulWidget {
 class PartnerShellState extends State<PartnerShell> {
   PartnerStore? _store;
   PartnerStore? _previousStore;
-  int _tab = 0;
+  PartnerSection _section = PartnerSection.home;
   int _storeGeneration = 0;
   bool _leaving = false;
   bool _closing = false;
@@ -71,7 +71,7 @@ class PartnerShellState extends State<PartnerShell> {
       setState(() {
         _store = previous;
         _previousStore = null;
-        _tab = 0;
+        _section = PartnerSection.home;
         _storeGeneration++;
       });
       return;
@@ -111,7 +111,7 @@ class PartnerShellState extends State<PartnerShell> {
     setState(() {
       _store = store;
       _previousStore = null;
-      _tab = 0;
+      _section = PartnerSection.home;
       _storeGeneration++;
     });
   }
@@ -151,15 +151,15 @@ class PartnerShellState extends State<PartnerShell> {
     }
   }
 
-  Future<void> _selectTab(int tab) async {
-    if (tab == _tab) return;
+  Future<void> _selectSection(PartnerSection section) async {
+    if (section == _section) return;
     if (!await (_pageKey.currentState?.confirmDiscard() ??
             Future.value(true)) ||
         !mounted) {
       return;
     }
     setState(() {
-      _tab = tab;
+      _section = section;
       _storeGeneration++;
     });
   }
@@ -182,7 +182,7 @@ class PartnerShellState extends State<PartnerShell> {
               (MediaQuery.textScalerOf(context).scale(14) - 14).clamp(0, 40) *
                   2,
           titleSpacing: 16,
-          bottom: _tab == 0 || _store == null
+          bottom: _section == PartnerSection.home || _store == null
               ? PreferredSize(
                   preferredSize: const Size.fromHeight(56),
                   child: PartnerModeToggle(
@@ -266,7 +266,9 @@ class PartnerShellState extends State<PartnerShell> {
                                 ])))
                     : PartnerPage(
                         key: _pageKey,
-                        tab: _tab,
+                        section: _section,
+                        onStoreSectionChanged:
+                            access.isOwner ? _selectSection : null,
                         scope:
                             '${access.userId}:${_store!.id}:$_storeGeneration',
                         request: _request,
@@ -281,7 +283,8 @@ class PartnerShellState extends State<PartnerShell> {
         bottomNavigationBar: _store == null
             ? null
             : PartnerNavigation(
-                selected: _tab, onSelected: access.isOwner ? _selectTab : null),
+                selected: _section,
+                onSelected: access.isOwner ? _selectSection : null),
       ),
     );
   }

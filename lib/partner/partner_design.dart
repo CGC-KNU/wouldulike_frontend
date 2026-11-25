@@ -192,20 +192,30 @@ class PartnerEmpty extends StatelessWidget {
       );
 }
 
+enum PartnerSection {
+  home,
+  restaurant,
+  benefits,
+  content,
+  reports,
+  plan;
+
+  bool get isStoreManagement =>
+      this == PartnerSection.restaurant || this == PartnerSection.benefits;
+}
+
 class PartnerNavigation extends StatelessWidget {
   const PartnerNavigation(
       {super.key, required this.selected, required this.onSelected});
-  final int selected;
-  final ValueChanged<int>? onSelected;
-  static const labels = ['홈', '매장', '혜택', '콘텐츠', '리포트', '플랜'];
-  static const icons = [
-    Icons.home_outlined,
-    Icons.storefront_outlined,
-    Icons.card_giftcard_outlined,
-    Icons.photo_library_outlined,
-    Icons.description_outlined,
-    Icons.receipt_long_outlined
-  ];
+  final PartnerSection selected;
+  final ValueChanged<PartnerSection>? onSelected;
+  static const _items = {
+    PartnerSection.home: ('홈', Icons.home_outlined),
+    PartnerSection.restaurant: ('매장', Icons.storefront_outlined),
+    PartnerSection.content: ('콘텐츠', Icons.photo_library_outlined),
+    PartnerSection.reports: ('리포트', Icons.description_outlined),
+    PartnerSection.plan: ('플랜', Icons.receipt_long_outlined),
+  };
   @override
   Widget build(BuildContext context) => DecoratedBox(
         decoration: const BoxDecoration(
@@ -215,82 +225,70 @@ class PartnerNavigation extends StatelessWidget {
             top: false,
             child: LayoutBuilder(builder: (context, box) {
               final scale = MediaQuery.textScalerOf(context).scale(11) / 11;
-              final width =
-                  (box.maxWidth / 6).clamp(62.0 * scale, 100.0 * scale);
+              final width = (box.maxWidth / _items.length)
+                  .clamp(62.0 * scale, 100.0 * scale);
+              final navSelection = selected.isStoreManagement
+                  ? PartnerSection.restaurant
+                  : selected;
               return Center(
-                  heightFactor: 1,
-                  child: ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: width * 6),
-                      child: SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: SizedBox(
-                            width: width * 6,
-                            child: Row(
-                                children: List.generate(
-                                    6,
-                                    (i) => Expanded(
-                                            child: Semantics(
-                                          selected: i == selected,
-                                          button: true,
-                                          child: InkWell(
-                                            onTap: onSelected == null
-                                                ? null
-                                                : () => onSelected!(i),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
-                                            child: Padding(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                        vertical: 9),
-                                                child: Column(
-                                                    mainAxisSize:
-                                                        MainAxisSize.min,
-                                                    children: [
-                                                      AnimatedContainer(
-                                                          duration:
-                                                              const Duration(
-                                                                  milliseconds:
-                                                                      180),
-                                                          padding:
-                                                              const EdgeInsets
-                                                                  .symmetric(
-                                                                  horizontal: 9,
-                                                                  vertical: 4),
-                                                          decoration: BoxDecoration(
-                                                              color: i ==
-                                                                      selected
-                                                                  ? PartnerDesign
-                                                                      .navy
-                                                                  : Colors
-                                                                      .transparent,
-                                                              borderRadius:
-                                                                  BorderRadius
-                                                                      .circular(
-                                                                          9)),
-                                                          child: Icon(icons[i],
-                                                              size: 20,
-                                                              color: i ==
-                                                                      selected
-                                                                  ? Colors.white
-                                                                  : PartnerDesign
-                                                                      .muted)),
-                                                      const SizedBox(height: 4),
-                                                      Text(labels[i],
-                                                          style: TextStyle(
-                                                              fontSize: 10.5,
-                                                              fontWeight:
-                                                                  FontWeight
-                                                                      .w600,
-                                                              color: i ==
-                                                                      selected
-                                                                  ? PartnerDesign
-                                                                      .navy
-                                                                  : PartnerDesign
-                                                                      .muted)),
-                                                    ])),
-                                          ),
-                                        )))),
-                          ))));
+                heightFactor: 1,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: _items.entries.map((item) {
+                      final (label, icon) = item.value;
+                      final isSelected = item.key == navSelection;
+                      return SizedBox(
+                        width: width,
+                        child: Semantics(
+                          selected: isSelected,
+                          button: true,
+                          child: InkWell(
+                            onTap: onSelected == null
+                                ? null
+                                : () => onSelected!(item.key),
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 9),
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  AnimatedContainer(
+                                    duration: const Duration(milliseconds: 180),
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 9, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: isSelected
+                                          ? PartnerDesign.navy
+                                          : Colors.transparent,
+                                      borderRadius: BorderRadius.circular(9),
+                                    ),
+                                    child: Icon(icon,
+                                        size: 20,
+                                        color: isSelected
+                                            ? Colors.white
+                                            : PartnerDesign.muted),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(label,
+                                      style: TextStyle(
+                                        fontSize: 10.5,
+                                        fontWeight: FontWeight.w600,
+                                        color: isSelected
+                                            ? PartnerDesign.navy
+                                            : PartnerDesign.muted,
+                                      )),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              );
             })),
       );
 }

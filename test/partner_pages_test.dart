@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:new1/partner/partner_design.dart';
 import 'package:new1/partner/partner_pages.dart';
 import 'package:new1/partner/partner_access_controller.dart';
 
@@ -38,7 +39,10 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: PartnerPage(
-                tab: 1, scope: '1:1', request: request, access: access))));
+                section: PartnerSection.restaurant,
+                scope: '1:1',
+                request: request,
+                access: access))));
     await tester.pumpAndSettle();
     expect(find.text('한식'), findsOneWidget);
     await tester.drag(find.byType(ListView), const Offset(0, -650));
@@ -59,7 +63,10 @@ void main() {
     Widget page(String scope, PartnerRequest req) => MaterialApp(
         home: Scaffold(
             body: PartnerPage(
-                tab: 3, scope: scope, request: req, access: access)));
+                section: PartnerSection.content,
+                scope: scope,
+                request: req,
+                access: access)));
     await tester.pumpWidget(page('1:1', request));
     await tester.pumpWidget(page(
         '1:2',
@@ -87,7 +94,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(
         home: Scaffold(
             body: PartnerPage(
-      tab: 3,
+      section: PartnerSection.content,
       scope: '1:1',
       access: access,
       request: (_, {String method = 'GET', Map<String, dynamic>? body}) async =>

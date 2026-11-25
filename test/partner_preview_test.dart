@@ -181,11 +181,12 @@ void main() {
     ]) {
       tester.view.physicalSize = size;
       final scale = size.width == 320 ? 2.0 : 1.0;
-      for (var tab = 0; tab < 6; tab++) {
+      for (final section in PartnerSection.values) {
+        final screenshotIndex = section.index;
         await tester.pumpWidget(RepaintBoundary(
             key: castorBoundaryKey,
             child: MaterialApp(
-              key: ValueKey('preview:$size:$tab'),
+              key: ValueKey('preview:$size:$section'),
               debugShowCheckedModeBanner: false,
               theme: PartnerDesign.theme,
               builder: (context, child) => MediaQuery(
@@ -195,19 +196,20 @@ void main() {
               home: Scaffold(
                 appBar: AppBar(title: const Text('우주라이크 파트너')),
                 body: PartnerPage(
-                    tab: tab,
-                    scope: 'preview:$size:$tab',
+                    section: section,
+                    scope: 'preview:$size:$section',
+                    onStoreSectionChanged: (_) {},
                     request: request,
                     access: access),
                 bottomNavigationBar:
-                    PartnerNavigation(selected: tab, onSelected: (_) {}),
+                    PartnerNavigation(selected: section, onSelected: (_) {}),
               ),
             )));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull,
-            reason: 'tab $tab / $size / $scale');
+            reason: '$section / $size / $scale');
         if (size.width == 390) {
-          await captureScreen(tester, 'partner.design.$tab');
+          await captureScreen(tester, 'partner.design.$screenshotIndex');
         }
         final scrollable = tester.state<ScrollableState>(find
             .descendant(
@@ -220,10 +222,12 @@ void main() {
               .clamp(0, scrollable.position.maxScrollExtent));
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull,
-              reason: 'scrolled tab $tab / $size / $scale');
+              reason: 'scrolled $section / $size / $scale');
         }
-        if (size.width == 390 && (tab == 2 || tab == 5)) {
-          await captureScreen(tester, 'partner.design.$tab.bottom');
+        if (size.width == 390 &&
+            (section == PartnerSection.benefits ||
+                section == PartnerSection.plan)) {
+          await captureScreen(tester, 'partner.design.$screenshotIndex.bottom');
         }
       }
     }
@@ -285,7 +289,7 @@ void main() {
                 child:
                     PartnerModeToggle(partnerMode: true, onChanged: (_) {}))),
         body: PartnerPage(
-            tab: 0,
+            section: PartnerSection.home,
             scope: '1:1',
             access: access,
             request: (_,

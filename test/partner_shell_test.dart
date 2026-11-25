@@ -1,13 +1,22 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:new1/partner/partner_shell.dart';
 import 'package:new1/partner/partner_access_controller.dart';
+import 'package:new1/partner/partner_design.dart';
 import 'package:new1/services/app_session.dart';
 
+import 'castor/harness.dart';
+
 void main() {
+  final previousOverrides = HttpOverrides.current;
+  setUpAll(() => HttpOverrides.global = CastorHttpOverrides());
+  tearDownAll(() => HttpOverrides.global = previousOverrides);
   late PartnerAccessController access;
   setUp(() {
+    FakeBackend.reset();
     AppSession.changing = false;
     SharedPreferences.setMockInitialValues({});
     access = PartnerAccessController(
@@ -36,6 +45,65 @@ void main() {
                       MaterialPageRoute<void>(
                           builder: (_) => PartnerShell(access: access))),
                   child: const Text('일반 화면')))));
+  testWidgets('매장 탭의 상단 버튼으로 관리 화면을 전환하고 편집 중에는 확인한다', (tester) async {
+    SharedPreferences.setMockInitialValues({
+      'jwt_access_token': 'test-access',
+      'user_id': 1,
+      'access_expires_at': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600,
+    });
+    FakeBackend.routes['/api/app/owner/home'] = (_) => <String, dynamic>{};
+    FakeBackend.routes['/api/app/owner/restaurant'] =
+        (_) => {'name': '매장 A', 'description': '원래 소개'};
+    FakeBackend.routes['/api/app/owner/categories'] = (_) => {'categories': []};
+    FakeBackend.routes['/api/app/owner/benefits'] = (_) => {'choices': []};
+    FakeBackend.routes['/api/app/owner/benefit-requests'] =
+        (_) => {'requests': []};
+    FakeBackend.routes['/api/app/owner/stamp-rule'] = (_) => {'exists': false};
+
+    await tester.pumpWidget(app());
+    await tester.tap(find.text('일반 화면'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('매장 A'));
+    await tester.pumpAndSettle();
+
+    final nav = find.byType(PartnerNavigation);
+    final storeTab = find.descendant(of: nav, matching: find.text('매장'));
+    final storeTabSemantics = find.descendant(
+        of: nav,
+        matching: find.byWidgetPredicate((widget) =>
+            widget is Semantics && widget.properties.selected == true));
+    expect(find.descendant(of: nav, matching: find.text('혜택')), findsNothing);
+    await tester.tap(storeTab);
+    await tester.pumpAndSettle();
+    expect(find.text('기본 정보 · 매장 A'), findsOneWidget);
+
+    final description = find.widgetWithText(TextField, '매장 소개');
+    final benefits = find.text('쿠폰/스탬프 관리');
+    await tester.enterText(description, '저장하지 않은 소개');
+    await tester.ensureVisible(benefits);
+    await tester.tap(benefits);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('계속 편집'));
+    await tester.pumpAndSettle();
+    expect(find.text('저장하지 않은 소개'), findsOneWidget);
+
+    await tester.tap(benefits);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('나가기'));
+    await tester.pumpAndSettle();
+    expect(find.text('현재 혜택'), findsOneWidget);
+    expect(find.text('스탬프 규칙'), findsOneWidget);
+    expect(find.descendant(of: storeTabSemantics, matching: storeTab),
+        findsOneWidget);
+
+    await tester.tap(find.text('매장 관리'));
+    await tester.pumpAndSettle();
+    expect(find.text('원래 소개'), findsOneWidget);
+    expect(find.text('현재 혜택'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    access.dispose();
+  });
+
   testWidgets('뒤로가기는 매장 선택을 닫은 뒤 사장님 모드를 닫는다', (tester) async {
     await tester.pumpWidget(app());
     await tester.tap(find.text('일반 화면'));
